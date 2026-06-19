@@ -1,0 +1,1858 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
+<title>减肥大作战</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+:root{--bg:#1a1a2e;--bg2:#16213e;--bg3:#0f3460;--red:#ff6b6b;--gold:#ffd93d;--green:#2ecc71;--purple:#667eea;--text:#e0e0e0;--text2:#a0a0b0;--card:#1e2a4a;--border:#2a3a5a;--shadow:0 4px 15px rgba(0,0,0,0.3)}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden}
+.app{max-width:480px;margin:0 auto;min-height:100vh;position:relative;background:var(--bg)}
+.page{display:none;padding:16px;padding-bottom:80px;animation:fadeIn .3s ease}
+.page.active{display:block}
+@keyframes fadeIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
+@keyframes shake{0%,100%{transform:translateX(0)}10%,30%,50%,70%,90%{transform:translateX(-5px)}20%,40%,60%,80%{transform:translateX(5px)}}
+@keyframes glow{0%,100%{filter:brightness(1)}50%{filter:brightness(1.5) drop-shadow(0 0 20px var(--red))}}
+@keyframes floatUp{0%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(-60px)}}
+@keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.05)}}
+@keyframes slideDown{from{opacity:0;transform:translateY(-20px)}to{opacity:1;transform:translateY(0)}}
+@keyframes bounceIn{0%{transform:scale(0.3);opacity:0}50%{transform:scale(1.05)}70%{transform:scale(0.9)}100%{transform:scale(1);opacity:1}}
+@keyframes sparkle{0%,100%{opacity:0;transform:scale(0)}50%{opacity:1;transform:scale(1)}}
+.toast{position:fixed;top:20px;left:50%;transform:translateX(-50%);background:var(--card);color:var(--text);padding:12px 24px;border-radius:12px;border:1px solid var(--border);z-index:9999;animation:slideDown .3s ease;font-size:14px;max-width:400px;text-align:center;box-shadow:var(--shadow)}
+.toast.hide{animation:fadeOut .3s ease forwards}
+@keyframes fadeOut{to{opacity:0;transform:translateY(-20px)}}
+.btn{display:inline-flex;align-items:center;justify-content:center;padding:12px 24px;border:none;border-radius:12px;font-size:15px;font-weight:600;cursor:pointer;transition:all .2s;gap:6px}
+.btn:active{transform:scale(0.95)}
+.btn-primary{background:linear-gradient(135deg,var(--red),#ee5a24);color:#fff;box-shadow:0 4px 15px rgba(255,107,107,0.3)}
+.btn-primary:hover{box-shadow:0 6px 20px rgba(255,107,107,0.5)}
+.btn-secondary{background:var(--card);color:var(--text);border:1px solid var(--border)}
+.btn-gold{background:linear-gradient(135deg,var(--gold),#f39c12);color:#1a1a2e;box-shadow:0 4px 15px rgba(255,217,61,0.3)}
+.btn-green{background:linear-gradient(135deg,var(--green),#27ae60);color:#fff;box-shadow:0 4px 15px rgba(46,204,113,0.3)}
+.btn-purple{background:linear-gradient(135deg,var(--purple),#5f27cd);color:#fff;box-shadow:0 4px 15px rgba(102,126,234,0.3)}
+.btn-sm{padding:8px 16px;font-size:13px;border-radius:8px}
+.btn-block{width:100%}
+.card{background:var(--card);border-radius:16px;padding:16px;margin-bottom:12px;border:1px solid var(--border);box-shadow:var(--shadow)}
+.card-title{font-size:16px;font-weight:700;margin-bottom:12px;color:var(--text)}
+input[type="text"],input[type="number"],select{width:100%;padding:10px 14px;background:var(--bg2);border:2px solid var(--border);border-radius:10px;color:var(--text);font-size:14px;transition:border-color .2s;outline:none}
+input:focus,select:focus{border-color:var(--red)}
+input::placeholder{color:var(--text2)}
+select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%23a0a0b0' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10z'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center}
+select option{background:var(--bg2);color:var(--text)}
+.nav-bar{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:480px;background:var(--bg2);border-top:1px solid var(--border);display:flex;z-index:100;padding:6px 0;padding-bottom:env(safe-area-inset-bottom,6px)}
+.nav-item{flex:1;display:flex;flex-direction:column;align-items:center;padding:6px 0;cursor:pointer;color:var(--text2);font-size:11px;transition:color .2s;gap:2px}
+.nav-item.active{color:var(--red)}
+.nav-item span.emoji{font-size:22px}
+/* Welcome */
+.welcome-page{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;text-align:center;padding:40px 20px}
+.welcome-logo{font-size:80px;animation:float 2s ease-in-out infinite;margin-bottom:20px}
+.welcome-title{font-size:32px;font-weight:900;background:linear-gradient(135deg,var(--red),var(--gold));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-bottom:8px}
+.welcome-sub{color:var(--text2);font-size:16px;margin-bottom:40px}
+/* Setup */
+.step-indicator{display:flex;justify-content:center;gap:8px;margin-bottom:24px}
+.step-dot{width:10px;height:10px;border-radius:50%;background:var(--border);transition:all .3s}
+.step-dot.active{background:var(--red);transform:scale(1.2)}
+.step-dot.done{background:var(--green)}
+.setup-step{display:none}
+.setup-step.active{display:block;animation:fadeIn .3s ease}
+.input-group{margin-bottom:16px}
+.input-group label{display:block;font-size:13px;color:var(--text2);margin-bottom:6px}
+.input-row{display:flex;gap:12px}
+.input-row .input-group{flex:1}
+.option-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px}
+.option-card{background:var(--bg2);border:2px solid var(--border);border-radius:12px;padding:12px 8px;text-align:center;cursor:pointer;transition:all .2s;font-size:13px}
+.option-card.selected{border-color:var(--red);background:rgba(255,107,107,0.1)}
+.option-card .emoji{font-size:28px;display:block;margin-bottom:4px}
+.option-card .label{font-size:12px;color:var(--text2)}
+.diff-card{background:var(--bg2);border:2px solid var(--border);border-radius:16px;padding:20px;text-align:center;cursor:pointer;transition:all .2s}
+.diff-card.selected{border-color:var(--red);background:rgba(255,107,107,0.1)}
+.diff-card .emoji{font-size:40px;display:block;margin-bottom:8px}
+.diff-card .name{font-size:18px;font-weight:700;margin-bottom:4px}
+.diff-card .desc{font-size:12px;color:var(--text2)}
+.summary-item{display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border);font-size:14px}
+.summary-item:last-child{border-bottom:none}
+.summary-label{color:var(--text2)}
+.summary-value{font-weight:600;color:var(--gold)}
+/* Home */
+.home-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+.home-coins{display:flex;align-items:center;gap:6px;background:var(--card);padding:8px 14px;border-radius:20px;font-weight:700;color:var(--gold);font-size:14px}
+.home-day{background:var(--card);padding:8px 14px;border-radius:20px;font-size:13px;color:var(--text2)}
+.greeting{font-size:20px;font-weight:700;margin-bottom:4px}
+.greeting-sub{font-size:13px;color:var(--text2);margin-bottom:16px}
+.monster-area{text-align:center;padding:24px 0;position:relative}
+.monster-emoji{font-size:80px;display:block;animation:float 2s ease-in-out infinite;cursor:pointer;user-select:none}
+.monster-emoji.shake{animation:shake .5s ease}
+.monster-emoji.glow{animation:glow 1s ease}
+.monster-name{font-size:18px;font-weight:700;margin:8px 0 4px}
+.monster-level{font-size:12px;color:var(--purple);margin-bottom:12px}
+.hp-bar-wrap{background:var(--bg);border-radius:10px;height:20px;overflow:hidden;position:relative;margin:0 auto;max-width:300px}
+.hp-bar{height:100%;border-radius:10px;transition:width .5s ease;position:relative}
+.hp-bar.enemy{background:linear-gradient(90deg,#e74c3c,var(--red))}
+.hp-bar.player{background:linear-gradient(90deg,var(--green),#27ae60)}
+.hp-text{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:11px;font-weight:700;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,0.5)}
+.damage-float{position:absolute;font-size:24px;font-weight:900;pointer-events:none;animation:floatUp 1s ease forwards;z-index:10}
+.damage-float.dmg{color:var(--green)}
+.damage-float.heal{color:var(--red)}
+.player-hp-area{margin-top:16px}
+.player-hp-label{display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px}
+.quick-actions{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:16px}
+.quick-action{background:var(--card);border-radius:12px;padding:14px;text-align:center;cursor:pointer;transition:all .2s;border:1px solid var(--border)}
+.quick-action:active{transform:scale(0.95)}
+.quick-action .emoji{font-size:28px;display:block;margin-bottom:4px}
+.quick-action .name{font-size:12px;color:var(--text2)}
+.today-summary{margin-top:16px}
+.summary-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.summary-stat{text-align:center;background:var(--bg2);border-radius:10px;padding:10px 4px}
+.summary-stat .val{font-size:18px;font-weight:700;color:var(--gold)}
+.summary-stat .lbl{font-size:11px;color:var(--text2);margin-top:2px}
+/* Food */
+.meal-section{margin-bottom:16px}
+.meal-header{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--bg2);border-radius:12px 12px 0 0;font-weight:700;font-size:15px}
+.meal-header .cal{color:var(--gold);font-size:13px;font-weight:400}
+.meal-body{background:var(--card);border-radius:0 0 12px 12px;padding:12px}
+.food-list{margin-bottom:10px}
+.food-item{display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:var(--bg2);border-radius:8px;margin-bottom:6px;font-size:13px}
+.food-item .food-name{flex:1}
+.food-item .food-cal{color:var(--gold);margin:0 8px}
+.food-item .food-size{color:var(--text2);margin-right:8px;font-size:12px}
+.food-item .food-del{color:var(--red);cursor:pointer;font-size:18px;padding:0 4px}
+.food-input-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.food-input-row input{flex:1;min-width:60px}
+.food-input-row select{width:auto;min-width:60px;flex:0.6}
+.quick-tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.quick-tag{background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:4px 12px;font-size:12px;cursor:pointer;transition:all .2s;color:var(--text)}
+.quick-tag:active{background:rgba(255,107,107,0.2);border-color:var(--red)}
+/* Exercise */
+.exercise-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:16px}
+.exercise-card{background:var(--card);border:2px solid var(--border);border-radius:12px;padding:14px;text-align:center;cursor:pointer;transition:all .2s}
+.exercise-card.selected{border-color:var(--green);background:rgba(46,204,113,0.1)}
+.exercise-card .emoji{font-size:32px;display:block;margin-bottom:4px}
+.exercise-card .name{font-size:14px;font-weight:600}
+.exercise-card .cal-per-min{font-size:11px;color:var(--gold)}
+.duration-options{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}
+.duration-btn{background:var(--bg2);border:2px solid var(--border);border-radius:10px;padding:8px 16px;color:var(--text);font-size:14px;cursor:pointer;transition:all .2s}
+.duration-btn.selected{border-color:var(--green);background:rgba(46,204,113,0.1);color:var(--green)}
+.exercise-preview{text-align:center;padding:16px;background:var(--bg2);border-radius:12px;margin-bottom:16px}
+.exercise-preview .val{font-size:28px;font-weight:900;color:var(--green)}
+.exercise-preview .lbl{font-size:12px;color:var(--text2)}
+.exercise-record{margin-top:16px}
+.record-item{display:flex;align-items:center;justify-content:space-between;padding:10px;background:var(--bg2);border-radius:8px;margin-bottom:6px;font-size:13px}
+.record-item .rec-name{flex:1;font-weight:600}
+.record-item .rec-info{color:var(--text2);margin-right:8px}
+.record-item .rec-dmg{color:var(--green);font-weight:700}
+/* Stats */
+.progress-section{margin-bottom:16px}
+.progress-bar-wrap{background:var(--bg);border-radius:12px;height:24px;overflow:hidden;position:relative;margin-top:8px}
+.progress-bar{height:100%;border-radius:12px;background:linear-gradient(90deg,var(--green),var(--gold));transition:width .5s ease}
+.progress-text{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:12px;font-weight:700}
+.bmi-display{text-align:center;padding:16px;background:var(--bg2);border-radius:12px;margin-bottom:16px}
+.bmi-value{font-size:36px;font-weight:900}
+.bmi-label{font-size:14px;margin-top:4px}
+.stats-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:16px}
+.stat-card{text-align:center;background:var(--card);border-radius:12px;padding:14px;border:1px solid var(--border)}
+.stat-card .val{font-size:22px;font-weight:700;color:var(--gold)}
+.stat-card .lbl{font-size:12px;color:var(--text2);margin-top:2px}
+.week-overview .week-item{display:flex;align-items:center;justify-content:space-between;padding:10px;background:var(--bg2);border-radius:8px;margin-bottom:6px;font-size:13px}
+.weight-input-area{display:flex;gap:8px;align-items:center;margin-top:16px}
+.weight-input-area input{flex:1}
+.trend-canvas{width:100%;height:150px;margin-top:16px;background:var(--bg2);border-radius:12px}
+/* Settings */
+.setting-item{display:flex;align-items:center;justify-content:space-between;padding:14px 0;border-bottom:1px solid var(--border)}
+.setting-item:last-child{border-bottom:none}
+.setting-label{font-size:14px}
+.setting-desc{font-size:12px;color:var(--text2);margin-top:2px}
+.toggle{width:48px;height:26px;background:var(--border);border-radius:13px;position:relative;cursor:pointer;transition:background .3s}
+.toggle.on{background:var(--green)}
+.toggle::after{content:'';position:absolute;top:3px;left:3px;width:20px;height:20px;background:#fff;border-radius:50%;transition:transform .3s}
+.toggle.on::after{transform:translateX(22px)}
+.toggle-label{position:relative;display:inline-block;width:44px;height:24px}
+.toggle-label input{opacity:0;width:0;height:0}
+.toggle-slider{position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background:#3a3a5a;border-radius:24px;transition:.3s}
+.toggle-slider:before{content:'';position:absolute;height:18px;width:18px;left:3px;bottom:3px;background:white;border-radius:50%;transition:.3s}
+.toggle-label input:checked+.toggle-slider{background:#2ecc71}
+.toggle-label input:checked+.toggle-slider:before{transform:translateX(20px)}
+/* Achievements */
+.achievement-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.achievement-badge{background:var(--card);border-radius:16px;padding:16px;text-align:center;border:2px solid var(--border);transition:all .2s}
+.achievement-badge.unlocked{border-color:var(--gold);background:rgba(255,217,61,0.05)}
+.achievement-badge .emoji{font-size:36px;display:block;margin-bottom:6px}
+.achievement-badge.locked .emoji{filter:grayscale(1);opacity:0.4}
+.achievement-badge .name{font-size:12px;font-weight:600}
+.achievement-badge .desc{font-size:10px;color:var(--text2);margin-top:2px}
+/* Shop */
+.shop-item{display:flex;align-items:center;gap:14px;background:var(--card);border-radius:12px;padding:14px;margin-bottom:10px;border:1px solid var(--border)}
+.shop-item .shop-emoji{font-size:36px}
+.shop-item .shop-info{flex:1}
+.shop-item .shop-name{font-weight:700;font-size:14px}
+.shop-item .shop-desc{font-size:12px;color:var(--text2);margin-top:2px}
+.shop-item .shop-price{color:var(--gold);font-weight:700;font-size:14px}
+/* Modal */
+.modal-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:200;animation:fadeIn .3s ease}
+.modal{background:var(--card);border-radius:20px;padding:30px;text-align:center;max-width:320px;width:90%;animation:bounceIn .5s ease;border:1px solid var(--border)}
+.modal .modal-emoji{font-size:60px;display:block;margin-bottom:12px}
+.modal .modal-title{font-size:22px;font-weight:900;margin-bottom:8px}
+.modal .modal-desc{font-size:14px;color:var(--text2);margin-bottom:20px}
+.modal .modal-reward{color:var(--gold);font-size:16px;font-weight:700;margin-bottom:16px}
+.empty-state{text-align:center;padding:30px;color:var(--text2);font-size:14px}
+.empty-state .emoji{font-size:40px;display:block;margin-bottom:8px}
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <!-- Toast -->
+  <div id="toast" class="toast" style="display:none"></div>
+
+  <!-- Welcome Page -->
+  <div class="page page-welcome active" id="page-welcome">
+    <div class="welcome-page">
+      <div class="welcome-logo">⚔️</div>
+      <div class="welcome-title">减肥大作战</div>
+      <div class="welcome-sub">用游戏的方式，打赢这场脂肪战争</div>
+      <button class="btn btn-primary" onclick="startAdventure()" style="padding:16px 48px;font-size:18px">
+        开始冒险 🚀
+      </button>
+    </div>
+  </div>
+
+  <!-- Setup Page -->
+  <div class="page page-setup" id="page-setup">
+    <div class="step-indicator" id="stepIndicator"></div>
+    <!-- Step 1 -->
+    <div class="setup-step active" id="setup-step-1">
+      <div class="card">
+        <div class="card-title">📊 基础数据</div>
+        <div class="input-row">
+          <div class="input-group">
+            <label>身高 (cm)</label>
+            <input type="number" id="inputHeight" placeholder="170" min="100" max="250" oninput="updateBMI()">
+          </div>
+          <div class="input-group">
+            <label>体重 (kg)</label>
+            <input type="number" id="inputWeight" placeholder="70" min="30" max="300" oninput="updateBMI()">
+          </div>
+        </div>
+        <div class="input-group">
+          <label>目标体重 (kg)</label>
+          <input type="number" id="inputTarget" placeholder="65" min="30" max="200">
+        </div>
+        <div id="bmiPreview" style="text-align:center;margin-top:12px;font-size:14px;color:var(--text2)"></div>
+      </div>
+      <button class="btn btn-primary btn-block" onclick="nextStep(2)">下一步 ➡️</button>
+    </div>
+    <!-- Step 2 -->
+    <div class="setup-step" id="setup-step-2">
+      <div class="card">
+        <div class="card-title">🌙 作息类型</div>
+        <div class="option-grid" id="sleepOptions">
+          <div class="option-card" data-val="early" onclick="selectOption('sleep',this)">
+            <span class="emoji">🌅</span>早睡早起
+          </div>
+          <div class="option-card" data-val="normal" onclick="selectOption('sleep',this)">
+            <span class="emoji">☀️</span>标准作息
+          </div>
+          <div class="option-card" data-val="night" onclick="selectOption('sleep',this)">
+            <span class="emoji">🦉</span>夜猫子
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">💼 办公方式</div>
+        <div class="option-grid" id="workOptions">
+          <div class="option-card" data-val="sedentary" onclick="selectOption('work',this)">
+            <span class="emoji">🪑</span>久坐不动
+          </div>
+          <div class="option-card" data-val="sometimes" onclick="selectOption('work',this)">
+            <span class="emoji">🚶</span>偶尔走动
+          </div>
+          <div class="option-card" data-val="active" onclick="selectOption('work',this)">
+            <span class="emoji">🏃</span>经常外出
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">⏰ 锻炼时间段</div>
+        <div class="option-grid" id="exerciseTimeOptions">
+          <div class="option-card" data-val="morning" onclick="selectOption('exerciseTime',this)">
+            <span class="emoji">🌅</span>早晨
+          </div>
+          <div class="option-card" data-val="afternoon" onclick="selectOption('exerciseTime',this)">
+            <span class="emoji">☀️</span>下午
+          </div>
+          <div class="option-card" data-val="evening" onclick="selectOption('exerciseTime',this)">
+            <span class="emoji">🌙</span>晚上
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">🎨 角色风格</div>
+        <div class="option-grid" id="styleOptions">
+          <div class="option-card selected" data-val="pet" onclick="selectOption('characterStyle',this)">
+            <span class="emoji">🐾</span>可爱萌宠
+          </div>
+          <div class="option-card" data-val="warrior" onclick="selectOption('characterStyle',this)">
+            <span class="emoji">⚔️</span>战斗勇士
+          </div>
+          <div class="option-card" data-val="mage" onclick="selectOption('characterStyle',this)">
+            <span class="emoji">🧙</span>魔法师
+          </div>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px">
+        <button class="btn btn-secondary" onclick="prevStep(1)" style="flex:1">⬅️ 上一步</button>
+        <button class="btn btn-primary" onclick="nextStep(3)" style="flex:2">下一步 ➡️</button>
+      </div>
+    </div>
+    <!-- Step 3 -->
+    <div class="setup-step" id="setup-step-3">
+      <div class="card">
+        <div class="card-title">💪 体能评估</div>
+        <div class="input-group">
+          <label>你能做多少个俯卧撑？</label>
+          <input type="number" id="inputPushup" placeholder="10" min="0" max="200">
+        </div>
+        <div class="input-group">
+          <label>你能连续跑步多久（分钟）？</label>
+          <input type="number" id="inputRun" placeholder="15" min="0" max="300">
+        </div>
+        <div class="input-group">
+          <label>每周锻炼频率</label>
+          <div class="option-grid" id="freqOptions">
+            <div class="option-card" data-val="1" onclick="selectOption('weeklyFreq',this)">
+              <span class="emoji">😅</span>1-2次
+            </div>
+            <div class="option-card" data-val="3" onclick="selectOption('weeklyFreq',this)">
+              <span class="emoji">💪</span>3-4次
+            </div>
+            <div class="option-card" data-val="5" onclick="selectOption('weeklyFreq',this)">
+              <span class="emoji">🔥</span>5+次
+            </div>
+          </div>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px">
+        <button class="btn btn-secondary" onclick="prevStep(2)" style="flex:1">⬅️ 上一步</button>
+        <button class="btn btn-primary" onclick="nextStep(4)" style="flex:2">下一步 ➡️</button>
+      </div>
+    </div>
+    <!-- Step 4 -->
+    <div class="setup-step" id="setup-step-4">
+      <div class="card">
+        <div class="card-title">🎮 选择难度</div>
+        <div style="display:grid;gap:12px">
+          <div class="diff-card" data-val="easy" onclick="selectDifficulty(this)">
+            <span class="emoji">😊</span>
+            <div class="name">简单模式</div>
+            <div class="desc">怪物较弱，每日卡路里目标+200</div>
+          </div>
+          <div class="diff-card" data-val="normal" onclick="selectDifficulty(this)">
+            <span class="emoji">😐</span>
+            <div class="name">普通模式</div>
+            <div class="desc">标准挑战，平衡体验</div>
+          </div>
+          <div class="diff-card" data-val="hard" onclick="selectDifficulty(this)">
+            <span class="emoji">😈</span>
+            <div class="name">困难模式</div>
+            <div class="desc">怪物凶猛，每日卡路里目标-400</div>
+          </div>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px">
+        <button class="btn btn-secondary" onclick="prevStep(3)" style="flex:1">⬅️ 上一步</button>
+        <button class="btn btn-primary" onclick="nextStep(5)" style="flex:2">下一步 ➡️</button>
+      </div>
+    </div>
+    <!-- Step 5 -->
+    <div class="setup-step" id="setup-step-5">
+      <div class="card">
+        <div class="card-title">📋 角色确认</div>
+        <div id="summaryContent"></div>
+      </div>
+      <div style="display:flex;gap:10px">
+        <button class="btn btn-secondary" onclick="prevStep(4)" style="flex:1">⬅️ 修改</button>
+        <button class="btn btn-gold btn-block" onclick="generateLevel()" style="flex:2">⚔️ 生成关卡</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Home Page -->
+  <div class="page page-home" id="page-home">
+    <div class="home-header">
+      <div class="home-coins">🪙 <span id="homeCoins">0</span></div>
+      <div class="home-day">📅 第 <span id="homeDay">1</span> 天</div>
+    </div>
+    <div class="greeting" id="greetingText">勇士，准备战斗！</div>
+    <div class="greeting-sub" id="greetingSub">击败今天的怪物吧</div>
+    <div class="card">
+      <div id="season-badge" style="text-align:center;margin-bottom:8px">
+        <span style="background:#667eea;color:white;padding:4px 12px;border-radius:12px;font-size:0.8em" id="season-text">S1 春节季</span>
+      </div>
+      <div class="monster-area" id="monsterArea">
+        <div class="monster-emoji" id="monsterEmoji" onclick="tapMonster()">👾</div>
+        <div class="monster-name" id="monsterName">贪吃史莱姆</div>
+        <div class="monster-level" id="monsterLevel">Lv.1</div>
+        <div class="hp-bar-wrap">
+          <div class="hp-bar enemy" id="enemyHpBar" style="width:100%">
+            <span class="hp-text" id="enemyHpText">100/100</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card player-hp-area">
+      <div class="player-hp-label">
+        <span>❤️ 我的体力</span>
+        <span id="playerHpText">100/100</span>
+      </div>
+      <div class="hp-bar-wrap">
+        <div class="hp-bar player" id="playerHpBar" style="width:100%"></div>
+      </div>
+    </div>
+    <div class="quick-actions">
+      <div class="quick-action" onclick="navigateTo('page-food')">
+        <span class="emoji">🍽️</span>
+        <span class="name">记录饮食</span>
+      </div>
+      <div class="quick-action" onclick="navigateTo('page-exercise')">
+        <span class="emoji">🏋️</span>
+        <span class="name">去锻炼</span>
+      </div>
+      <div class="quick-action" onclick="useShield()">
+        <span class="emoji">🛡️</span>
+        <span class="name">护盾(<span id="shieldCount">0</span>)</span>
+      </div>
+      <div class="quick-action" onclick="useRest()">
+        <span class="emoji">😴</span>
+        <span class="name">休息(<span id="restDays">0</span>)</span>
+      </div>
+    </div>
+    <div class="card today-summary">
+      <div class="card-title">📊 今日战况</div>
+      <div class="summary-grid">
+        <div class="summary-stat">
+          <div class="val" id="todayCalInVal">0</div>
+          <div class="lbl">摄入(千卡)</div>
+        </div>
+        <div class="summary-stat">
+          <div class="val" id="todayCalExVal">0</div>
+          <div class="lbl">消耗(千卡)</div>
+        </div>
+        <div class="summary-stat">
+          <div class="val" id="todayDmgVal">0</div>
+          <div class="lbl">总伤害</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Food Page -->
+  <div class="page page-food" id="page-food">
+    <div class="card-title" style="margin-bottom:16px">🍽️ 饮食记录</div>
+    <div id="mealSections"></div>
+  </div>
+
+  <!-- Exercise Page -->
+  <div class="page page-exercise" id="page-exercise">
+    <div class="card-title" style="margin-bottom:16px">🏋️ 锻炼攻击</div>
+    <div class="card">
+      <div class="card-title">选择运动</div>
+      <div class="exercise-grid" id="exerciseGrid"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">选择时长</div>
+      <div class="duration-options" id="durationOptions"></div>
+    </div>
+    <div class="exercise-preview" id="exercisePreview">
+      <div class="val" id="previewCal">0</div>
+      <div class="lbl">预计消耗千卡</div>
+      <div style="margin-top:8px">
+        <span style="color:var(--green);font-weight:700" id="previewDmg">0</span>
+        <span style="font-size:12px;color:var(--text2)">点伤害</span>
+      </div>
+    </div>
+    <button class="btn btn-green btn-block" onclick="executeExercise()" id="btnExecuteExercise">⚔️ 发动攻击</button>
+    <div class="exercise-record">
+      <div class="card-title" style="margin-top:16px">📋 今日锻炼</div>
+      <div id="exerciseRecordList"></div>
+    </div>
+  </div>
+
+  <!-- Stats Page -->
+  <div class="page page-stats" id="page-stats">
+    <div class="card-title" style="margin-bottom:16px">📊 战斗统计</div>
+    <div class="card progress-section">
+      <div class="card-title">🎯 减肥进度</div>
+      <div style="display:flex;justify-content:space-between;font-size:13px;color:var(--text2)">
+        <span>当前: <strong id="statsCurWeight">0</strong>kg</span>
+        <span>目标: <strong id="statsTarWeight">0</strong>kg</span>
+      </div>
+      <div class="progress-bar-wrap">
+        <div class="progress-bar" id="weightProgressBar" style="width:0%">
+          <span class="progress-text" id="weightProgressText">0%</span>
+        </div>
+      </div>
+    </div>
+    <div class="bmi-display">
+      <div class="bmi-value" id="statsBMI">0</div>
+      <div class="bmi-label" id="statsBmiLabel">计算中...</div>
+    </div>
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="val" id="statsKills">0</div>
+        <div class="lbl">击杀怪物</div>
+      </div>
+      <div class="stat-card">
+        <div class="val" id="statsTotalDmg">0</div>
+        <div class="lbl">总伤害</div>
+      </div>
+      <div class="stat-card">
+        <div class="val" id="statsTotalEx">0</div>
+        <div class="lbl">总消耗(千卡)</div>
+      </div>
+      <div class="stat-card">
+        <div class="val" id="statsStreak">0</div>
+        <div class="lbl">连续天数</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">📅 本周概览</div>
+      <div id="weekOverview"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">⚖️ 记录今日体重</div>
+      <div class="weight-input-area">
+        <input type="number" id="inputWeightRecord" placeholder="输入体重(kg)" step="0.1">
+        <button class="btn btn-primary btn-sm" onclick="recordWeight()">记录</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">📈 体重趋势 (7日移动平均)</div>
+      <canvas class="trend-canvas" id="trendCanvas"></canvas>
+    </div>
+  </div>
+
+  <!-- Settings Page -->
+  <div class="page page-settings" id="page-settings">
+    <div class="card-title" style="margin-bottom:16px">⚙️ 设置</div>
+    <div class="card">
+      <div class="setting-item">
+        <div>
+          <div class="setting-label">🎮 游戏难度</div>
+          <div class="setting-desc" id="settingDiffDesc">普通</div>
+        </div>
+        <select id="settingDiff" onchange="changeDifficulty(this.value)" style="width:auto">
+          <option value="easy">简单</option>
+          <option value="normal">普通</option>
+          <option value="hard">困难</option>
+        </select>
+      </div>
+      <div class="setting-item">
+        <div>
+          <div class="setting-label">🔕 勿扰模式</div>
+          <div class="setting-desc">关闭所有提醒</div>
+        </div>
+        <div class="toggle" id="toggleDnd" onclick="toggleDnd()"></div>
+      </div>
+      <div id="dndTimeArea" style="display:none;padding:0 0 14px">
+        <div class="input-row">
+          <div class="input-group">
+            <label>开始时间</label>
+            <input type="text" id="dndStart" placeholder="22:00" value="22:00" onchange="updateDndTime()">
+          </div>
+          <div class="input-group">
+            <label>结束时间</label>
+            <input type="text" id="dndEnd" placeholder="08:00" value="08:00" onchange="updateDndTime()">
+          </div>
+        </div>
+      </div>
+      <div class="setting-item">
+        <div>
+          <div class="setting-label">📌 状态标记</div>
+          <div class="setting-desc">标记特殊情况</div>
+        </div>
+        <select id="settingStatus" onchange="changeStatus(this.value)" style="width:auto">
+          <option value="">无</option>
+          <option value="overtime">加班中</option>
+          <option value="travel">出差中</option>
+        </select>
+      </div>
+      <div class="setting-item">
+        <div>
+          <div class="setting-label">🔔 提醒频率</div>
+          <div class="setting-desc">饮食与锻炼提醒</div>
+        </div>
+        <select id="settingReminder" onchange="changeReminder(this.value)" style="width:auto">
+          <option value="often">频繁</option>
+          <option value="normal">适中</option>
+          <option value="rare">较少</option>
+        </select>
+      </div>
+      <div class="setting-item">
+        <span>语音播报</span>
+        <label class="toggle-label">
+          <input type="checkbox" id="voice-toggle" checked onchange="VoiceManager.enabled=this.checked">
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+    </div>
+    <div class="card">
+      <button class="btn btn-block" style="background:rgba(255,107,107,0.15);color:var(--red);border:1px solid rgba(255,107,107,0.3)" onclick="resetGame()">🗑️ 重置游戏</button>
+    </div>
+  </div>
+
+  <!-- Achievements Page -->
+  <div class="page page-achievements" id="page-achievements">
+    <div class="card-title" style="margin-bottom:16px">🏆 成就</div>
+    <div class="achievement-grid" id="achievementGrid"></div>
+  </div>
+
+  <!-- Shop Page -->
+  <div class="page page-shop" id="page-shop">
+    <div class="card-title" style="margin-bottom:16px">🛒 商店 <span style="color:var(--gold);font-size:14px">🪙 <span id="shopCoins">0</span></span></div>
+    <div id="shopList"></div>
+  </div>
+
+  <!-- Bottom Nav -->
+  <div class="nav-bar" id="navBar" style="display:none">
+    <div class="nav-item active" data-page="page-home" onclick="navigateTo('page-home')">
+      <span class="emoji">🏠</span>战斗
+    </div>
+    <div class="nav-item" data-page="page-food" onclick="navigateTo('page-food')">
+      <span class="emoji">🍽️</span>饮食
+    </div>
+    <div class="nav-item" data-page="page-exercise" onclick="navigateTo('page-exercise')">
+      <span class="emoji">🏋️</span>锻炼
+    </div>
+    <div class="nav-item" data-page="page-stats" onclick="navigateTo('page-stats')">
+      <span class="emoji">📊</span>统计
+    </div>
+    <div class="nav-item" data-page="page-settings" onclick="navigateTo('page-more')">
+      <span class="emoji">⚙️</span>更多
+    </div>
+  </div>
+</div>
+
+<!-- Modal Container -->
+<div id="modalContainer"></div>
+
+<script>
+// ==================== Constants ====================
+const AVATARS = ['🧑‍💻','🧑‍🔧','🧘','🏋️','🚀','🦸'];
+const MONSTERS = [
+  {name:'贪吃史莱姆',emoji:'👾',baseHp:100},
+  {name:'暴食哥布林',emoji:'👺',baseHp:150},
+  {name:'馋嘴幽灵',emoji:'👻',baseHp:180,healBonus:0.2},
+  {name:'脂肪巨魔',emoji:'👹',baseHp:300,boss:true},
+  {name:'卡路里恶魔',emoji:'😈',baseHp:200},
+  {name:'肥胖龙王',emoji:'🐉',baseHp:500,boss:true}
+];
+const QUICK_FOODS = {
+  breakfast:[
+    {name:'白粥',cal:150},{name:'鸡蛋',cal:80},{name:'牛奶',cal:120},{name:'面包',cal:180},{name:'豆浆',cal:90},{name:'油条',cal:230},{name:'包子',cal:200}
+  ],
+  lunch:[
+    {name:'米饭',cal:230},{name:'鸡腿',cal:180},{name:'炒青菜',cal:80},{name:'红烧肉',cal:350},{name:'鱼',cal:120},{name:'面条',cal:280},{name:'沙拉',cal:100}
+  ],
+  dinner:[
+    {name:'粥',cal:120},{name:'蒸鱼',cal:150},{name:'蔬菜',cal:60},{name:'豆腐',cal:80},{name:'水果',cal:80},{name:'酸奶',cal:100}
+  ],
+  snack:[
+    {name:'奶茶',cal:400},{name:'薯片',cal:280},{name:'可乐',cal:140},{name:'饼干',cal:150},{name:'坚果',cal:180},{name:'巧克力',cal:220}
+  ]
+};
+const EXERCISES = [
+  {name:'跑步',emoji:'🏃',calPerMin:10},
+  {name:'快走',emoji:'🚶',calPerMin:6},
+  {name:'骑行',emoji:'🚴',calPerMin:8},
+  {name:'游泳',emoji:'🏊',calPerMin:11},
+  {name:'瑜伽',emoji:'🧘',calPerMin:4},
+  {name:'HIIT',emoji:'🔥',calPerMin:14},
+  {name:'跳绳',emoji:'⏭️',calPerMin:12},
+  {name:'力量训练',emoji:'💪',calPerMin:7}
+];
+const DURATIONS = [10,15,20,30,45,60];
+const ACHIEVEMENTS = [
+  {id:'first_kill',name:'初次胜利',desc:'击败第一个怪物',emoji:'🎖️',check:g=>g.kills>=1},
+  {id:'kill_5',name:'怪物猎人',desc:'击败5个怪物',emoji:'⚔️',check:g=>g.kills>=5},
+  {id:'kill_10',name:'屠魔勇士',desc:'击败10个怪物',emoji:'🗡️',check:g=>g.kills>=10},
+  {id:'streak_3',name:'三日连胜',desc:'连续3天完成目标',emoji:'🔥',check:g=>g.streak>=3},
+  {id:'streak_7',name:'一周坚持',desc:'连续7天完成目标',emoji:'⭐',check:g=>g.streak>=7},
+  {id:'streak_30',name:'月度传奇',desc:'连续30天完成目标',emoji:'👑',check:g=>g.streak>=30},
+  {id:'exercise_1000',name:'千卡战士',desc:'单日消耗1000千卡',emoji:'💪',check:g=>g.todayCalExercise>=1000},
+  {id:'coins_1000',name:'小富翁',desc:'累计1000金币',emoji:'💰',check:g=>g.coins>=1000},
+  {id:'boss_kill',name:'弑龙者',desc:'击败一个Boss',emoji:'🐉',check:g=>g.kills>=3},
+  {id:'weight_5',name:'减重5kg',desc:'减掉5公斤',emoji:'🎯',check:g=>(g.weight-g.targetWeight)>=5},
+  {id:'day_7',name:'一周勇士',desc:'坚持7天',emoji:'📅',check:g=>g.day>=7},
+  {id:'day_30',name:'月度英雄',desc:'坚持30天',emoji:'🗓️',check:g=>g.day>=30}
+];
+const SHOP_ITEMS = [
+  {id:'avatar',name:'新角色形象',desc:'解锁更多角色选择',emoji:'🎭',price:500},
+  {id:'skin',name:'怪物皮肤',desc:'改变怪物外观',emoji:'🎨',price:300},
+  {id:'voice',name:'语音包',desc:'战斗音效增强',emoji:'🔊',price:400},
+  {id:'checkin',name:'补签卡',desc:'补签一天连续记录',emoji:'🎫',price:200}
+];
+const MEAL_NAMES = {breakfast:'早餐',lunch:'午餐',dinner:'晚餐',snack:'零食'};
+const MEAL_EMOJIS = {breakfast:'🌅',lunch:'☀️',dinner:'🌙',snack:'🍿'};
+const SLEEP_MAP = {early:'早睡早起',normal:'标准作息',night:'夜猫子'};
+const WORK_MAP = {sedentary:'久坐不动',sometimes:'偶尔走动',active:'经常外出'};
+const TIME_MAP = {morning:'早晨',afternoon:'下午',evening:'晚上'};
+const STYLE_MAP = {pet:'可爱萌宠',warrior:'战斗勇士',mage:'魔法师'};
+const DIFF_MAP = {easy:'简单',normal:'普通',hard:'困难'};
+const SIZE_MULT = {small:0.7,medium:1,large:1.3};
+const SIZE_NAMES = {small:'小份',medium:'中份',large:'大份'};
+
+// ==================== Core Algorithms ====================
+function calcBMI(w, h) {
+  return w / Math.pow(h / 100, 2);
+}
+
+function getBodyType(bmi) {
+  if (bmi < 18.5) return '偏瘦';
+  if (bmi < 24) return '正常';
+  if (bmi < 28) return '偏胖';
+  return '肥胖';
+}
+
+function calcTargetCal(w, diff) {
+  const base = w * 24;
+  if (diff === 'easy') return base + 200;
+  if (diff === 'hard') return base - 400;
+  return base;
+}
+
+function calcMonsterHp(base, diff, fitness) {
+  const diffMult = diff === 'easy' ? 0.7 : diff === 'hard' ? 1.5 : 1;
+  const fitMult = fitness === 'high' ? 0.8 : fitness === 'low' ? 1.3 : 1;
+  return Math.round(base * diffMult * fitMult);
+}
+
+function foodImpact(cal, todayCal, targetCal, maxHp) {
+  const baseHeal = cal * 0.05;
+  const over = todayCal - targetCal;
+  const extraHeal = over > 0 ? over * 0.3 : 0;
+  return Math.min(baseHeal + extraHeal, maxHp);
+}
+
+function exerciseImpact(cal, mode) {
+  const base = cal * 0.8;
+  return mode === 'manual' ? base * 0.8 : base;
+}
+
+function calcWeightMA(records) {
+  if (!records || records.length === 0) return 0;
+  const last7 = records.slice(-7);
+  return last7.reduce((s, r) => s + r.weight, 0) / last7.length;
+}
+
+function getCurrentSeason() {
+    const month = new Date().getMonth() + 1;
+    if (month >= 1 && month <= 3) return { name: '春节季', theme: 'spring', bonus: '击败奖励翻倍' };
+    if (month >= 4 && month <= 6) return { name: '夏日季', theme: 'summer', bonus: '锻炼伤害+15%' };
+    if (month >= 7 && month <= 9) return { name: '开学季', theme: 'school', bonus: '学生专属' };
+    return { name: '年末季', theme: 'year_end', bonus: '全年数据回顾' };
+}
+
+// ==================== Game State ====================
+let game = null;
+let setupData = {
+  sleepType: '', workType: '', exerciseTime: '', characterStyle: 'pet',
+  fitnessLevel: '', pushupCount: 0, runDuration: 0, weeklyFreq: 0, difficulty: 'normal'
+};
+let currentStep = 1;
+let selectedExercise = null;
+let selectedDuration = null;
+
+function createGame(data) {
+  const h = parseFloat(document.getElementById('inputHeight').value);
+  const w = parseFloat(document.getElementById('inputWeight').value);
+  const tw = parseFloat(document.getElementById('inputTarget').value);
+  const bmi = calcBMI(w, h);
+  const fitness = data.weeklyFreq >= 5 ? 'high' : data.weeklyFreq <= 1 ? 'low' : 'medium';
+  const targetCal = calcTargetCal(w, data.difficulty);
+  const eIdx = 0;
+  const monster = MONSTERS[eIdx];
+  const mHp = calcMonsterHp(monster.baseHp, data.difficulty, fitness);
+  const pMaxHp = 100 + (fitness === 'high' ? 20 : fitness === 'low' ? -10 : 0);
+
+  return {
+    height: h, weight: w, targetWeight: tw, bmi: bmi,
+    avatar: 0, sleepType: data.sleepType, workType: data.workType,
+    exerciseTime: data.exerciseTime, characterStyle: data.characterStyle,
+    fitnessLevel: fitness, pushupCount: data.pushupCount,
+    runDuration: data.runDuration, weeklyFreq: data.weeklyFreq,
+    difficulty: data.difficulty, day: 1, coins: 0, kills: 0,
+    totalDamage: 0, totalExercise: 0, streak: 0,
+    shieldCount: 1, restDaysLeft: 0, status: 'playing',
+    enemyIndex: eIdx, enemyMaxHp: mHp, enemyHp: mHp,
+    playerMaxHp: pMaxHp, playerHp: pMaxHp, enemyLevel: 1,
+    todayCalIn: 0, todayCalExercise: 0, todayDamage: 0,
+    targetCal: targetCal,
+    meals: {breakfast:[], lunch:[], dinner:[], snack:[]},
+    exercises: [],
+    weekData: [],
+    achievements: [],
+    settings: {dndMode:false, dndStart:'22:00', dndEnd:'08:00', statusMark:''},
+    lastDate: new Date().toDateString(),
+    weightRecords: [{date: new Date().toISOString().split('T')[0], weight: w}]
+  };
+}
+
+// ==================== Persistence ====================
+function saveGame() {
+  if (!game) return;
+  try { localStorage.setItem('dietGame', JSON.stringify(game)); } catch(e) {}
+}
+
+function loadGame() {
+  try {
+    const d = localStorage.getItem('dietGame');
+    if (d) return JSON.parse(d);
+  } catch(e) {}
+  return null;
+}
+
+function clearSave() {
+  localStorage.removeItem('dietGame');
+}
+
+window.addEventListener('beforeunload', saveGame);
+
+// ==================== Toast ====================
+let toastTimer = null;
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.display = 'block';
+  t.className = 'toast';
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    t.className = 'toast hide';
+    setTimeout(() => { t.style.display = 'none'; }, 300);
+  }, 2000);
+}
+
+// ==================== Page Navigation ====================
+function navigateTo(pageId) {
+  if (pageId === 'page-more') {
+    // Show more menu as a sub-page
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.getElementById('page-settings').classList.add('active');
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    return;
+  }
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById(pageId).classList.add('active');
+  document.querySelectorAll('.nav-item').forEach(n => {
+    n.classList.toggle('active', n.dataset.page === pageId);
+  });
+  // Refresh page content
+  if (pageId === 'page-home') {
+    renderHome();
+    // 播报今日简报
+    if (game) {
+      const net = game.todayCalIn - game.todayCalExercise;
+      VoiceManager.dailySummary(game.todayCalIn, game.todayCalExercise, net);
+    }
+  }
+  if (pageId === 'page-food') renderFoodPage();
+  if (pageId === 'page-exercise') renderExercisePage();
+  if (pageId === 'page-stats') renderStatsPage();
+  if (pageId === 'page-settings') renderSettingsPage();
+  if (pageId === 'page-achievements') renderAchievementsPage();
+  if (pageId === 'page-shop') renderShopPage();
+}
+
+// ==================== Welcome & Setup ====================
+function startAdventure() {
+  navigateTo('page-setup');
+  renderStepIndicator();
+}
+
+function renderStepIndicator() {
+  const c = document.getElementById('stepIndicator');
+  let html = '';
+  for (let i = 1; i <= 5; i++) {
+    const cls = i < currentStep ? 'done' : i === currentStep ? 'active' : '';
+    html += `<div class="step-dot ${cls}"></div>`;
+  }
+  c.innerHTML = html;
+}
+
+function nextStep(s) {
+  // Validate current step
+  if (currentStep === 1) {
+    const h = parseFloat(document.getElementById('inputHeight').value);
+    const w = parseFloat(document.getElementById('inputWeight').value);
+    const tw = parseFloat(document.getElementById('inputTarget').value);
+    if (!h || h < 100 || h > 250) { showToast('请输入有效身高(100-250cm)'); return; }
+    if (!w || w < 30 || w > 300) { showToast('请输入有效体重(30-300kg)'); return; }
+    if (!tw || tw < 30 || tw > 200) { showToast('请输入有效目标体重'); return; }
+    if (tw >= w) { showToast('目标体重应小于当前体重'); return; }
+  }
+  if (currentStep === 2) {
+    if (!setupData.sleepType) { showToast('请选择作息类型'); return; }
+    if (!setupData.workType) { showToast('请选择办公方式'); return; }
+    if (!setupData.exerciseTime) { showToast('请选择锻炼时间段'); return; }
+  }
+  if (currentStep === 3) {
+    setupData.pushupCount = parseInt(document.getElementById('inputPushup').value) || 0;
+    setupData.runDuration = parseInt(document.getElementById('inputRun').value) || 0;
+    if (!setupData.weeklyFreq) { showToast('请选择每周锻炼频率'); return; }
+  }
+  if (currentStep === 4) {
+    if (!setupData.difficulty) { showToast('请选择难度'); return; }
+  }
+  if (currentStep === 5) return; // Already at step 5
+
+  currentStep = s;
+  document.querySelectorAll('.setup-step').forEach(el => el.classList.remove('active'));
+  document.getElementById('setup-step-' + s).classList.add('active');
+  renderStepIndicator();
+
+  if (s === 5) renderSummary();
+}
+
+function prevStep(s) {
+  currentStep = s;
+  document.querySelectorAll('.setup-step').forEach(el => el.classList.remove('active'));
+  document.getElementById('setup-step-' + s).classList.add('active');
+  renderStepIndicator();
+}
+
+function updateBMI() {
+  const h = parseFloat(document.getElementById('inputHeight').value);
+  const w = parseFloat(document.getElementById('inputWeight').value);
+  const el = document.getElementById('bmiPreview');
+  if (h && w) {
+    const bmi = calcBMI(w, h);
+    el.innerHTML = `BMI: <strong style="color:var(--gold)">${bmi.toFixed(1)}</strong> - <strong>${getBodyType(bmi)}</strong>`;
+  } else {
+    el.textContent = '';
+  }
+}
+
+function selectOption(type, el) {
+  const val = el.dataset.val;
+  if (type === 'sleep') setupData.sleepType = val;
+  else if (type === 'work') setupData.workType = val;
+  else if (type === 'exerciseTime') setupData.exerciseTime = val;
+  else if (type === 'characterStyle') setupData.characterStyle = val;
+  else if (type === 'weeklyFreq') setupData.weeklyFreq = parseInt(val);
+
+  el.parentElement.querySelectorAll('.option-card').forEach(c => c.classList.remove('selected'));
+  el.classList.add('selected');
+}
+
+function selectDifficulty(el) {
+  setupData.difficulty = el.dataset.val;
+  el.parentElement.querySelectorAll('.diff-card').forEach(c => c.classList.remove('selected'));
+  el.classList.add('selected');
+}
+
+function renderSummary() {
+  const h = parseFloat(document.getElementById('inputHeight').value);
+  const w = parseFloat(document.getElementById('inputWeight').value);
+  const tw = parseFloat(document.getElementById('inputTarget').value);
+  const bmi = calcBMI(w, h);
+  const items = [
+    ['身高', h + ' cm'],
+    ['体重', w + ' kg'],
+    ['目标体重', tw + ' kg'],
+    ['BMI', bmi.toFixed(1) + ' (' + getBodyType(bmi) + ')'],
+    ['作息', SLEEP_MAP[setupData.sleepType] || '-'],
+    ['办公', WORK_MAP[setupData.workType] || '-'],
+    ['锻炼时间', TIME_MAP[setupData.exerciseTime] || '-'],
+    ['角色风格', STYLE_MAP[setupData.characterStyle] || '-'],
+    ['俯卧撑', setupData.pushupCount + '个'],
+    ['跑步时长', setupData.runDuration + '分钟'],
+    ['每周频率', setupData.weeklyFreq + '次/周'],
+    ['难度', DIFF_MAP[setupData.difficulty] || '-']
+  ];
+  let html = '';
+  items.forEach(([label, val]) => {
+    html += `<div class="summary-item"><span class="summary-label">${label}</span><span class="summary-value">${val}</span></div>`;
+  });
+  document.getElementById('summaryContent').innerHTML = html;
+}
+
+function generateLevel() {
+  game = createGame(setupData);
+  saveGame();
+  document.getElementById('navBar').style.display = 'flex';
+  navigateTo('page-home');
+  showToast('冒险开始！击败今天的怪物吧！');
+  VoiceManager.speak('冒险开始~ 主人加油~');
+  ReminderManager.start();
+}
+
+// ==================== Daily Reset ====================
+function checkDailyReset() {
+  if (!game) return;
+  const today = new Date().toDateString();
+  if (game.lastDate !== today) {
+    // Check if yesterday was completed (enemy defeated)
+    const yesterdayCompleted = game.enemyHp <= 0;
+    if (yesterdayCompleted) {
+      game.streak++;
+      game.coins += 50;
+    } else if (game.status === 'playing') {
+      game.streak = 0;
+    }
+    // Save yesterday's week data
+    game.weekData.push({
+      day: game.day,
+      date: game.lastDate,
+      calIn: game.todayCalIn,
+      calExercise: game.todayCalExercise,
+      damage: game.todayDamage,
+      completed: yesterdayCompleted
+    });
+    // Keep only last 7 days
+    if (game.weekData.length > 7) game.weekData = game.weekData.slice(-7);
+
+    // New day
+    game.day++;
+    game.todayCalIn = 0;
+    game.todayCalExercise = 0;
+    game.todayDamage = 0;
+    game.meals = {breakfast:[], lunch:[], dinner:[], snack:[]};
+    game.exercises = [];
+    game.playerHp = game.playerMaxHp;
+    game.status = 'playing';
+    game.lastDate = today;
+
+    // Spawn new monster
+    spawnMonster();
+    saveGame();
+
+    // 新一天语音播报
+    const hour = new Date().getHours();
+    if (hour < 12) VoiceManager.morning();
+    else if (hour < 14) VoiceManager.lunchReminder();
+    else if (hour < 20) VoiceManager.dinnerReminder();
+  }
+}
+
+function spawnMonster() {
+  // Cycle through monsters, bosses every 3 kills
+  const cycle = game.kills % MONSTERS.length;
+  game.enemyIndex = cycle;
+  const monster = MONSTERS[cycle];
+  game.enemyLevel = Math.floor(game.kills / MONSTERS.length) + 1;
+  game.enemyMaxHp = calcMonsterHp(monster.baseHp, game.difficulty, game.fitnessLevel);
+  game.enemyHp = game.enemyMaxHp;
+}
+
+// ==================== Home Page ====================
+function renderHome() {
+  if (!game) return;
+  checkDailyReset();
+  document.getElementById('homeCoins').textContent = game.coins;
+  document.getElementById('homeDay').textContent = game.day;
+  document.getElementById('shieldCount').textContent = game.shieldCount;
+  document.getElementById('restDays').textContent = game.restDaysLeft;
+
+  // Greeting
+  const hour = new Date().getHours();
+  let greet = '勇士，准备战斗！';
+  if (hour < 6) greet = '夜深了，注意休息哦';
+  else if (hour < 12) greet = '早上好，新的一天！';
+  else if (hour < 18) greet = '下午好，继续加油！';
+  else greet = '晚上好，今天表现如何？';
+  document.getElementById('greetingText').textContent = greet;
+
+  const monster = MONSTERS[game.enemyIndex];
+  document.getElementById('greetingSub').textContent =
+    game.status === 'won' ? '怪物已被击败！' :
+    game.status === 'lost' ? '体力耗尽，明天再战' :
+    `击败${monster.name}！剩余HP: ${game.enemyHp}/${game.enemyMaxHp}`;
+
+  // Monster
+  const mEmoji = document.getElementById('monsterEmoji');
+  mEmoji.textContent = monster.emoji;
+  document.getElementById('monsterName').textContent = monster.name;
+  document.getElementById('monsterLevel').textContent = `Lv.${game.enemyLevel}` + (monster.boss ? ' 👑 BOSS' : '');
+
+  // Enemy HP
+  const ePct = Math.max(0, game.enemyHp / game.enemyMaxHp * 100);
+  document.getElementById('enemyHpBar').style.width = ePct + '%';
+  document.getElementById('enemyHpText').textContent = `${Math.max(0,game.enemyHp)}/${game.enemyMaxHp}`;
+
+  // Player HP
+  const pPct = Math.max(0, game.playerHp / game.playerMaxHp * 100);
+  document.getElementById('playerHpBar').style.width = pPct + '%';
+  document.getElementById('playerHpText').textContent = `${Math.max(0,game.playerHp)}/${game.playerMaxHp}`;
+
+  // Today summary
+  document.getElementById('todayCalInVal').textContent = game.todayCalIn;
+  document.getElementById('todayCalExVal').textContent = game.todayCalExercise;
+  document.getElementById('todayDmgVal').textContent = game.todayDamage;
+
+  // Season badge
+  const season = getCurrentSeason();
+  const seasonIdx = Math.floor((new Date().getMonth()) / 3) + 1;
+  document.getElementById('season-text').textContent = `S${seasonIdx} ${season.name}`;
+}
+
+function tapMonster() {
+  if (!game || game.status !== 'playing') return;
+  // Small tap damage for fun
+  const tapDmg = 1;
+  game.enemyHp -= tapDmg;
+  game.todayDamage += tapDmg;
+  showDamageFloat(tapDmg, false);
+  shakeMonster();
+  if (game.enemyHp <= 0) {
+    game.enemyHp = 0;
+    onMonsterDefeated();
+  }
+  renderHome();
+  saveGame();
+}
+
+function showDamageFloat(val, isHeal) {
+  const area = document.getElementById('monsterArea');
+  const el = document.createElement('div');
+  el.className = 'damage-float ' + (isHeal ? 'heal' : 'dmg');
+  el.textContent = (isHeal ? '+' : '-') + Math.round(val);
+  el.style.left = (40 + Math.random() * 20) + '%';
+  el.style.top = '30%';
+  area.appendChild(el);
+  setTimeout(() => el.remove(), 1000);
+}
+
+function shakeMonster() {
+  const el = document.getElementById('monsterEmoji');
+  el.classList.remove('shake');
+  void el.offsetWidth;
+  el.classList.add('shake');
+  setTimeout(() => el.classList.remove('shake'), 500);
+}
+
+function glowMonster() {
+  const el = document.getElementById('monsterEmoji');
+  el.classList.remove('glow');
+  void el.offsetWidth;
+  el.classList.add('glow');
+  setTimeout(() => el.classList.remove('glow'), 1000);
+}
+
+function onMonsterDefeated() {
+  game.status = 'won';
+  game.kills++;
+  const monster = MONSTERS[game.enemyIndex];
+  const reward = monster.boss ? 200 : 100;
+  game.coins += reward;
+  VoiceManager.monsterDefeated(monster.name, reward);
+  checkAchievements();
+  saveGame();
+
+  // Victory modal
+  const mc = document.getElementById('modalContainer');
+  mc.innerHTML = `
+    <div class="modal-overlay" onclick="closeModal()">
+      <div class="modal" onclick="event.stopPropagation()">
+        <span class="modal-emoji">🎉</span>
+        <div class="modal-title">胜利！</div>
+        <div class="modal-desc">你击败了 ${monster.name}！</div>
+        <div class="modal-reward">🪙 +${reward} 金币</div>
+        <button class="btn btn-gold btn-block" onclick="closeModal();newChallenge()">迎接新挑战</button>
+      </div>
+    </div>`;
+}
+
+function onPlayerDefeated() {
+  game.status = 'lost';
+  VoiceManager.monsterFailed();
+  saveGame();
+  const mc = document.getElementById('modalContainer');
+  mc.innerHTML = `
+    <div class="modal-overlay" onclick="closeModal()">
+      <div class="modal" onclick="event.stopPropagation()">
+        <span class="modal-emoji">💥</span>
+        <div class="modal-title">体力耗尽</div>
+        <div class="modal-desc">今天的挑战失败了...</div>
+        <div class="modal-reward" style="color:var(--text2)">明天再战，勇士永不放弃！</div>
+        <button class="btn btn-primary btn-block" onclick="closeModal()">明天再战</button>
+      </div>
+    </div>`;
+}
+
+function newChallenge() {
+  spawnMonster();
+  game.playerHp = game.playerMaxHp;
+  game.status = 'playing';
+  saveGame();
+  renderHome();
+}
+
+function closeModal() {
+  document.getElementById('modalContainer').innerHTML = '';
+}
+
+function useShield() {
+  if (!game || game.shieldCount <= 0) { showToast('没有护盾了'); return; }
+  game.shieldCount--;
+  game.playerHp = Math.min(game.playerMaxHp, game.playerHp + 30);
+  showToast('🛡️ 使用护盾，恢复30体力！');
+  renderHome();
+  saveGame();
+}
+
+function useRest() {
+  if (!game || game.restDaysLeft <= 0) { showToast('没有休息天数了'); return; }
+  game.restDaysLeft--;
+  game.playerHp = game.playerMaxHp;
+  showToast('😴 休息一天，体力完全恢复！');
+  renderHome();
+  saveGame();
+}
+
+// ==================== Food Page ====================
+function renderFoodPage() {
+  if (!game) return;
+  const container = document.getElementById('mealSections');
+  let html = '';
+  ['breakfast','lunch','dinner','snack'].forEach(meal => {
+    const foods = game.meals[meal] || [];
+    const mealCal = foods.reduce((s, f) => s + f.totalCal, 0);
+    html += `<div class="meal-section">`;
+    html += `<div class="meal-header">${MEAL_EMOJIS[meal]} ${MEAL_NAMES[meal]} <span class="cal">${mealCal}千卡</span></div>`;
+    html += `<div class="meal-body">`;
+
+    // Food list
+    html += `<div class="food-list" id="food-list-${meal}">`;
+    if (foods.length === 0) {
+      html += `<div class="empty-state" style="padding:10px"><span class="emoji" style="font-size:20px">📭</span>还没有记录</div>`;
+    }
+    foods.forEach((f, i) => {
+      html += `<div class="food-item">
+        <span class="food-name">${f.name}</span>
+        <span class="food-size">${SIZE_NAMES[f.size] || '中份'}</span>
+        <span class="food-cal">${Math.round(f.totalCal)}千卡</span>
+        <span class="food-del" onclick="removeFood('${meal}',${i})">✕</span>
+      </div>`;
+    });
+    html += `</div>`;
+
+    // Input row
+    html += `<div class="food-input-row">
+      <input type="text" id="food-name-${meal}" placeholder="食物名称" style="flex:2">
+      <input type="number" id="food-cal-${meal}" placeholder="千卡" style="flex:1">
+      <select id="food-size-${meal}">
+        <option value="small">小份</option>
+        <option value="medium" selected>中份</option>
+        <option value="large">大份</option>
+      </select>
+      <button class="btn btn-primary btn-sm" onclick="addFoodManual('${meal}')">添加</button>
+    </div>`;
+
+    // Quick tags
+    html += `<div class="quick-tags">`;
+    QUICK_FOODS[meal].forEach(f => {
+      html += `<span class="quick-tag" onclick="addQuickFood('${meal}','${f.name}',${f.cal})">${f.name} ${f.cal}</span>`;
+    });
+    html += `</div>`;
+
+    html += `</div></div>`;
+  });
+  container.innerHTML = html;
+}
+
+function addQuickFood(meal, name, cal) {
+  if (!game) return;
+  const food = {name, baseCal: cal, size: 'medium', totalCal: cal};
+  game.meals[meal].push(food);
+  applyFoodImpact(cal);
+  VoiceManager.foodAdded(name);
+  renderFoodPage();
+  saveGame();
+}
+
+function addFoodManual(meal) {
+  if (!game) return;
+  const nameEl = document.getElementById('food-name-' + meal);
+  const calEl = document.getElementById('food-cal-' + meal);
+  const sizeEl = document.getElementById('food-size-' + meal);
+  const name = nameEl.value.trim();
+  const cal = parseFloat(calEl.value);
+  const size = sizeEl.value;
+  if (!name) { showToast('请输入食物名称'); return; }
+  if (!cal || cal <= 0) { showToast('请输入有效卡路里'); return; }
+  const mult = SIZE_MULT[size] || 1;
+  const totalCal = cal * mult;
+  game.meals[meal].push({name, baseCal: cal, size, totalCal});
+  applyFoodImpact(totalCal);
+  VoiceManager.foodAdded(name);
+  nameEl.value = '';
+  calEl.value = '';
+  renderFoodPage();
+  saveGame();
+}
+
+function applyFoodImpact(cal) {
+  game.todayCalIn += cal;
+  // Monster heals from food
+  const heal = foodImpact(cal, game.todayCalIn, game.targetCal, game.enemyMaxHp);
+  if (heal > 0 && game.status === 'playing') {
+    game.enemyHp = Math.min(game.enemyMaxHp, game.enemyHp + heal);
+    showDamageFloat(heal, true);
+    glowMonster();
+    renderHome();
+    if (game.todayCalIn > game.targetCal) {
+      const over = Math.round(game.todayCalIn - game.targetCal);
+      showToast(`⚠️ 今日摄入已超标！怪物回复了${Math.round(heal)}HP`);
+      VoiceManager.foodOver(over);
+    }
+  }
+}
+
+function removeFood(meal, idx) {
+  if (!game) return;
+  const food = game.meals[meal][idx];
+  if (food) {
+    game.todayCalIn -= food.totalCal;
+    // Rollback monster heal
+    const heal = foodImpact(food.totalCal, game.todayCalIn + food.totalCal, game.targetCal, game.enemyMaxHp);
+    if (heal > 0 && game.status === 'playing') {
+      game.enemyHp = Math.max(0, game.enemyHp - heal);
+    }
+    game.meals[meal].splice(idx, 1);
+    renderFoodPage();
+    renderHome();
+    saveGame();
+  }
+}
+
+// ==================== Exercise Page ====================
+function renderExercisePage() {
+  if (!game) return;
+  // Exercise grid
+  const grid = document.getElementById('exerciseGrid');
+  let html = '';
+  EXERCISES.forEach((ex, i) => {
+    const sel = selectedExercise === i ? 'selected' : '';
+    html += `<div class="exercise-card ${sel}" onclick="selectExType(${i})">
+      <span class="emoji">${ex.emoji}</span>
+      <div class="name">${ex.name}</div>
+      <div class="cal-per-min">${ex.calPerMin}千卡/分钟</div>
+    </div>`;
+  });
+  grid.innerHTML = html;
+
+  // Duration options
+  const dur = document.getElementById('durationOptions');
+  html = '';
+  DURATIONS.forEach(d => {
+    const sel = selectedDuration === d ? 'selected' : '';
+    html += `<div class="duration-btn ${sel}" onclick="selectDur(${d})">${d}分钟</div>`;
+  });
+  dur.innerHTML = html;
+
+  // Preview
+  updateExercisePreview();
+
+  // Records
+  const list = document.getElementById('exerciseRecordList');
+  if (game.exercises.length === 0) {
+    list.innerHTML = `<div class="empty-state"><span class="emoji">📭</span>今天还没有锻炼</div>`;
+  } else {
+    html = '';
+    game.exercises.forEach(ex => {
+      html += `<div class="record-item">
+        <span class="rec-name">${ex.emoji} ${ex.name}</span>
+        <span class="rec-info">${ex.duration}分钟 / ${ex.cal}千卡</span>
+        <span class="rec-dmg">-${Math.round(ex.damage)}</span>
+      </div>`;
+    });
+    list.innerHTML = html;
+  }
+}
+
+function selectExType(idx) {
+  selectedExercise = idx;
+  renderExercisePage();
+}
+
+function selectDur(d) {
+  selectedDuration = d;
+  renderExercisePage();
+}
+
+function updateExercisePreview() {
+  const calEl = document.getElementById('previewCal');
+  const dmgEl = document.getElementById('previewDmg');
+  if (selectedExercise !== null && selectedDuration !== null) {
+    const ex = EXERCISES[selectedExercise];
+    const cal = ex.calPerMin * selectedDuration;
+    const dmg = exerciseImpact(cal, 'normal');
+    calEl.textContent = cal;
+    dmgEl.textContent = Math.round(dmg);
+  } else {
+    calEl.textContent = '0';
+    dmgEl.textContent = '0';
+  }
+}
+
+function executeExercise() {
+  if (!game) return;
+  if (selectedExercise === null) { showToast('请选择运动类型'); return; }
+  if (selectedDuration === null) { showToast('请选择运动时长'); return; }
+  if (game.status !== 'playing') { showToast('今天的战斗已结束'); return; }
+
+  const ex = EXERCISES[selectedExercise];
+  const cal = ex.calPerMin * selectedDuration;
+  const dmg = exerciseImpact(cal, 'normal');
+
+  game.exercises.push({
+    name: ex.name, emoji: ex.emoji, duration: selectedDuration,
+    cal: cal, damage: dmg
+  });
+
+  game.todayCalExercise += cal;
+  game.totalExercise += cal;
+  game.todayDamage += dmg;
+  game.totalDamage += dmg;
+
+  // Damage monster
+  game.enemyHp -= dmg;
+  showDamageFloat(dmg, false);
+  shakeMonster();
+
+  if (game.enemyHp <= 0) {
+    game.enemyHp = 0;
+    onMonsterDefeated();
+  }
+
+  // Player takes small fatigue damage
+  const fatigue = selectedDuration * 0.3;
+  game.playerHp -= fatigue;
+  if (game.playerHp <= 0) {
+    game.playerHp = 0;
+    onPlayerDefeated();
+  }
+
+  checkAchievements();
+  saveGame();
+  showToast(`${ex.emoji} ${ex.name}完成！造成${Math.round(dmg)}点伤害！`);
+  VoiceManager.exerciseComplete(Math.round(dmg));
+  renderExercisePage();
+  renderHome();
+}
+
+// ==================== Stats Page ====================
+function renderStatsPage() {
+  if (!game) return;
+  const w = game.weight;
+  const tw = game.targetWeight;
+  const startW = game.weightRecords && game.weightRecords.length > 0 ? game.weightRecords[0].weight : w;
+  const progress = Math.min(100, Math.max(0, ((startW - w) / (startW - tw)) * 100));
+
+  document.getElementById('statsCurWeight').textContent = w;
+  document.getElementById('statsTarWeight').textContent = tw;
+  document.getElementById('weightProgressBar').style.width = progress + '%';
+  document.getElementById('weightProgressText').textContent = progress.toFixed(1) + '%';
+
+  const bmi = calcBMI(w, game.height);
+  const bmiEl = document.getElementById('statsBMI');
+  bmiEl.textContent = bmi.toFixed(1);
+  const bt = getBodyType(bmi);
+  bmiEl.style.color = bmi < 18.5 ? '#3498db' : bmi < 24 ? 'var(--green)' : bmi < 28 ? 'var(--gold)' : 'var(--red)';
+  document.getElementById('statsBmiLabel').textContent = bt;
+
+  document.getElementById('statsKills').textContent = game.kills;
+  document.getElementById('statsTotalDmg').textContent = Math.round(game.totalDamage);
+  document.getElementById('statsTotalEx').textContent = Math.round(game.totalExercise);
+  document.getElementById('statsStreak').textContent = game.streak;
+
+  // Week overview
+  const wo = document.getElementById('weekOverview');
+  if (game.weekData.length === 0) {
+    wo.innerHTML = `<div class="empty-state"><span class="emoji">📭</span>暂无数据</div>`;
+  } else {
+    let html = '';
+    game.weekData.forEach(d => {
+      html += `<div class="week-item">
+        <span>Day ${d.day} - ${d.date}</span>
+        <span style="color:${d.completed ? 'var(--green)' : 'var(--red)'}">${d.completed ? '✅ 完成' : '❌ 未完成'}</span>
+        <span style="color:var(--text2)">${d.calIn}入/${d.calExercise}出</span>
+      </div>`;
+    });
+    wo.innerHTML = html;
+  }
+
+  // Weight trend
+  drawTrend();
+}
+
+function recordWeight() {
+  if (!game) return;
+  const val = parseFloat(document.getElementById('inputWeightRecord').value);
+  if (!val || val < 30 || val > 300) { showToast('请输入有效体重'); return; }
+  game.weight = val;
+  game.bmi = calcBMI(val, game.height);
+  if (!game.weightRecords) game.weightRecords = [];
+  game.weightRecords.push({date: new Date().toISOString().split('T')[0], weight: val});
+  if (game.weightRecords.length > 30) game.weightRecords = game.weightRecords.slice(-30);
+  document.getElementById('inputWeightRecord').value = '';
+  showToast('✅ 体重已记录: ' + val + 'kg');
+
+  // 检查是否达到目标体重
+  if (game.weight <= game.targetWeight && game.status !== 'maintenance') {
+    game.status = 'maintenance';
+    showToast('恭喜！你已达到目标体重！进入维护模式~', false);
+    VoiceManager.speak('恭喜主人~ 达到目标体重了~ 进入维护模式，继续守护成果哦~');
+  }
+
+  renderStatsPage();
+  saveGame();
+}
+
+function drawTrend() {
+  const canvas = document.getElementById('trendCanvas');
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  ctx.scale(dpr, dpr);
+  const w = rect.width;
+  const h = rect.height;
+  ctx.clearRect(0, 0, w, h);
+
+  const records = game.weightRecords || [];
+  if (records.length < 2) {
+    ctx.fillStyle = '#a0a0b0';
+    ctx.font = '14px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('需要至少2天记录', w / 2, h / 2);
+    return;
+  }
+
+  // Calculate 7-day moving averages
+  const maData = [];
+  for (let i = 0; i < records.length; i++) {
+    const start = Math.max(0, i - 6);
+    const slice = records.slice(start, i + 1);
+    const avg = slice.reduce((s, r) => s + r.weight, 0) / slice.length;
+    maData.push({date: records[i].date, weight: avg});
+  }
+
+  const weights = maData.map(d => d.weight);
+  const minW = Math.min(...weights) - 1;
+  const maxW = Math.max(...weights) + 1;
+  const range = maxW - minW || 1;
+  const padding = {top: 20, bottom: 30, left: 10, right: 10};
+  const chartW = w - padding.left - padding.right;
+  const chartH = h - padding.top - padding.bottom;
+
+  // Draw grid
+  ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const y = padding.top + (chartH / 4) * i;
+    ctx.beginPath();
+    ctx.moveTo(padding.left, y);
+    ctx.lineTo(w - padding.right, y);
+    ctx.stroke();
+  }
+
+  // Draw line
+  ctx.strokeStyle = '#667eea';
+  ctx.lineWidth = 2;
+  ctx.lineJoin = 'round';
+  ctx.beginPath();
+  maData.forEach((d, i) => {
+    const x = padding.left + (i / (maData.length - 1)) * chartW;
+    const y = padding.top + (1 - (d.weight - minW) / range) * chartH;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+
+  // Draw dots
+  maData.forEach((d, i) => {
+    const x = padding.left + (i / (maData.length - 1)) * chartW;
+    const y = padding.top + (1 - (d.weight - minW) / range) * chartH;
+    ctx.fillStyle = '#667eea';
+    ctx.beginPath();
+    ctx.arc(x, y, 3, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  // Labels
+  ctx.fillStyle = '#a0a0b0';
+  ctx.font = '10px sans-serif';
+  ctx.textAlign = 'center';
+  const step = Math.max(1, Math.floor(maData.length / 5));
+  for (let i = 0; i < maData.length; i += step) {
+    const x = padding.left + (i / (maData.length - 1)) * chartW;
+    ctx.fillText(maData[i].date.slice(5), x, h - 8);
+  }
+  // Weight labels
+  ctx.textAlign = 'right';
+  for (let i = 0; i <= 4; i++) {
+    const val = maxW - (range / 4) * i;
+    const y = padding.top + (chartH / 4) * i;
+    ctx.fillText(val.toFixed(1), w - 2, y + 4);
+  }
+}
+
+// ==================== Settings Page ====================
+function renderSettingsPage() {
+  if (!game) return;
+  document.getElementById('settingDiff').value = game.difficulty;
+  document.getElementById('settingDiffDesc').textContent = DIFF_MAP[game.difficulty] || '普通';
+  const toggle = document.getElementById('toggleDnd');
+  toggle.classList.toggle('on', game.settings.dndMode);
+  document.getElementById('dndTimeArea').style.display = game.settings.dndMode ? 'block' : 'none';
+  document.getElementById('dndStart').value = game.settings.dndStart;
+  document.getElementById('dndEnd').value = game.settings.dndEnd;
+  document.getElementById('settingStatus').value = game.settings.statusMark || '';
+}
+
+function changeDifficulty(val) {
+  if (!game) return;
+  game.difficulty = val;
+  game.targetCal = calcTargetCal(game.weight, val);
+  document.getElementById('settingDiffDesc').textContent = DIFF_MAP[val];
+  showToast('难度已调整为: ' + DIFF_MAP[val]);
+  saveGame();
+}
+
+function toggleDnd() {
+  if (!game) return;
+  game.settings.dndMode = !game.settings.dndMode;
+  document.getElementById('toggleDnd').classList.toggle('on', game.settings.dndMode);
+  document.getElementById('dndTimeArea').style.display = game.settings.dndMode ? 'block' : 'none';
+  saveGame();
+}
+
+function updateDndTime() {
+  if (!game) return;
+  game.settings.dndStart = document.getElementById('dndStart').value;
+  game.settings.dndEnd = document.getElementById('dndEnd').value;
+  saveGame();
+}
+
+function changeStatus(val) {
+  if (!game) return;
+  game.settings.statusMark = val;
+  showToast(val ? '已标记: ' + (val === 'overtime' ? '加班中' : '出差中') : '已取消标记');
+  saveGame();
+}
+
+function changeReminder(val) {
+  showToast('提醒频率已调整为: ' + (val === 'often' ? '频繁' : val === 'normal' ? '适中' : '较少'));
+}
+
+function resetGame() {
+  if (confirm('确定要重置游戏吗？所有进度将丢失！')) {
+    clearSave();
+    game = null;
+    document.getElementById('navBar').style.display = 'none';
+    navigateTo('page-welcome');
+    showToast('游戏已重置');
+  }
+}
+
+// ==================== Achievements ====================
+function checkAchievements() {
+  if (!game) return;
+  ACHIEVEMENTS.forEach(a => {
+    if (!game.achievements.includes(a.id) && a.check(game)) {
+      game.achievements.push(a.id);
+      showToast(`🏆 成就解锁: ${a.name}!`);
+    }
+  });
+}
+
+function renderAchievementsPage() {
+  if (!game) return;
+  const grid = document.getElementById('achievementGrid');
+  let html = '';
+  ACHIEVEMENTS.forEach(a => {
+    const unlocked = game.achievements.includes(a.id);
+    html += `<div class="achievement-badge ${unlocked ? 'unlocked' : 'locked'}">
+      <span class="emoji">${a.emoji}</span>
+      <div class="name">${a.name}</div>
+      <div class="desc">${a.desc}</div>
+    </div>`;
+  });
+  grid.innerHTML = html;
+}
+
+// ==================== Shop ====================
+function renderShopPage() {
+  if (!game) return;
+  document.getElementById('shopCoins').textContent = game.coins;
+  const list = document.getElementById('shopList');
+  let html = '';
+  SHOP_ITEMS.forEach(item => {
+    html += `<div class="shop-item">
+      <span class="shop-emoji">${item.emoji}</span>
+      <div class="shop-info">
+        <div class="shop-name">${item.name}</div>
+        <div class="shop-desc">${item.desc}</div>
+      </div>
+      <div style="text-align:right">
+        <div class="shop-price">🪙 ${item.price}</div>
+        <button class="btn btn-gold btn-sm" style="margin-top:4px" onclick="buyItem('${item.id}',${item.price})">购买</button>
+      </div>
+    </div>`;
+  });
+  list.innerHTML = html;
+}
+
+function buyItem(id, price) {
+  if (!game) return;
+  if (game.coins < price) { showToast('金币不足！'); return; }
+  game.coins -= price;
+  if (id === 'checkin') {
+    game.streak++;
+    showToast('🎫 补签成功！连续天数+1');
+  } else if (id === 'shield') {
+    game.shieldCount++;
+    showToast('🛡️ 获得护盾+1');
+  } else {
+    showToast('购买成功！');
+  }
+  renderShopPage();
+  saveGame();
+}
+
+// ===== 语音播报系统 =====
+const VoiceManager = {
+    synth: window.speechSynthesis,
+    enabled: true,
+    
+    // 可爱萌宠风格语音配置
+    petConfig: {
+        rate: 1.0,    // 语速
+        pitch: 1.3,   // 音调（偏高=可爱）
+        volume: 1.0
+    },
+    
+    speak(text) {
+        if (!this.enabled || !this.synth) return;
+        this.synth.cancel();
+        const utter = new SpeechSynthesisUtterance(text);
+        utter.rate = this.petConfig.rate;
+        utter.pitch = this.petConfig.pitch;
+        utter.volume = this.petConfig.volume;
+        utter.lang = 'zh-CN';
+        // 尝试选择中文女声
+        const voices = this.synth.getVoices();
+        const zhFemale = voices.find(v => v.lang.startsWith('zh') && v.name.includes('female'));
+        if (zhFemale) utter.voice = zhFemale;
+        this.synth.speak(utter);
+    },
+    
+    // 各场景语音文案
+    morning() { this.speak('早上好主人~ 新的一天开始啦，脂肪怪在等着你哦~'); },
+    lunchReminder() { this.speak('该吃午饭啦主人~ 记得拍照记录哦~'); },
+    dinnerReminder() { this.speak('晚餐时间到~ 主人记得记录饮食哦~'); },
+    drinkWater() { this.speak('主人该喝水啦~ 保持代谢，让脂肪怪无处藏身~'); },
+    standUp() { this.speak('坐太久啦主人~ 站起来走走，脂肪怪最怕你动起来~'); },
+    exerciseStart() { this.speak('准备好了吗主人~ 让我们开始击败脂肪怪！'); },
+    exerciseCount(n) { this.speak(n); },
+    exerciseCorrect() { this.speak('对就是这样~ 主人好棒~'); },
+    exerciseWrong() { this.speak('再调整一下~ 主人加油~'); },
+    exerciseEncourage(remaining) { this.speak(`太棒了~ 还有${remaining}个，脂肪怪在惨叫~ 主人加油~`); },
+    exerciseComplete(damage) { this.speak(`完美~ 主人造成了${damage}点伤害~ 好厉害~`); },
+    monsterDefeated(name, coins) { this.speak(`太棒了~ 主人击败了${name}！获得了${coins}金币~ 主人最厉害了~`); },
+    monsterFailed() { this.speak('没关系主人~ 明天继续加油~ 你一定可以的~'); },
+    dailySummary(calIn, calEx, net) {
+        const rating = net <= 0 ? '优秀' : net < 300 ? '不错' : '加油';
+        this.speak(`今天主人摄入${calIn}卡路里，锻炼消耗${calEx}，净摄入${net}，表现${rating}~`);
+    },
+    foodOver(over) { this.speak(`主人注意~ 超标了${over}卡路里，脂肪怪在偷偷恢复血量~`); },
+    foodAdded(name) { this.speak(`已记录${name}~`); },
+    levelUp(level) { this.speak(`恭喜主人~ 升到${level}级了~ 越来越强了~`); },
+    streak(streak) { this.speak(`连续${streak}天~ 主人已经是真正的减肥战士了~ 好棒~`); }
+};
+
+// ===== 智能提醒系统 =====
+const ReminderManager = {
+    timers: [],
+    active: false,
+    
+    start() {
+        this.stop();
+        this.active = true;
+        this.scheduleAll();
+    },
+    
+    stop() {
+        this.timers.forEach(t => clearInterval(t));
+        this.timers = [];
+        this.active = false;
+    },
+    
+    scheduleAll() {
+        if (!game || !game.workType || !game.sleepType) return;
+        
+        // 根据办公方式安排提醒
+        const workReminders = {
+            'sedentary': [
+                { type: 'stand', interval: 60 * 60 * 1000, voice: () => VoiceManager.standUp() },
+                { type: 'water', interval: 2 * 60 * 60 * 1000, voice: () => VoiceManager.drinkWater() }
+            ],
+            'sometimes': [
+                { type: 'stand', interval: 1.5 * 60 * 60 * 1000, voice: () => VoiceManager.standUp() },
+                { type: 'water', interval: 2.5 * 60 * 60 * 1000, voice: () => VoiceManager.drinkWater() }
+            ],
+            'active': [
+                { type: 'water', interval: 3 * 60 * 60 * 1000, voice: () => VoiceManager.drinkWater() }
+            ]
+        };
+        
+        const reminders = workReminders[game.workType] || [];
+        reminders.forEach(r => {
+            const timer = setInterval(() => {
+                if (game.settings.dndMode) return;
+                if (game.settings.statusMark === 'overtime') {
+                    if (r.type === 'stand') return; // 加班时不推送站立提醒
+                }
+                showToast(getReminderContent(r.type), false);
+                r.voice();
+            }, r.interval);
+            this.timers.push(timer);
+        });
+    }
+};
+
+function getReminderContent(type) {
+    const contents = {
+        stand: '站起来走走~ 脂肪怪最怕你动起来！',
+        water: '该喝水啦~ 保持代谢！',
+        breakfast: '别忘了记录早餐~',
+        lunch: '午饭时间到~ 记得拍照记录！',
+        dinner: '晚餐时间~ 记录饮食！'
+    };
+    return contents[type] || '该活动一下了~';
+}
+
+// ==================== Init ====================
+function init() {
+  const saved = loadGame();
+  if (saved) {
+    game = saved;
+    // Ensure all fields exist (backward compat)
+    if (!game.weightRecords) game.weightRecords = [];
+    if (!game.achievements) game.achievements = [];
+    if (!game.weekData) game.weekData = [];
+    if (!game.exercises) game.exercises = [];
+    if (!game.settings) game.settings = {dndMode:false, dndStart:'22:00', dndEnd:'08:00', statusMark:''};
+    if (!game.meals) game.meals = {breakfast:[], lunch:[], dinner:[], snack:[]};
+    document.getElementById('navBar').style.display = 'flex';
+    navigateTo('page-home');
+    checkDailyReset();
+  } else {
+    document.getElementById('page-welcome').classList.add('active');
+  }
+}
+
+init();
+</script>
+</body>
+</html>
