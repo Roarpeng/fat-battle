@@ -196,6 +196,8 @@ select option{background:var(--bg2);color:var(--text)}
 .modal .modal-reward{color:var(--gold);font-size:16px;font-weight:700;margin-bottom:16px}
 .empty-state{text-align:center;padding:30px;color:var(--text2);font-size:14px}
 .empty-state .emoji{font-size:40px;display:block;margin-bottom:8px}
+.btn-success{background:linear-gradient(135deg,var(--green),#27ae60);color:#fff;box-shadow:0 4px 15px rgba(46,204,113,0.3)}
+.btn-danger{background:linear-gradient(135deg,#e74c3c,var(--red));color:#fff;box-shadow:0 4px 15px rgba(255,107,107,0.3)}
 </style>
 </head>
 <body>
@@ -447,12 +449,53 @@ select option{background:var(--bg2);color:var(--text)}
   <!-- Food Page -->
   <div class="page page-food" id="page-food">
     <div class="card-title" style="margin-bottom:16px">🍽️ 饮食记录</div>
+    <div id="food-camera-area" style="margin-bottom:20px">
+        <div style="background:#2a2a4a;border-radius:12px;padding:16px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+                <span style="color:#ff6b6b;font-weight:bold">📷 拍照识别食物</span>
+                <button class="btn btn-sm btn-secondary" onclick="toggleFoodCamera()">展开</button>
+            </div>
+            <div id="food-camera-content" style="display:none">
+                <div style="position:relative;background:#000;border-radius:12px;overflow:hidden;margin-bottom:12px">
+                    <video id="food-webcam" autoplay playsinline style="width:100%;display:block;transform:scaleX(-1)"></video>
+                    <canvas id="food-canvas" style="position:absolute;top:0;left:0;width:100%;height:100%;transform:scaleX(-1)"></canvas>
+                </div>
+                <div style="display:flex;gap:8px;justify-content:center;margin-bottom:12px">
+                    <button class="btn btn-primary btn-sm" onclick="captureFoodPhoto()">拍照识别</button>
+                    <button class="btn btn-secondary btn-sm" onclick="stopFoodCamera()">关闭</button>
+                </div>
+                <div id="food-ai-result" style="display:none">
+                    <div style="background:#1e1e3a;border-radius:10px;padding:12px;margin-bottom:8px">
+                        <h4 style="color:#ffd93d;font-size:0.95em;margin-bottom:8px">🤖 AI识别结果</h4>
+                        <div id="food-ai-items"></div>
+                        <div style="border-top:1px solid #3a3a5a;margin-top:8px;padding-top:8px;display:flex;justify-content:space-between">
+                            <span style="color:#888;font-size:0.85em">总计</span>
+                            <span style="color:#ff6b6b;font-weight:bold" id="food-ai-total">0 kcal</span>
+                        </div>
+                    </div>
+                    <div id="food-ai-suggestions" style="background:#1e1e3a;border-radius:10px;padding:12px;margin-bottom:12px">
+                        <h4 style="color:#2ecc71;font-size:0.95em;margin-bottom:8px">💡 饮食建议</h4>
+                        <div id="food-ai-suggest-text" style="color:#ccc;font-size:0.9em"></div>
+                    </div>
+                    <div style="display:flex;gap:8px;justify-content:center">
+                        <button class="btn btn-success btn-sm" id="btn-ai-accept" onclick="acceptAIResult()">确认记录到当前餐</button>
+                        <button class="btn btn-secondary btn-sm" onclick="retakeFoodPhoto()">重新拍照</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
     <div id="mealSections"></div>
   </div>
 
   <!-- Exercise Page -->
   <div class="page page-exercise" id="page-exercise">
     <div class="card-title" style="margin-bottom:16px">🏋️ 锻炼攻击</div>
+    <div style="display:flex;gap:8px;margin-bottom:16px">
+        <button class="btn btn-sm" id="btn-manual-mode" style="background:#2ecc71;color:white" onclick="setExerciseMode('manual')">手动模式</button>
+        <button class="btn btn-sm btn-secondary" id="btn-camera-mode" onclick="setExerciseMode('camera')">摄像头识别</button>
+    </div>
+    <div id="manual-exercise-area">
     <div class="card">
       <div class="card-title">选择运动</div>
       <div class="exercise-grid" id="exerciseGrid"></div>
@@ -470,6 +513,26 @@ select option{background:var(--bg2);color:var(--text)}
       </div>
     </div>
     <button class="btn btn-green btn-block" onclick="executeExercise()" id="btnExecuteExercise">⚔️ 发动攻击</button>
+    </div>
+    <div id="camera-exercise-area" style="display:none;margin-bottom:20px">
+        <div style="position:relative;background:#000;border-radius:12px;overflow:hidden;margin-bottom:12px">
+            <video id="exercise-webcam" autoplay playsinline style="width:100%;display:block;transform:scaleX(-1)"></video>
+            <canvas id="exercise-canvas" style="position:absolute;top:0;left:0;width:100%;height:100%;transform:scaleX(-1)"></canvas>
+            <div id="pose-status" style="position:absolute;bottom:10px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.7);color:white;padding:6px 16px;border-radius:20px;font-size:0.85em">等待检测...</div>
+        </div>
+        <div id="pose-counter" style="text-align:center;margin-bottom:12px">
+            <span style="font-size:2em;color:#2ecc71;font-weight:bold" id="pose-count">0</span>
+            <span style="color:#888;font-size:0.9em"> / <span id="pose-target">20</span> 个</span>
+        </div>
+        <div id="pose-feedback" style="text-align:center;color:#ffd93d;font-size:0.95em;min-height:24px;margin-bottom:12px"></div>
+        <div style="display:flex;gap:8px;justify-content:center">
+            <button class="btn btn-success" id="btn-start-camera-ex" onclick="startCameraExercise()">开始识别</button>
+            <button class="btn btn-danger btn-sm" onclick="stopCameraExercise()">停止</button>
+        </div>
+        <div style="margin-top:12px;text-align:center;color:#888;font-size:0.8em">
+            提示：请将手机放在距离你2米处，能看到全身侧面
+        </div>
+    </div>
     <div class="exercise-record">
       <div class="card-title" style="margin-top:16px">📋 今日锻炼</div>
       <div id="exerciseRecordList"></div>
@@ -634,6 +697,7 @@ select option{background:var(--bg2);color:var(--text)}
 <!-- Modal Container -->
 <div id="modalContainer"></div>
 
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.18/vision_bundle.mjs" crossorigin="anonymous"></script>
 <script>
 // ==================== Constants ====================
 const AVATARS = ['🧑‍💻','🧑‍🔧','🧘','🏋️','🚀','🦸'];
@@ -660,14 +724,17 @@ const QUICK_FOODS = {
   ]
 };
 const EXERCISES = [
-  {name:'跑步',emoji:'🏃',calPerMin:10},
-  {name:'快走',emoji:'🚶',calPerMin:6},
-  {name:'骑行',emoji:'🚴',calPerMin:8},
-  {name:'游泳',emoji:'🏊',calPerMin:11},
-  {name:'瑜伽',emoji:'🧘',calPerMin:4},
-  {name:'HIIT',emoji:'🔥',calPerMin:14},
-  {name:'跳绳',emoji:'⏭️',calPerMin:12},
-  {name:'力量训练',emoji:'💪',calPerMin:7}
+  {name:'俯卧撑',emoji:'💪',calPerMin:8,type:'pushup',camera:true},
+  {name:'深蹲',emoji:'🦵',calPerMin:7,type:'squat',camera:true},
+  {name:'开合跳',emoji:'⏭️',calPerMin:10,type:'jumping_jack',camera:true},
+  {name:'跑步',emoji:'🏃',calPerMin:10,type:'running',camera:false},
+  {name:'快走',emoji:'🚶',calPerMin:6,type:'walking',camera:false},
+  {name:'骑行',emoji:'🚴',calPerMin:8,type:'cycling',camera:false},
+  {name:'游泳',emoji:'🏊',calPerMin:11,type:'swimming',camera:false},
+  {name:'瑜伽',emoji:'🧘',calPerMin:4,type:'yoga',camera:false},
+  {name:'HIIT',emoji:'🔥',calPerMin:14,type:'hiit',camera:false},
+  {name:'跳绳',emoji:'⏭️',calPerMin:12,type:'jumprope',camera:false},
+  {name:'力量训练',emoji:'🏋️',calPerMin:7,type:'strength',camera:false}
 ];
 const DURATIONS = [10,15,20,30,45,60];
 const ACHIEVEMENTS = [
@@ -1369,6 +1436,15 @@ function renderExercisePage() {
 }
 
 function selectExType(idx) {
+  // 检查摄像头模式下是否支持该运动
+  const cameraArea = document.getElementById('camera-exercise-area');
+  if (cameraArea && cameraArea.style.display !== 'none') {
+    const ex = EXERCISES[idx];
+    if (!ex.camera) {
+      showToast('暂不支持摄像头识别，请使用手动模式');
+      return;
+    }
+  }
   selectedExercise = idx;
   renderExercisePage();
 }
@@ -1770,6 +1846,575 @@ const VoiceManager = {
     levelUp(level) { this.speak(`恭喜主人~ 升到${level}级了~ 越来越强了~`); },
     streak(streak) { this.speak(`连续${streak}天~ 主人已经是真正的减肥战士了~ 好棒~`); }
 };
+
+// ===== 智能提醒系统 =====
+// ===== 锻炼姿势识别系统 =====
+const PoseDetector = {
+    landmarker: null,
+    video: null,
+    canvas: null,
+    ctx: null,
+    animFrameId: null,
+    stream: null,
+    isActive: false,
+    currentExercise: null,
+    repCount: 0,
+    targetCount: 20,
+    lastState: 'up',
+    stateThreshold: 0.6,
+    calPerMin: 8,
+    duration: 20,
+    
+    NOSE: 0, L_SHOULDER: 11, R_SHOULDER: 12, L_ELBOW: 13, R_ELBOW: 14,
+    L_WRIST: 15, R_WRIST: 16, L_HIP: 23, R_HIP: 24, L_KNEE: 25, R_KNEE: 26,
+    L_ANKLE: 27, R_ANKLE: 28,
+    
+    async init() {
+        try {
+            const vision = await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.18/vision_bundle.mjs');
+            const { FilesetResolver, PoseLandmarker } = vision;
+            const visionFileset = await FilesetResolver.forVisionTasks(
+                'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.18/wasm'
+            );
+            this.landmarker = await PoseLandmarker.createFromOptions(visionFileset, {
+                baseOptions: {
+                    modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task',
+                    delegate: 'GPU'
+                },
+                runningMode: 'VIDEO',
+                numPoses: 1,
+                minPoseDetectionConfidence: 0.5,
+                minPosePresenceConfidence: 0.5,
+                minTrackingConfidence: 0.5
+            });
+            return true;
+        } catch(e) {
+            console.error('PoseDetector init failed:', e);
+            showToast('姿势识别加载失败，请使用手动模式', true);
+            return false;
+        }
+    },
+    
+    async startCamera() {
+        this.video = document.getElementById('exercise-webcam');
+        this.canvas = document.getElementById('exercise-canvas');
+        this.ctx = this.canvas.getContext('2d');
+        try {
+            this.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 640, height: 480 } });
+            this.video.srcObject = this.stream;
+            await new Promise(r => this.video.onloadedmetadata = r);
+            this.canvas.width = this.video.videoWidth;
+            this.canvas.height = this.video.videoHeight;
+            this.isActive = true;
+            this.detectLoop();
+        } catch(e) {
+            console.error('Camera failed:', e);
+            showToast('无法打开摄像头，请检查权限设置', true);
+        }
+    },
+    
+    stopCamera() {
+        this.isActive = false;
+        if (this.animFrameId) cancelAnimationFrame(this.animFrameId);
+        if (this.stream) this.stream.getTracks().forEach(t => t.stop());
+        if (this.video) this.video.srcObject = null;
+        if (this.ctx) this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    },
+    
+    detectLoop() {
+        if (!this.isActive || !this.landmarker || !this.video) return;
+        if (this.video.readyState >= 2) {
+            const result = this.landmarker.detectForVideo(this.video, performance.now());
+            if (result.landmarks && result.landmarks.length > 0) {
+                this.drawSkeleton(result.landmarks[0]);
+                this.analyzePose(result.landmarks[0]);
+            }
+        }
+        this.animFrameId = requestAnimationFrame(() => this.detectLoop());
+    },
+    
+    drawSkeleton(landmarks) {
+        const ctx = this.ctx;
+        const w = this.canvas.width;
+        const h = this.canvas.height;
+        ctx.clearRect(0, 0, w, h);
+        
+        const connections = [
+            [11,12],[11,13],[13,15],[12,14],[14,16],
+            [11,23],[12,24],[23,24],[23,25],[24,26],[25,27],[26,28]
+        ];
+        ctx.strokeStyle = '#2ecc71';
+        ctx.lineWidth = 3;
+        connections.forEach(([a,b]) => {
+            ctx.beginPath();
+            ctx.moveTo(landmarks[a].x * w, landmarks[a].y * h);
+            ctx.lineTo(landmarks[b].x * w, landmarks[b].y * h);
+            ctx.stroke();
+        });
+        
+        ctx.fillStyle = '#ff6b6b';
+        [11,12,13,14,15,16,23,24,25,26,27,28].forEach(i => {
+            ctx.beginPath();
+            ctx.arc(landmarks[i].x * w, landmarks[i].y * h, 6, 0, Math.PI * 2);
+            ctx.fill();
+        });
+    },
+    
+    calcAngle(a, b, c) {
+        const ba = { x: a.x - b.x, y: a.y - b.y };
+        const bc = { x: c.x - b.x, y: c.y - b.y };
+        const dot = ba.x * bc.x + ba.y * bc.y;
+        const magBA = Math.sqrt(ba.x**2 + ba.y**2);
+        const magBC = Math.sqrt(bc.x**2 + bc.y**2);
+        if (magBA === 0 || magBC === 0) return 0;
+        return Math.acos(Math.max(-1, Math.min(1, dot / (magBA * magBC)))) * 180 / Math.PI;
+    },
+    
+    analyzePose(lm) {
+        if (!this.currentExercise) return;
+        const statusEl = document.getElementById('pose-status');
+        const feedbackEl = document.getElementById('pose-feedback');
+        const countEl = document.getElementById('pose-count');
+        
+        let isCorrect = false;
+        let newState = this.lastState;
+        
+        switch(this.currentExercise) {
+            case 'pushup': {
+                const lAngle = this.calcAngle(lm[11], lm[13], lm[15]);
+                const rAngle = this.calcAngle(lm[12], lm[14], lm[16]);
+                const avgAngle = (lAngle + rAngle) / 2;
+                
+                if (avgAngle < 90) {
+                    newState = 'down';
+                    isCorrect = true;
+                } else if (avgAngle > 150) {
+                    newState = 'up';
+                    isCorrect = true;
+                }
+                
+                if (isCorrect) {
+                    statusEl.textContent = `肘角度: ${Math.round(avgAngle)}° ${newState === 'down' ? '⬇️' : '⬆️'}`;
+                    statusEl.style.color = '#2ecc71';
+                } else {
+                    statusEl.textContent = `调整姿势... ${Math.round(avgAngle)}°`;
+                    statusEl.style.color = '#ffd93d';
+                    feedbackEl.textContent = avgAngle > 120 && avgAngle < 150 ? '再低一点~' : '保持住~';
+                }
+                
+                if (this.lastState === 'down' && newState === 'up') {
+                    this.repCount++;
+                    countEl.textContent = this.repCount;
+                    feedbackEl.textContent = `${this.repCount}个！主人好棒~`;
+                    VoiceManager.exerciseCount(this.repCount);
+                    if (this.repCount % 5 === 0 && this.repCount < this.targetCount) {
+                        VoiceManager.exerciseEncourage(this.targetCount - this.repCount);
+                    }
+                    if (this.repCount >= this.targetCount) {
+                        this.completeCameraExercise();
+                    }
+                }
+                break;
+            }
+            case 'squat': {
+                const lAngle = this.calcAngle(lm[23], lm[25], lm[27]);
+                const rAngle = this.calcAngle(lm[24], lm[26], lm[28]);
+                const avgAngle = (lAngle + rAngle) / 2;
+                
+                if (avgAngle < 100) {
+                    newState = 'down';
+                    isCorrect = true;
+                } else if (avgAngle > 160) {
+                    newState = 'up';
+                    isCorrect = true;
+                }
+                
+                if (isCorrect) {
+                    statusEl.textContent = `膝角度: ${Math.round(avgAngle)}° ${newState === 'down' ? '⬇️' : '⬆️'}`;
+                    statusEl.style.color = '#2ecc71';
+                } else {
+                    statusEl.textContent = `调整姿势... ${Math.round(avgAngle)}°`;
+                    statusEl.style.color = '#ffd93d';
+                    const kneeX = (lm[25].x + lm[26].x) / 2;
+                    const ankleX = (lm[27].x + lm[28].x) / 2;
+                    if (Math.abs(kneeX - ankleX) > 0.05) {
+                        feedbackEl.textContent = '膝盖不要超过脚尖~';
+                    }
+                }
+                
+                if (this.lastState === 'down' && newState === 'up') {
+                    this.repCount++;
+                    countEl.textContent = this.repCount;
+                    feedbackEl.textContent = `${this.repCount}个！好厉害~`;
+                    VoiceManager.exerciseCount(this.repCount);
+                    if (this.repCount >= this.targetCount) {
+                        this.completeCameraExercise();
+                    }
+                }
+                break;
+            }
+            case 'jumping_jack': {
+                const wristSpread = Math.abs(lm[15].x - lm[16].x);
+                const ankleSpread = Math.abs(lm[27].x - lm[28].x);
+                const shoulderSpread = Math.abs(lm[11].x - lm[12].x);
+                
+                if (wristSpread > shoulderSpread * 1.5 && ankleSpread > 0.15) {
+                    newState = 'open';
+                    isCorrect = true;
+                } else if (wristSpread < shoulderSpread * 0.8 && ankleSpread < 0.08) {
+                    newState = 'closed';
+                    isCorrect = true;
+                }
+                
+                statusEl.textContent = newState === 'open' ? '张开 ✋' : '合拢 🤝';
+                statusEl.style.color = '#2ecc71';
+                
+                if (this.lastState === 'open' && newState === 'closed') {
+                    this.repCount++;
+                    countEl.textContent = this.repCount;
+                    feedbackEl.textContent = `${this.repCount}个！加油~`;
+                    VoiceManager.exerciseCount(this.repCount);
+                    if (this.repCount >= this.targetCount) {
+                        this.completeCameraExercise();
+                    }
+                }
+                break;
+            }
+        }
+        
+        this.lastState = newState;
+    },
+    
+    completeCameraExercise() {
+        const cal = this.calPerMin * (this.duration / 60) * this.repCount / this.targetCount;
+        const damage = Math.round(exerciseImpact(cal, 'camera'));
+        const exName = EXERCISE_NAMES[this.currentExercise] || this.currentExercise;
+        game.exercises.push({
+            name: exName, emoji: '📷', duration: Math.round(this.duration * this.repCount / this.targetCount),
+            cal: Math.round(cal), damage: damage, mode: 'camera'
+        });
+        game.todayCalExercise += Math.round(cal);
+        game.todayDamage += damage;
+        game.totalExercise += Math.round(cal);
+        game.totalDamage += damage;
+        
+        // Damage monster
+        game.enemyHp -= damage;
+        showDamageFloat(damage, false);
+        shakeMonster();
+        if (game.enemyHp <= 0) {
+            game.enemyHp = 0;
+            onMonsterDefeated();
+        }
+        
+        VoiceManager.exerciseComplete(damage);
+        showToast(`完成！${this.repCount}个${exName}，造成${damage}伤害！`);
+        this.stopCamera();
+        document.getElementById('btn-start-camera-ex').textContent = '开始识别';
+        document.getElementById('btn-start-camera-ex').disabled = false;
+        renderExercisePage();
+        renderHome();
+        checkAchievements();
+        saveGame();
+    }
+};
+
+// 摄像头锻炼模式切换
+function setExerciseMode(mode) {
+    const cameraArea = document.getElementById('camera-exercise-area');
+    const manualArea = document.getElementById('manual-exercise-area');
+    const btnManual = document.getElementById('btn-manual-mode');
+    const btnCamera = document.getElementById('btn-camera-mode');
+    
+    if (mode === 'camera') {
+        cameraArea.style.display = 'block';
+        if (manualArea) manualArea.style.display = 'none';
+        btnCamera.style.background = '#2ecc71';
+        btnCamera.style.color = 'white';
+        btnManual.style.background = '#2a2a4a';
+        btnManual.style.color = '#e0e0e0';
+    } else {
+        cameraArea.style.display = 'none';
+        if (manualArea) manualArea.style.display = 'block';
+        btnManual.style.background = '#2ecc71';
+        btnManual.style.color = 'white';
+        btnCamera.style.background = '#2a2a4a';
+        btnCamera.style.color = '#e0e0e0';
+        PoseDetector.stopCamera();
+    }
+}
+
+async function startCameraExercise() {
+    if (!PoseDetector.landmarker) {
+        showToast('正在加载姿势识别模型...', false);
+        const ok = await PoseDetector.init();
+        if (!ok) return;
+    }
+    if (!PoseDetector.isActive) {
+        await PoseDetector.startCamera();
+    }
+    const exData = selectedExercise !== null ? EXERCISES[selectedExercise] : null;
+    const exType = exData ? exData.type : 'pushup';
+    const exCalPerMin = exData ? exData.calPerMin : 8;
+    PoseDetector.currentExercise = exType;
+    PoseDetector.calPerMin = exCalPerMin;
+    PoseDetector.duration = selectedDuration;
+    PoseDetector.targetCount = 20;
+    PoseDetector.repCount = 0;
+    PoseDetector.lastState = exType === 'jumping_jack' ? 'closed' : 'up';
+    document.getElementById('pose-count').textContent = '0';
+    document.getElementById('pose-target').textContent = '20';
+    document.getElementById('pose-feedback').textContent = '';
+    document.getElementById('btn-start-camera-ex').textContent = '识别中...';
+    document.getElementById('btn-start-camera-ex').disabled = true;
+    VoiceManager.exerciseStart();
+}
+
+function stopCameraExercise() {
+    PoseDetector.stopCamera();
+    document.getElementById('btn-start-camera-ex').textContent = '开始识别';
+    document.getElementById('btn-start-camera-ex').disabled = false;
+    document.getElementById('pose-status').textContent = '等待检测...';
+    document.getElementById('pose-status').style.color = 'white';
+    document.getElementById('pose-feedback').textContent = '';
+}
+
+const EXERCISE_NAMES = {pushup:'俯卧撑', squat:'深蹲', jumping_jack:'开合跳'};
+
+// ===== 食物识别系统 =====
+const FoodRecognizer = {
+    video: null,
+    canvas: null,
+    ctx: null,
+    stream: null,
+    isActive: false,
+    recognizedItems: [],
+    targetMeal: 'lunch',
+    
+    foodDB: {
+        '米饭': { cal: 230, category: 'staple', suggestion: '可以减半，换成粗粮更佳' },
+        '面条': { cal: 280, category: 'staple', suggestion: '选择全麦面条更健康' },
+        '馒头': { cal: 150, category: 'staple', suggestion: '' },
+        '饺子': { cal: 200, category: 'staple', suggestion: '' },
+        '鸡腿': { cal: 180, category: 'protein', suggestion: '去皮可以减少50kcal' },
+        '鸡胸肉': { cal: 120, category: 'protein', suggestion: '优质蛋白，继续保持' },
+        '红烧肉': { cal: 350, category: 'protein', suggestion: '油脂偏高，建议少吃' },
+        '鱼': { cal: 120, category: 'protein', suggestion: '优质蛋白，好选择' },
+        '豆腐': { cal: 80, category: 'protein', suggestion: '植物蛋白，推荐' },
+        '鸡蛋': { cal: 80, category: 'protein', suggestion: '营养全面，推荐每天一个' },
+        '炒青菜': { cal: 80, category: 'vegetable', suggestion: '比例很好，继续保持' },
+        '西红柿炒蛋': { cal: 150, category: 'mixed', suggestion: '营养均衡的一道菜' },
+        '凉拌黄瓜': { cal: 40, category: 'vegetable', suggestion: '低卡好选择' },
+        '沙拉': { cal: 100, category: 'vegetable', suggestion: '注意酱料热量' },
+        '水果': { cal: 80, category: 'fruit', suggestion: '适量水果有助健康' },
+        '苹果': { cal: 52, category: 'fruit', suggestion: '' },
+        '香蕉': { cal: 89, category: 'fruit', suggestion: '运动前吃很好' },
+        '牛奶': { cal: 120, category: 'drink', suggestion: '低脂牛奶更佳' },
+        '豆浆': { cal: 90, category: 'drink', suggestion: '无糖豆浆更好' },
+        '奶茶': { cal: 400, category: 'drink', suggestion: '热量炸弹！建议换成无糖茶' },
+        '可乐': { cal: 140, category: 'drink', suggestion: '含糖量高，建议少喝' },
+        '咖啡': { cal: 30, category: 'drink', suggestion: '无糖黑咖啡可以' },
+        '面包': { cal: 180, category: 'staple', suggestion: '全麦面包更健康' },
+        '包子': { cal: 200, category: 'staple', suggestion: '' },
+        '油条': { cal: 230, category: 'staple', suggestion: '油脂高，建议偶尔吃' },
+        '白粥': { cal: 150, category: 'staple', suggestion: '' },
+        '薯条': { cal: 280, category: 'snack', suggestion: '油炸食品，建议少吃' },
+        '薯片': { cal: 280, category: 'snack', suggestion: '建议换成坚果' },
+        '饼干': { cal: 150, category: 'snack', suggestion: '选择低糖饼干' },
+        '坚果': { cal: 180, category: 'snack', suggestion: '适量坚果有益，注意控制量' },
+        '巧克力': { cal: 220, category: 'snack', suggestion: '热量较高，建议少量' },
+        '酸奶': { cal: 100, category: 'drink', suggestion: '选择无糖酸奶' },
+        '火锅': { cal: 800, category: 'mixed', suggestion: '注意控制食材和蘸料' },
+        '烧烤': { cal: 600, category: 'mixed', suggestion: '偶尔吃可以，注意搭配蔬菜' }
+    },
+    
+    async startCamera() {
+        this.video = document.getElementById('food-webcam');
+        this.canvas = document.getElementById('food-canvas');
+        this.ctx = this.canvas.getContext('2d');
+        try {
+            this.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: 640, height: 480 } });
+            this.video.srcObject = this.stream;
+            await new Promise(r => this.video.onloadedmetadata = r);
+            this.canvas.width = this.video.videoWidth;
+            this.canvas.height = this.video.videoHeight;
+            this.isActive = true;
+            this.drawPreview();
+        } catch(e) {
+            console.error('Food camera failed:', e);
+            showToast('无法打开摄像头', true);
+        }
+    },
+    
+    drawPreview() {
+        if (!this.isActive) return;
+        const ctx = this.ctx;
+        const w = this.canvas.width;
+        const h = this.canvas.height;
+        ctx.clearRect(0, 0, w, h);
+        ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([10, 10]);
+        const margin = 40;
+        ctx.strokeRect(margin, margin, w - margin*2, h - margin*2);
+        ctx.setLineDash([]);
+        ctx.fillStyle = 'rgba(255,255,255,0.7)';
+        ctx.font = '16px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('将食物放在框内', w/2, h/2);
+        requestAnimationFrame(() => this.drawPreview());
+    },
+    
+    stopCamera() {
+        this.isActive = false;
+        if (this.stream) this.stream.getTracks().forEach(t => t.stop());
+        if (this.video) this.video.srcObject = null;
+        if (this.ctx) this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    },
+    
+    capturePhoto() {
+        if (!this.isActive || !this.video) return;
+        const canvas = document.createElement('canvas');
+        canvas.width = this.video.videoWidth;
+        canvas.height = this.video.videoHeight;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(this.video, 0, 0);
+        this.simulateRecognition();
+    },
+    
+    simulateRecognition() {
+        const keys = Object.keys(this.foodDB);
+        const count = 2 + Math.floor(Math.random() * 3);
+        const shuffled = keys.sort(() => Math.random() - 0.5);
+        this.recognizedItems = shuffled.slice(0, count).map(name => ({
+            name,
+            cal: this.foodDB[name].cal,
+            portion: 'medium',
+            actualCal: this.foodDB[name].cal,
+            category: this.foodDB[name].category,
+            suggestion: this.foodDB[name].suggestion,
+            confidence: 0.75 + Math.random() * 0.2
+        }));
+        this.showResults();
+    },
+    
+    showResults() {
+        const resultDiv = document.getElementById('food-ai-result');
+        const itemsDiv = document.getElementById('food-ai-items');
+        const totalDiv = document.getElementById('food-ai-total');
+        const suggestDiv = document.getElementById('food-ai-suggest-text');
+        
+        resultDiv.style.display = 'block';
+        itemsDiv.innerHTML = '';
+        
+        let total = 0;
+        this.recognizedItems.forEach((item, i) => {
+            total += item.actualCal;
+            const div = document.createElement('div');
+            div.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #3a3a5a;font-size:0.9em';
+            div.innerHTML = `
+                <span style="color:#e0e0e0">${item.name}</span>
+                <div style="display:flex;align-items:center;gap:8px">
+                    <span style="color:#888;font-size:0.8em">${Math.round(item.confidence*100)}%</span>
+                    <select onchange="FoodRecognizer.updatePortion(${i},this.value)" style="background:#3a3a5a;border:1px solid #555;color:#e0e0e0;border-radius:6px;padding:2px 4px;font-size:0.8em">
+                        <option value="small" ${item.portion==='small'?'selected':''}>小份</option>
+                        <option value="medium" ${item.portion==='medium'?'selected':''}>中份</option>
+                        <option value="large" ${item.portion==='large'?'selected':''}>大份</option>
+                    </select>
+                    <span style="color:#ff6b6b;font-weight:bold">${item.actualCal} kcal</span>
+                </div>
+            `;
+            itemsDiv.appendChild(div);
+        });
+        
+        totalDiv.textContent = total + ' kcal';
+        
+        const suggestions = this.recognizedItems.filter(f => f.suggestion).map(f => f.suggestion);
+        const hasVegetable = this.recognizedItems.some(f => f.category === 'vegetable');
+        const hasProtein = this.recognizedItems.some(f => f.category === 'protein');
+        const hasHighCal = this.recognizedItems.some(f => f.category === 'drink' && f.cal > 300);
+        
+        let suggestText = suggestions.map(s => `✅ ${s}`).join('\n');
+        if (!hasVegetable) suggestText += '\n⚠️ 蔬菜不够哦，多吃点菜';
+        if (!hasProtein) suggestText += '\n⚠️ 蛋白质不足，加个鸡蛋或豆腐';
+        if (hasHighCal) suggestText += '\n⚠️ 含糖饮料热量很高，建议换成无糖';
+        
+        suggestDiv.innerHTML = suggestText.replace(/\n/g, '<br>');
+        
+        VoiceManager.foodAdded(`识别到${this.recognizedItems.length}种食物`);
+    },
+    
+    updatePortion(index, portion) {
+        const multipliers = { small: 0.7, medium: 1.0, large: 1.3 };
+        const base = this.foodDB[this.recognizedItems[index].name].cal;
+        this.recognizedItems[index].portion = portion;
+        this.recognizedItems[index].actualCal = Math.round(base * multipliers[portion]);
+        this.showResults();
+    },
+    
+    acceptAIResult() {
+        const hour = new Date().getHours();
+        if (hour < 10) this.targetMeal = 'breakfast';
+        else if (hour < 14) this.targetMeal = 'lunch';
+        else if (hour < 20) this.targetMeal = 'dinner';
+        else this.targetMeal = 'snack';
+        
+        this.recognizedItems.forEach(item => {
+            game.meals[this.targetMeal].push({
+                name: item.name,
+                baseCal: item.actualCal,
+                size: item.portion,
+                totalCal: item.actualCal
+            });
+            game.todayCalIn += item.actualCal;
+        });
+        
+        const totalCal = this.recognizedItems.reduce((s,i) => s + i.actualCal, 0);
+        applyFoodImpact(totalCal);
+        
+        renderFoodPage();
+        renderHome();
+        saveGame();
+        
+        showToast(`已记录${this.recognizedItems.length}种食物到${MEAL_NAMES[this.targetMeal]}！`);
+        VoiceManager.foodAdded(`已记录到${MEAL_NAMES[this.targetMeal]}`);
+        
+        this.recognizedItems = [];
+        document.getElementById('food-ai-result').style.display = 'none';
+        this.stopFoodCamera();
+    },
+    
+    stopFoodCamera() {
+        this.stopCamera();
+        document.getElementById('food-camera-content').style.display = 'none';
+    }
+};
+
+function toggleFoodCamera() {
+    const content = document.getElementById('food-camera-content');
+    const btn = event.target;
+    if (content.style.display === 'none') {
+        content.style.display = 'block';
+        btn.textContent = '收起';
+        FoodRecognizer.startCamera();
+    } else {
+        content.style.display = 'none';
+        btn.textContent = '展开';
+        FoodRecognizer.stopCamera();
+    }
+}
+
+function captureFoodPhoto() {
+    FoodRecognizer.capturePhoto();
+}
+
+function retakeFoodPhoto() {
+    document.getElementById('food-ai-result').style.display = 'none';
+}
+
+function acceptAIResult() {
+    FoodRecognizer.acceptAIResult();
+}
 
 // ===== 智能提醒系统 =====
 const ReminderManager = {
