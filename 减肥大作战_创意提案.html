@@ -1,0 +1,1115 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>减肥大作战 - 交互Demo</title>
+    <style>
+        *{margin:0;padding:0;box-sizing:border-box}
+        body{font-family:'Microsoft YaHei','PingFang SC',sans-serif;background:#0f0f1a;color:#e0e0e0;line-height:1.6;overflow-x:hidden}
+        .container{max-width:480px;margin:0 auto;min-height:100vh;position:relative;background:#1a1a2e;border-left:1px solid #2a2a4a;border-right:1px solid #2a2a4a}
+
+        /* ===== 页面切换 ===== */
+        .page{display:none;padding:20px;padding-bottom:100px;animation:fadeIn .3s ease}
+        .page.active{display:block}
+        @keyframes fadeIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+
+        /* ===== 顶部导航 ===== */
+        .top-bar{position:sticky;top:0;z-index:100;background:rgba(26,26,46,0.95);backdrop-filter:blur(10px);padding:16px 20px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #2a2a4a}
+        .top-bar h1{font-size:1.3em;color:#ff6b6b}
+        .top-bar .stats{display:flex;gap:16px;font-size:0.85em}
+        .top-bar .stat-item{display:flex;align-items:center;gap:4px}
+        .top-bar .stat-item span{color:#ffd93d}
+
+        /* ===== 欢迎页 ===== */
+        .welcome{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:calc(100vh - 60px);text-align:center;padding:40px 20px}
+        .welcome .logo{font-size:4em;margin-bottom:20px;animation:bounce 2s infinite}
+        @keyframes bounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-15px)}}
+        .welcome h2{font-size:2em;color:#ff6b6b;margin-bottom:8px}
+        .welcome p{color:#888;margin-bottom:40px;font-size:0.95em}
+        .btn{display:inline-block;padding:14px 40px;border-radius:30px;border:none;font-size:1.05em;font-weight:bold;cursor:pointer;transition:all .3s;font-family:inherit}
+        .btn-primary{background:linear-gradient(135deg,#ff6b6b,#ee5a24);color:white;box-shadow:0 4px 15px rgba(255,107,107,0.4)}
+        .btn-primary:hover{transform:translateY(-2px);box-shadow:0 6px 20px rgba(255,107,107,0.6)}
+        .btn-secondary{background:#2a2a4a;color:#e0e0e0;padding:10px 24px;font-size:0.9em}
+        .btn-secondary:hover{background:#3a3a5a}
+        .btn-danger{background:linear-gradient(135deg,#e74c3c,#c0392b);color:white;padding:10px 24px;font-size:0.9em}
+        .btn-success{background:linear-gradient(135deg,#2ecc71,#27ae60);color:white;padding:10px 24px;font-size:0.9em}
+        .btn-sm{padding:8px 16px;font-size:0.85em;border-radius:20px}
+
+        /* ===== 设置页 ===== */
+        .setup-section{margin-bottom:30px}
+        .setup-section h3{color:#ff6b6b;font-size:1.1em;margin-bottom:16px;display:flex;align-items:center;gap:8px}
+        .form-group{margin-bottom:16px}
+        .form-group label{display:block;color:#aaa;font-size:0.9em;margin-bottom:6px}
+        .form-group input,.form-group select{width:100%;padding:12px 16px;background:#2a2a4a;border:2px solid #3a3a5a;border-radius:12px;color:#e0e0e0;font-size:1em;font-family:inherit;transition:border-color .3s}
+        .form-group input:focus,.form-group select:focus{outline:none;border-color:#ff6b6b}
+        .form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+        .bmi-result{text-align:center;padding:20px;background:#2a2a4a;border-radius:12px;margin-top:16px}
+        .bmi-result .bmi-value{font-size:2.5em;color:#ff6b6b;font-weight:bold}
+        .bmi-result .bmi-label{color:#aaa;margin-top:4px}
+
+        /* ===== 头像选择 ===== */
+        .avatar-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:12px}
+        .avatar-option{background:#2a2a4a;border-radius:12px;padding:20px;text-align:center;cursor:pointer;border:3px solid transparent;transition:all .3s;font-size:2.5em}
+        .avatar-option:hover{border-color:#667eea}
+        .avatar-option.selected{border-color:#ff6b6b;background:rgba(255,107,107,0.1)}
+
+        /* ===== 底部导航 ===== */
+        .bottom-nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:480px;background:rgba(26,26,46,0.98);backdrop-filter:blur(10px);display:flex;border-top:1px solid #2a2a4a;z-index:100}
+        .nav-item{flex:1;text-align:center;padding:10px 0;cursor:pointer;transition:all .3s;color:#666;font-size:0.75em}
+        .nav-item.active{color:#ff6b6b}
+        .nav-item .nav-icon{font-size:1.5em;display:block;margin-bottom:2px}
+
+        /* ===== 主页 ===== */
+        .hero-card{background:linear-gradient(135deg,#1e3a5f,#2a1a3e);border-radius:16px;padding:24px;margin-bottom:20px;position:relative;overflow:hidden}
+        .hero-card::after{content:'';position:absolute;top:-20px;right:-20px;width:100px;height:100px;background:rgba(255,107,107,0.15);border-radius:50%}
+        .hero-card .greeting{color:#aaa;font-size:0.9em}
+        .hero-card .day-count{font-size:1.8em;color:#ff6b6b;font-weight:bold;margin:4px 0}
+        .hero-card .motivation{color:#ccc;font-size:0.9em}
+
+        /* 怪物战斗区 */
+        .battle-zone{background:#1e1e3a;border-radius:16px;padding:24px;margin-bottom:20px;text-align:center;position:relative;overflow:hidden}
+        .battle-zone h3{color:#ffd93d;font-size:1em;margin-bottom:16px}
+        .monster{font-size:5em;margin:10px 0;transition:all .3s;filter:drop-shadow(0 0 20px rgba(255,107,107,0.5))}
+        .monster.attacked{animation:shake .5s ease}
+        .monster.healing{animation:glow .5s ease}
+        @keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-10px)}75%{transform:translateX(10px)}}
+        @keyframes glow{0%,100%{filter:drop-shadow(0 0 20px rgba(255,107,107,0.5))}50%{filter:drop-shadow(0 0 40px rgba(46,204,113,0.8))}}
+        .monster-name{color:#ff6b6b;font-size:1.2em;font-weight:bold;margin-bottom:8px}
+        .monster-level{color:#667eea;font-size:0.85em;margin-bottom:12px}
+
+        /* 血条 */
+        .hp-bar-container{background:#2a2a4a;border-radius:10px;height:24px;overflow:hidden;margin:8px 0;position:relative}
+        .hp-bar{height:100%;border-radius:10px;transition:width .8s ease;position:relative}
+        .hp-bar.enemy{background:linear-gradient(90deg,#e74c3c,#ff6b6b)}
+        .hp-bar.player{background:linear-gradient(90deg,#2ecc71,#27ae60)}
+        .hp-text{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:0.75em;font-weight:bold;color:white;text-shadow:0 1px 3px rgba(0,0,0,0.5);z-index:1}
+        .hp-label{display:flex;justify-content:space-between;font-size:0.85em;color:#aaa;margin-bottom:4px}
+
+        /* 快捷操作 */
+        .quick-actions{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px}
+        .action-card{background:#2a2a4a;border-radius:12px;padding:16px;text-align:center;cursor:pointer;transition:all .3s;border:2px solid transparent}
+        .action-card:hover{transform:translateY(-2px);border-color:#ff6b6b}
+        .action-card .action-icon{font-size:2em;margin-bottom:6px}
+        .action-card .action-label{color:#ccc;font-size:0.85em}
+
+        /* 今日概览 */
+        .today-summary{background:#2a2a4a;border-radius:12px;padding:16px;margin-bottom:20px}
+        .today-summary h4{color:#ffd93d;font-size:0.95em;margin-bottom:12px}
+        .summary-row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #3a3a5a;font-size:0.9em}
+        .summary-row:last-child{border:none}
+        .summary-row .label{color:#888}
+        .summary-row .value{color:#e0e0e0;font-weight:bold}
+        .summary-row .value.negative{color:#2ecc71}
+        .summary-row .value.positive{color:#ff6b6b}
+
+        /* ===== 饮食页 ===== */
+        .meal-section{margin-bottom:24px}
+        .meal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+        .meal-header h3{color:#ff6b6b;font-size:1.1em;display:flex;align-items:center;gap:8px}
+        .meal-total{color:#ffd93d;font-size:0.9em;font-weight:bold}
+        .food-list{margin-bottom:12px}
+        .food-item{display:flex;justify-content:space-between;align-items:center;background:#2a2a4a;border-radius:10px;padding:10px 14px;margin-bottom:6px;font-size:0.9em}
+        .food-item .food-name{color:#e0e0e0}
+        .food-item .food-cal{color:#ff6b6b;font-weight:bold}
+        .food-item .food-del{color:#666;cursor:pointer;margin-left:8px;font-size:0.8em}
+        .food-item .food-del:hover{color:#e74c3c}
+        .add-food-row{display:flex;gap:8px;margin-top:8px}
+        .add-food-row input{flex:1;padding:10px 14px;background:#2a2a4a;border:2px solid #3a3a5a;border-radius:10px;color:#e0e0e0;font-size:0.9em;font-family:inherit}
+        .add-food-row input:focus{outline:none;border-color:#ff6b6b}
+        .add-food-row input.cal-input{max-width:90px}
+
+        /* 快捷食物 */
+        .quick-foods{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+        .quick-food{background:#3a3a5a;border-radius:16px;padding:4px 12px;font-size:0.8em;cursor:pointer;transition:all .2s;color:#ccc}
+        .quick-food:hover{background:#ff6b6b;color:white}
+
+        /* ===== 锻炼页 ===== */
+        .exercise-type-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:24px}
+        .exercise-type{background:#2a2a4a;border-radius:12px;padding:16px;text-align:center;cursor:pointer;border:2px solid transparent;transition:all .3s}
+        .exercise-type:hover{border-color:#667eea}
+        .exercise-type.selected{border-color:#2ecc71;background:rgba(46,204,113,0.1)}
+        .exercise-type .ex-icon{font-size:2em;margin-bottom:6px}
+        .exercise-type .ex-name{color:#e0e0e0;font-size:0.9em}
+        .exercise-type .ex-cal{color:#ffd93d;font-size:0.8em;margin-top:4px}
+
+        .exercise-log{margin-top:20px}
+        .exercise-log h4{color:#ffd93d;font-size:0.95em;margin-bottom:12px}
+        .exercise-item{display:flex;justify-content:space-between;align-items:center;background:#2a2a4a;border-radius:10px;padding:12px 14px;margin-bottom:8px}
+        .exercise-item .ex-info{display:flex;align-items:center;gap:10px}
+        .exercise-item .ex-info .ex-emoji{font-size:1.5em}
+        .exercise-item .ex-info .ex-detail{font-size:0.9em}
+        .exercise-item .ex-info .ex-detail .ex-time{color:#888;font-size:0.8em}
+        .exercise-item .ex-dmg{color:#2ecc71;font-weight:bold;font-size:1em}
+        .exercise-item .ex-del{color:#666;cursor:pointer;margin-left:8px;font-size:0.8em}
+        .exercise-item .ex-del:hover{color:#e74c3c}
+
+        .duration-selector{display:flex;gap:8px;margin:16px 0;flex-wrap:wrap}
+        .duration-btn{background:#3a3a5a;border:none;border-radius:20px;padding:8px 16px;color:#ccc;font-size:0.85em;cursor:pointer;transition:all .2s;font-family:inherit}
+        .duration-btn:hover,.duration-btn.selected{background:#2ecc71;color:white}
+
+        /* ===== 战斗动画 ===== */
+        .damage-popup{position:absolute;font-weight:bold;font-size:1.2em;pointer-events:none;animation:floatUp 1.2s ease forwards;z-index:10}
+        .damage-popup.damage{color:#2ecc71}
+        .damage-popup.heal{color:#ff6b6b}
+        @keyframes floatUp{0%{opacity:1;transform:translateY(0) scale(1)}100%{opacity:0;transform:translateY(-60px) scale(1.3)}}
+
+        /* 胜利/失败弹窗 */
+        .modal-overlay{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:200;justify-content:center;align-items:center}
+        .modal-overlay.show{display:flex}
+        .modal{background:#1a1a2e;border-radius:20px;padding:40px;text-align:center;max-width:360px;width:90%;animation:popIn .4s ease}
+        @keyframes popIn{from{transform:scale(0.8);opacity:0}to{transform:scale(1);opacity:1}}
+        .modal .modal-icon{font-size:4em;margin-bottom:16px}
+        .modal h3{font-size:1.5em;margin-bottom:8px}
+        .modal p{color:#aaa;margin-bottom:24px}
+        .modal .reward{color:#ffd93d;font-size:1.1em;font-weight:bold;margin-bottom:20px}
+
+        /* ===== 统计页 ===== */
+        .stat-card{background:#2a2a4a;border-radius:12px;padding:16px;margin-bottom:12px}
+        .stat-card h4{color:#ffd93d;font-size:0.95em;margin-bottom:12px}
+        .stat-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+        .stat-item{text-align:center;background:#1e1e3a;border-radius:10px;padding:14px}
+        .stat-item .stat-num{font-size:1.5em;font-weight:bold;color:#ff6b6b}
+        .stat-item .stat-label{color:#888;font-size:0.8em;margin-top:4px}
+        .progress-bar{background:#1e1e3a;border-radius:8px;height:12px;overflow:hidden;margin-top:8px}
+        .progress-fill{height:100%;border-radius:8px;transition:width .5s ease}
+        .progress-fill.green{background:linear-gradient(90deg,#2ecc71,#27ae60)}
+        .progress-fill.red{background:linear-gradient(90deg,#e74c3c,#ff6b6b)}
+        .progress-fill.blue{background:linear-gradient(90deg,#667eea,#764ba2)}
+
+        /* ===== Toast ===== */
+        .toast{position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#2ecc71;color:white;padding:12px 24px;border-radius:10px;font-size:0.9em;z-index:300;animation:toastIn .3s ease,toastOut .3s ease 2s forwards;pointer-events:none}
+        .toast.error{background:#e74c3c}
+        @keyframes toastIn{from{opacity:0;transform:translateX(-50%) translateY(-20px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
+        @keyframes toastOut{from{opacity:1}to{opacity:0}}
+
+        /* ===== 粒子效果 ===== */
+        .particles{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;overflow:hidden}
+        .particle{position:absolute;width:6px;height:6px;border-radius:50%;animation:particleFade 1s ease forwards}
+        @keyframes particleFade{0%{opacity:1;transform:translate(0,0) scale(1)}100%{opacity:0;transform:translate(var(--dx),var(--dy)) scale(0)}}
+
+        /* 响应式 */
+        @media(max-width:480px){.container{max-width:100%}}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- ===== 欢迎页 ===== -->
+        <div class="page active" id="page-welcome">
+            <div class="welcome">
+                <div class="logo">&#x1F525;</div>
+                <h2>减肥大作战</h2>
+                <p>把减肥变成一场冒险游戏<br>击败你的脂肪怪！</p>
+                <button class="btn btn-primary" onclick="showPage('page-setup')">开始冒险</button>
+            </div>
+        </div>
+
+        <!-- ===== 角色设置页 ===== -->
+        <div class="page" id="page-setup">
+            <div class="top-bar">
+                <h1>&#x1F3AF; 角色设置</h1>
+                <span style="color:#888;font-size:0.85em">1/2</span>
+            </div>
+
+            <div class="setup-section">
+                <h3>&#x1F4CB; 基本信息</h3>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>身高 (cm)</label>
+                        <input type="number" id="input-height" placeholder="170" min="100" max="250" oninput="calcBMI()">
+                    </div>
+                    <div class="form-group">
+                        <label>体重 (kg)</label>
+                        <input type="number" id="input-weight" placeholder="75" min="30" max="300" oninput="calcBMI()">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>目标体重 (kg)</label>
+                    <input type="number" id="input-target" placeholder="65" min="30" max="200">
+                </div>
+                <div class="bmi-result" id="bmi-result" style="display:none">
+                    <div class="bmi-value" id="bmi-value">--</div>
+                    <div class="bmi-label" id="bmi-label">BMI</div>
+                </div>
+            </div>
+
+            <div class="setup-section">
+                <h3>&#x1F464; 选择角色</h3>
+                <div class="avatar-grid">
+                    <div class="avatar-option" onclick="selectAvatar(this,0)">&#x1F9B5;</div>
+                    <div class="avatar-option" onclick="selectAvatar(this,1)">&#x1F9B4;</div>
+                    <div class="avatar-option" onclick="selectAvatar(this,2)">&#x1F9D1;&#x200D;&#x1F527;</div>
+                    <div class="avatar-option" onclick="selectAvatar(this,3)">&#x1F9D8;</div>
+                    <div class="avatar-option" onclick="selectAvatar(this,4)">&#x1F3CB;</div>
+                    <div class="avatar-option" onclick="selectAvatar(this,5)">&#x1F680;</div>
+                </div>
+            </div>
+
+            <div style="text-align:center;margin-top:30px">
+                <button class="btn btn-primary" onclick="finishSetup()">生成关卡，开始战斗！</button>
+            </div>
+        </div>
+
+        <!-- ===== 主页（战斗） ===== -->
+        <div class="page" id="page-home">
+            <div class="top-bar">
+                <h1>&#x2694;&#xFE0F; 减肥大作战</h1>
+                <div class="stats">
+                    <div class="stat-item">&#x1F4B0; <span id="top-coins">0</span></div>
+                    <div class="stat-item">&#x1F525; Day <span id="top-day">1</span></div>
+                </div>
+            </div>
+
+            <div class="hero-card">
+                <div class="greeting" id="greeting">早上好，勇者！</div>
+                <div class="day-count">第 <span id="day-count">1</span> 天</div>
+                <div class="motivation" id="motivation">今天的脂肪怪正在等着你！</div>
+            </div>
+
+            <!-- 怪物战斗区 -->
+            <div class="battle-zone" id="battle-zone">
+                <h3>&#x1F480; 今日精英小怪</h3>
+                <div class="monster-name" id="monster-name">贪吃史莱姆</div>
+                <div class="monster-level" id="monster-level">Lv.1</div>
+                <div class="monster" id="monster-display">&#x1F47E;</div>
+                <div class="hp-label">
+                    <span>&#x1F47E; <span id="enemy-name-hp">贪吃史莱姆</span></span>
+                    <span id="enemy-hp-text">100 / 100</span>
+                </div>
+                <div class="hp-bar-container">
+                    <div class="hp-bar enemy" id="enemy-hp-bar" style="width:100%"></div>
+                    <div class="hp-text" id="enemy-hp-percent">100%</div>
+                </div>
+                <div style="margin-top:12px">
+                    <div class="hp-label">
+                        <span>&#x1F396;&#xFE0F; 你的体力</span>
+                        <span id="player-hp-text">100 / 100</span>
+                    </div>
+                    <div class="hp-bar-container">
+                        <div class="hp-bar player" id="player-hp-bar" style="width:100%"></div>
+                        <div class="hp-text" id="player-hp-percent">100%</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 快捷操作 -->
+            <div class="quick-actions">
+                <div class="action-card" onclick="switchTab('food')">
+                    <div class="action-icon">&#x1F37D;&#xFE0F;</div>
+                    <div class="action-label">记录饮食</div>
+                </div>
+                <div class="action-card" onclick="switchTab('exercise')">
+                    <div class="action-icon">&#x1F3CB;&#xFE0F;</div>
+                    <div class="action-label">锻炼攻击</div>
+                </div>
+            </div>
+
+            <!-- 今日概览 -->
+            <div class="today-summary">
+                <h4>&#x1F4CA; 今日战况</h4>
+                <div class="summary-row">
+                    <span class="label">摄入卡路里</span>
+                    <span class="value positive" id="sum-cal-in">0 kcal</span>
+                </div>
+                <div class="summary-row">
+                    <span class="label">目标摄入</span>
+                    <span class="value" id="sum-cal-target">1800 kcal</span>
+                </div>
+                <div class="summary-row">
+                    <span class="label">锻炼消耗</span>
+                    <span class="value negative" id="sum-cal-exercise">0 kcal</span>
+                </div>
+                <div class="summary-row">
+                    <span class="label">净卡路里</span>
+                    <span class="value" id="sum-cal-net">0 kcal</span>
+                </div>
+                <div class="summary-row">
+                    <span class="label">对怪物造成伤害</span>
+                    <span class="value negative" id="sum-damage-dealt">0</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== 饮食页 ===== -->
+        <div class="page" id="page-food">
+            <div class="top-bar">
+                <h1>&#x1F37D;&#xFE0F; 饮食记录</h1>
+                <span style="color:#ffd93d;font-size:0.9em" id="food-total-cal">0 kcal</span>
+            </div>
+
+            <!-- 早餐 -->
+            <div class="meal-section">
+                <div class="meal-header">
+                    <h3>&#x1F35E; 早餐</h3>
+                    <span class="meal-total" id="breakfast-cal">0 kcal</span>
+                </div>
+                <div class="food-list" id="breakfast-list"></div>
+                <div class="add-food-row">
+                    <input type="text" id="breakfast-name" placeholder="食物名称">
+                    <input type="number" id="breakfast-cal-input" class="cal-input" placeholder="卡路里">
+                    <button class="btn btn-sm btn-secondary" onclick="addFood('breakfast')">添加</button>
+                </div>
+                <div class="quick-foods">
+                    <span class="quick-food" onclick="quickAddFood('breakfast','白粥',150)">白粥 150</span>
+                    <span class="quick-food" onclick="quickAddFood('breakfast','鸡蛋',80)">鸡蛋 80</span>
+                    <span class="quick-food" onclick="quickAddFood('breakfast','牛奶',120)">牛奶 120</span>
+                    <span class="quick-food" onclick="quickAddFood('breakfast','面包',180)">面包 180</span>
+                    <span class="quick-food" onclick="quickAddFood('breakfast','豆浆',90)">豆浆 90</span>
+                    <span class="quick-food" onclick="quickAddFood('breakfast','油条',230)">油条 230</span>
+                    <span class="quick-food" onclick="quickAddFood('breakfast','包子',200)">包子 200</span>
+                </div>
+            </div>
+
+            <!-- 午餐 -->
+            <div class="meal-section">
+                <div class="meal-header">
+                    <h3>&#x1F35C; 午餐</h3>
+                    <span class="meal-total" id="lunch-cal">0 kcal</span>
+                </div>
+                <div class="food-list" id="lunch-list"></div>
+                <div class="add-food-row">
+                    <input type="text" id="lunch-name" placeholder="食物名称">
+                    <input type="number" id="lunch-cal-input" class="cal-input" placeholder="卡路里">
+                    <button class="btn btn-sm btn-secondary" onclick="addFood('lunch')">添加</button>
+                </div>
+                <div class="quick-foods">
+                    <span class="quick-food" onclick="quickAddFood('lunch','米饭',230)">米饭 230</span>
+                    <span class="quick-food" onclick="quickAddFood('lunch','鸡腿',180)">鸡腿 180</span>
+                    <span class="quick-food" onclick="quickAddFood('lunch','炒青菜',80)">炒青菜 80</span>
+                    <span class="quick-food" onclick="quickAddFood('lunch','红烧肉',350)">红烧肉 350</span>
+                    <span class="quick-food" onclick="quickAddFood('lunch','鱼',120)">鱼 120</span>
+                    <span class="quick-food" onclick="quickAddFood('lunch','面条',280)">面条 280</span>
+                    <span class="quick-food" onclick="quickAddFood('lunch','沙拉',100)">沙拉 100</span>
+                </div>
+            </div>
+
+            <!-- 晚餐 -->
+            <div class="meal-section">
+                <div class="meal-header">
+                    <h3>&#x1F373; 晚餐</h3>
+                    <span class="meal-total" id="dinner-cal">0 kcal</span>
+                </div>
+                <div class="food-list" id="dinner-list"></div>
+                <div class="add-food-row">
+                    <input type="text" id="dinner-name" placeholder="食物名称">
+                    <input type="number" id="dinner-cal-input" class="cal-input" placeholder="卡路里">
+                    <button class="btn btn-sm btn-secondary" onclick="addFood('dinner')">添加</button>
+                </div>
+                <div class="quick-foods">
+                    <span class="quick-food" onclick="quickAddFood('dinner','粥',120)">粥 120</span>
+                    <span class="quick-food" onclick="quickAddFood('dinner','蒸鱼',150)">蒸鱼 150</span>
+                    <span class="quick-food" onclick="quickAddFood('dinner','蔬菜',60)">蔬菜 60</span>
+                    <span class="quick-food" onclick="quickAddFood('dinner','豆腐',80)">豆腐 80</span>
+                    <span class="quick-food" onclick="quickAddFood('dinner','水果',80)">水果 80</span>
+                    <span class="quick-food" onclick="quickAddFood('dinner','酸奶',100)">酸奶 100</span>
+                    <span class="quick-food" onclick="quickAddFood('dinner','火锅',800)">火锅 800</span>
+                </div>
+            </div>
+
+            <!-- 加餐/零食 -->
+            <div class="meal-section">
+                <div class="meal-header">
+                    <h3>&#x1F36C; 加餐/零食</h3>
+                    <span class="meal-total" id="snack-cal">0 kcal</span>
+                </div>
+                <div class="food-list" id="snack-list"></div>
+                <div class="add-food-row">
+                    <input type="text" id="snack-name" placeholder="食物名称">
+                    <input type="number" id="snack-cal-input" class="cal-input" placeholder="卡路里">
+                    <button class="btn btn-sm btn-secondary" onclick="addFood('snack')">添加</button>
+                </div>
+                <div class="quick-foods">
+                    <span class="quick-food" onclick="quickAddFood('snack','奶茶',400)">奶茶 400</span>
+                    <span class="quick-food" onclick="quickAddFood('snack','薯片',280)">薯片 280</span>
+                    <span class="quick-food" onclick="quickAddFood('snack','可乐',140)">可乐 140</span>
+                    <span class="quick-food" onclick="quickAddFood('snack','饼干',150)">饼干 150</span>
+                    <span class="quick-food" onclick="quickAddFood('snack','坚果',180)">坚果 180</span>
+                    <span class="quick-food" onclick="quickAddFood('snack','巧克力',220)">巧克力 220</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== 锻炼页 ===== -->
+        <div class="page" id="page-exercise">
+            <div class="top-bar">
+                <h1>&#x1F3CB;&#xFE0F; 锻炼攻击</h1>
+                <span style="color:#2ecc71;font-size:0.9em" id="exercise-total-dmg">0 伤害</span>
+            </div>
+
+            <div style="background:#2a2a4a;border-radius:12px;padding:16px;margin-bottom:20px;text-align:center">
+                <p style="color:#ffd93d;font-size:0.95em;margin-bottom:8px">&#x26A1; 锻炼是减少脂肪怪血量最快的方式！</p>
+                <p style="color:#888;font-size:0.85em">选择运动类型和时长，对脂肪怪发起强力攻击</p>
+            </div>
+
+            <h3 style="color:#ff6b6b;font-size:1em;margin-bottom:12px">&#x1F3AF; 选择运动</h3>
+            <div class="exercise-type-grid" id="exercise-types">
+                <div class="exercise-type" onclick="selectExercise(this,'running',8)">
+                    <div class="ex-icon">&#x1F3C3;</div>
+                    <div class="ex-name">跑步</div>
+                    <div class="ex-cal">8 kcal/min</div>
+                </div>
+                <div class="exercise-type" onclick="selectExercise(this,'walking',5)">
+                    <div class="ex-icon">&#x1F6B6;</div>
+                    <div class="ex-name">快走</div>
+                    <div class="ex-cal">5 kcal/min</div>
+                </div>
+                <div class="exercise-type" onclick="selectExercise(this,'cycling',7)">
+                    <div class="ex-icon">&#x1F6B4;</div>
+                    <div class="ex-name">骑行</div>
+                    <div class="ex-cal">7 kcal/min</div>
+                </div>
+                <div class="exercise-type" onclick="selectExercise(this,'swimming',10)">
+                    <div class="ex-icon">&#x1F3CA;</div>
+                    <div class="ex-name">游泳</div>
+                    <div class="ex-cal">10 kcal/min</div>
+                </div>
+                <div class="exercise-type" onclick="selectExercise(this,'yoga',4)">
+                    <div class="ex-icon">&#x1F9D8;</div>
+                    <div class="ex-name">瑜伽</div>
+                    <div class="ex-cal">4 kcal/min</div>
+                </div>
+                <div class="exercise-type" onclick="selectExercise(this,'hiit',12)">
+                    <div class="ex-icon">&#x1F525;</div>
+                    <div class="ex-name">HIIT</div>
+                    <div class="ex-cal">12 kcal/min</div>
+                </div>
+                <div class="exercise-type" onclick="selectExercise(this,'jump_rope',11)">
+                    <div class="ex-icon">&#x1FAA2;</div>
+                    <div class="ex-name">跳绳</div>
+                    <div class="ex-cal">11 kcal/min</div>
+                </div>
+                <div class="exercise-type" onclick="selectExercise(this,'strength',6)">
+                    <div class="ex-icon">&#x1F4AA;</div>
+                    <div class="ex-name">力量训练</div>
+                    <div class="ex-cal">6 kcal/min</div>
+                </div>
+            </div>
+
+            <h3 style="color:#ff6b6b;font-size:1em;margin-bottom:12px">&#x23F1;&#xFE0F; 选择时长</h3>
+            <div class="duration-selector" id="duration-selector">
+                <button class="duration-btn" onclick="selectDuration(this,10)">10分钟</button>
+                <button class="duration-btn" onclick="selectDuration(this,15)">15分钟</button>
+                <button class="duration-btn selected" onclick="selectDuration(this,20)">20分钟</button>
+                <button class="duration-btn" onclick="selectDuration(this,30)">30分钟</button>
+                <button class="duration-btn" onclick="selectDuration(this,45)">45分钟</button>
+                <button class="duration-btn" onclick="selectDuration(this,60)">60分钟</button>
+            </div>
+
+            <div style="text-align:center;margin:20px 0">
+                <div style="color:#888;font-size:0.9em;margin-bottom:8px">预计消耗 / 造成伤害</div>
+                <div style="font-size:2em;color:#2ecc71;font-weight:bold" id="exercise-preview">0 kcal</div>
+                <div style="color:#ffd93d;font-size:0.9em;margin-top:4px" id="exercise-damage-preview">0 伤害</div>
+            </div>
+
+            <div style="text-align:center;margin:20px 0">
+                <button class="btn btn-success" onclick="doExercise()" id="btn-do-exercise" disabled style="opacity:0.5">发动攻击！</button>
+            </div>
+
+            <div class="exercise-log">
+                <h4>&#x1F4DD; 今日锻炼记录</h4>
+                <div id="exercise-list"></div>
+            </div>
+        </div>
+
+        <!-- ===== 统计页 ===== -->
+        <div class="page" id="page-stats">
+            <div class="top-bar">
+                <h1>&#x1F4CA; 战绩统计</h1>
+            </div>
+
+            <div class="stat-card">
+                <h4>&#x1F3AF; 减肥进度</h4>
+                <div class="stat-grid">
+                    <div class="stat-item">
+                        <div class="stat-num" id="stat-weight">--</div>
+                        <div class="stat-label">当前体重(kg)</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-num" id="stat-target">--</div>
+                        <div class="stat-label">目标体重(kg)</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-num" id="stat-bmi">--</div>
+                        <div class="stat-label">BMI</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-num" id="stat-day">1</div>
+                        <div class="stat-label">冒险天数</div>
+                    </div>
+                </div>
+                <div style="margin-top:12px">
+                    <div style="display:flex;justify-content:space-between;font-size:0.85em;color:#888;margin-bottom:4px">
+                        <span>减重进度</span>
+                        <span id="stat-progress-text">0%</span>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill green" id="stat-progress-bar" style="width:0%"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="stat-card">
+                <h4>&#x2694;&#xFE0F; 战斗数据</h4>
+                <div class="stat-grid">
+                    <div class="stat-item">
+                        <div class="stat-num" id="stat-kills">0</div>
+                        <div class="stat-label">击败怪物</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-num" id="stat-coins">0</div>
+                        <div class="stat-label">金币</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-num" id="stat-total-damage">0</div>
+                        <div class="stat-label">总伤害</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-num" id="stat-total-exercise">0</div>
+                        <div class="stat-label">总锻炼(kcal)</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="stat-card">
+                <h4>&#x1F4C5; 本周概览</h4>
+                <div id="weekly-overview">
+                    <div style="color:#888;font-size:0.9em;text-align:center;padding:20px">开始记录后显示本周数据</div>
+                </div>
+            </div>
+
+            <div style="text-align:center;margin-top:30px">
+                <button class="btn btn-danger btn-sm" onclick="resetGame()">重置游戏</button>
+            </div>
+        </div>
+
+        <!-- ===== 底部导航 ===== -->
+        <div class="bottom-nav" id="bottom-nav" style="display:none">
+            <div class="nav-item active" onclick="switchTab('home')">
+                <span class="nav-icon">&#x2694;&#xFE0F;</span>战斗
+            </div>
+            <div class="nav-item" onclick="switchTab('food')">
+                <span class="nav-icon">&#x1F37D;&#xFE0F;</span>饮食
+            </div>
+            <div class="nav-item" onclick="switchTab('exercise')">
+                <span class="nav-icon">&#x1F3CB;&#xFE0F;</span>锻炼
+            </div>
+            <div class="nav-item" onclick="switchTab('stats')">
+                <span class="nav-icon">&#x1F4CA;</span>统计
+            </div>
+        </div>
+
+        <!-- ===== 胜利弹窗 ===== -->
+        <div class="modal-overlay" id="modal-victory">
+            <div class="modal">
+                <div class="modal-icon">&#x1F389;</div>
+                <h3 style="color:#ffd93d">怪物被击败！</h3>
+                <p id="victory-text">你成功击败了贪吃史莱姆！</p>
+                <div class="reward" id="victory-reward">+50 金币</div>
+                <button class="btn btn-primary" onclick="closeModal('modal-victory');nextDay()">迎接新挑战</button>
+            </div>
+        </div>
+
+        <!-- ===== 失败弹窗 ===== -->
+        <div class="modal-overlay" id="modal-defeat">
+            <div class="modal">
+                <div class="modal-icon">&#x1F4A5;</div>
+                <h3 style="color:#e74c3c">体力耗尽...</h3>
+                <p>脂肪怪太强了！明天继续加油！</p>
+                <button class="btn btn-danger" onclick="closeModal('modal-defeat');nextDay()">明天再战</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    // ===== 游戏状态 =====
+    const AVATARS = ['\u{1F9B5}','\u{1F9B4}','\u{1F9D1}\u200D\u{1F527}','\u{1F9D8}','\u{1F3CB}','\u{1F680}'];
+    const MONSTERS = [
+        {name:'贪吃史莱姆',emoji:'\u{1F47E}'},
+        {name:'暴食哥布林',emoji:'\u{1F47A}'},
+        {name:'馋嘴幽灵',emoji:'\u{1F47B}'},
+        {name:'脂肪巨魔',emoji:'\u{1F9C9}'},
+        {name:'卡路里恶魔',emoji:'\u{1F608}'},
+        {name:'肥胖树人',emoji:'\u{1F333}'},
+        {name:'贪睡树懒',emoji:'\u{1F428}'},
+        {name:'炸鸡龙',emoji:'\u{1F432}'}
+    ];
+    const EXERCISE_NAMES = {
+        running:'跑步',walking:'快走',cycling:'骑行',swimming:'游泳',
+        yoga:'瑜伽',hiit:'HIIT',jump_rope:'跳绳',strength:'力量训练'
+    };
+    const EXERCISE_EMOJIS = {
+        running:'\u{1F3C3}',walking:'\u{1F6B6}',cycling:'\u{1F6B4}',swimming:'\u{1F3CA}',
+        yoga:'\u{1F9D8}',hiit:'\u{1F525}',jump_rope:'\u{1FAA2}',strength:'\u{1F4AA}'
+    };
+
+    let game = {
+        height: 0, weight: 0, targetWeight: 0, bmi: 0,
+        avatar: 0, day: 1, coins: 0, kills: 0,
+        totalDamage: 0, totalExercise: 0,
+        // 当前关卡
+        enemyMaxHp: 100, enemyHp: 100,
+        playerMaxHp: 100, playerHp: 100,
+        enemyIndex: 0, enemyLevel: 1,
+        // 今日数据
+        todayCalIn: 0, todayCalExercise: 0, todayDamage: 0,
+        targetCal: 1800,
+        // 食物记录
+        meals: {breakfast:[], lunch:[], dinner:[], snack:[]},
+        // 锻炼记录
+        exercises: [],
+        // 本周记录
+        weekData: []
+    };
+
+    let selectedExercise = null;
+    let selectedDuration = 20;
+
+    // ===== 页面切换 =====
+    function showPage(id) {
+        document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+        document.getElementById(id).classList.add('active');
+        document.getElementById('bottom-nav').style.display = 
+            ['page-home','page-food','page-exercise','page-stats'].includes(id) ? 'flex' : 'none';
+    }
+
+    function switchTab(tab) {
+        const map = {home:'page-home',food:'page-food',exercise:'page-exercise',stats:'page-stats'};
+        showPage(map[tab]);
+        document.querySelectorAll('.nav-item').forEach((n,i) => {
+            const tabs = ['home','food','exercise','stats'];
+            n.classList.toggle('active', tabs[i] === tab);
+        });
+    }
+
+    // ===== 设置页 =====
+    function calcBMI() {
+        const h = parseFloat(document.getElementById('input-height').value);
+        const w = parseFloat(document.getElementById('input-weight').value);
+        if (h > 0 && w > 0) {
+            const bmi = w / ((h/100) ** 2);
+            document.getElementById('bmi-result').style.display = 'block';
+            document.getElementById('bmi-value').textContent = bmi.toFixed(1);
+            let label = '正常';
+            if (bmi < 18.5) label = '偏瘦';
+            else if (bmi < 24) label = '正常';
+            else if (bmi < 28) label = '偏胖';
+            else label = '肥胖';
+            document.getElementById('bmi-label').textContent = 'BMI · ' + label;
+        }
+    }
+
+    function selectAvatar(el, idx) {
+        document.querySelectorAll('.avatar-option').forEach(a => a.classList.remove('selected'));
+        el.classList.add('selected');
+        game.avatar = idx;
+    }
+
+    function finishSetup() {
+        const h = parseFloat(document.getElementById('input-height').value);
+        const w = parseFloat(document.getElementById('input-weight').value);
+        const t = parseFloat(document.getElementById('input-target').value);
+        if (!h || !w || !t) { showToast('请填写完整信息！', true); return; }
+        if (t >= w) { showToast('目标体重应小于当前体重！', true); return; }
+
+        game.height = h; game.weight = w; game.targetWeight = t;
+        game.bmi = w / ((h/100) ** 2);
+        // 根据BMI计算关卡难度
+        const diff = Math.max(1, Math.round((game.bmi - 22) * 5));
+        game.enemyMaxHp = 80 + diff * 20;
+        game.enemyHp = game.enemyMaxHp;
+        game.playerMaxHp = 100;
+        game.playerHp = 100;
+        game.enemyLevel = diff;
+        // 目标卡路里：基础代谢约 体重*20
+        game.targetCal = Math.round(w * 24);
+        game.enemyIndex = Math.floor(Math.random() * MONSTERS.length);
+
+        updateGreeting();
+        updateBattleUI();
+        updateSummary();
+        updateStats();
+        showPage('page-home');
+        showToast('冒险开始！击败今天的脂肪怪！');
+    }
+
+    // ===== 战斗系统 =====
+    function updateBattleUI() {
+        const m = MONSTERS[game.enemyIndex];
+        document.getElementById('monster-display').textContent = m.emoji;
+        document.getElementById('monster-name').textContent = m.name;
+        document.getElementById('monster-level').textContent = 'Lv.' + game.enemyLevel;
+        document.getElementById('enemy-name-hp').textContent = m.name;
+        // 敌人血条
+        const ehp = Math.max(0, game.enemyHp);
+        const ehpPct = Math.max(0, (ehp / game.enemyMaxHp) * 100);
+        document.getElementById('enemy-hp-bar').style.width = ehpPct + '%';
+        document.getElementById('enemy-hp-text').textContent = Math.round(ehp) + ' / ' + game.enemyMaxHp;
+        document.getElementById('enemy-hp-percent').textContent = Math.round(ehpPct) + '%';
+        // 玩家血条
+        const php = Math.max(0, game.playerHp);
+        const phpPct = Math.max(0, (php / game.playerMaxHp) * 100);
+        document.getElementById('player-hp-bar').style.width = phpPct + '%';
+        document.getElementById('player-hp-text').textContent = Math.round(php) + ' / ' + game.playerMaxHp;
+        document.getElementById('player-hp-percent').textContent = Math.round(phpPct) + '%';
+        // 顶部信息
+        document.getElementById('top-coins').textContent = game.coins;
+        document.getElementById('top-day').textContent = game.day;
+        document.getElementById('day-count').textContent = game.day;
+    }
+
+    function damageEnemy(amount) {
+        game.enemyHp -= amount;
+        game.todayDamage += amount;
+        game.totalDamage += amount;
+        // 动画
+        const monster = document.getElementById('monster-display');
+        monster.classList.remove('attacked');
+        void monster.offsetWidth;
+        monster.classList.add('attacked');
+        showDamagePopup(amount, 'damage');
+        updateBattleUI();
+        updateSummary();
+        // 检查胜利
+        if (game.enemyHp <= 0) {
+            setTimeout(() => showVictory(), 500);
+        }
+    }
+
+    function healEnemy(amount) {
+        game.enemyHp = Math.min(game.enemyMaxHp, game.enemyHp + amount);
+        const monster = document.getElementById('monster-display');
+        monster.classList.remove('healing');
+        void monster.offsetWidth;
+        monster.classList.add('healing');
+        showDamagePopup(amount, 'heal');
+        updateBattleUI();
+        updateSummary();
+    }
+
+    function damagePlayer(amount) {
+        game.playerHp -= amount;
+        updateBattleUI();
+        if (game.playerHp <= 0) {
+            setTimeout(() => {
+                document.getElementById('modal-defeat').classList.add('show');
+            }, 500);
+        }
+    }
+
+    function showDamagePopup(value, type) {
+        const zone = document.getElementById('battle-zone');
+        const popup = document.createElement('div');
+        popup.className = 'damage-popup ' + type;
+        popup.textContent = (type === 'damage' ? '-' : '+') + Math.round(value);
+        popup.style.left = (40 + Math.random() * 20) + '%';
+        popup.style.top = (30 + Math.random() * 20) + '%';
+        zone.appendChild(popup);
+        setTimeout(() => popup.remove(), 1200);
+    }
+
+    function showVictory() {
+        const reward = 30 + game.enemyLevel * 10;
+        game.coins += reward;
+        game.kills++;
+        document.getElementById('victory-text').textContent = 
+            '你成功击败了' + MONSTERS[game.enemyIndex].name + '！';
+        document.getElementById('victory-reward').textContent = '+' + reward + ' 金币';
+        document.getElementById('modal-victory').classList.add('show');
+        updateBattleUI();
+        updateStats();
+    }
+
+    function closeModal(id) {
+        document.getElementById(id).classList.remove('show');
+    }
+
+    function nextDay() {
+        // 保存本周数据
+        game.weekData.push({
+            day: game.day,
+            calIn: game.todayCalIn,
+            calExercise: game.todayCalExercise,
+            damage: game.todayDamage,
+            killed: game.enemyHp <= 0
+        });
+        // 新一天
+        game.day++;
+        game.todayCalIn = 0;
+        game.todayCalExercise = 0;
+        game.todayDamage = 0;
+        game.meals = {breakfast:[], lunch:[], dinner:[], snack:[]};
+        game.exercises = [];
+        // 新怪物
+        game.enemyIndex = (game.enemyIndex + 1) % MONSTERS.length;
+        game.enemyLevel = Math.min(10, game.enemyLevel + (game.day % 7 === 0 ? 1 : 0));
+        game.enemyMaxHp = 80 + game.enemyLevel * 20;
+        game.enemyHp = game.enemyMaxHp;
+        game.playerHp = game.playerMaxHp;
+
+        updateGreeting();
+        updateBattleUI();
+        updateSummary();
+        updateFoodUI();
+        updateExerciseUI();
+        updateStats();
+        switchTab('home');
+        showToast('新的一天！新的脂肪怪出现了！');
+    }
+
+    function updateGreeting() {
+        const hour = new Date().getHours();
+        let g = '晚上好';
+        if (hour < 6) g = '夜深了';
+        else if (hour < 12) g = '早上好';
+        else if (hour < 14) g = '中午好';
+        else if (hour < 18) g = '下午好';
+        document.getElementById('greeting').textContent = g + '，' + AVATARS[game.avatar] + ' 勇者！';
+        const motivations = [
+            '今天的脂肪怪正在等着你！',
+            '控制饮食，锻炼身体，击败它！',
+            '坚持就是胜利，加油！',
+            '每少吃一口，怪物就弱一分！',
+            '锻炼是最好的武器，冲啊！'
+        ];
+        document.getElementById('motivation').textContent = motivations[game.day % motivations.length];
+    }
+
+    function updateSummary() {
+        const net = game.todayCalIn - game.todayCalExercise;
+        document.getElementById('sum-cal-in').textContent = game.todayCalIn + ' kcal';
+        document.getElementById('sum-cal-target').textContent = game.targetCal + ' kcal';
+        document.getElementById('sum-cal-exercise').textContent = '-' + game.todayCalExercise + ' kcal';
+        document.getElementById('sum-cal-net').textContent = net + ' kcal';
+        document.getElementById('sum-cal-net').className = 'value ' + (net <= game.targetCal ? 'negative' : 'positive');
+        document.getElementById('sum-damage-dealt').textContent = '-' + game.todayDamage;
+    }
+
+    // ===== 饮食系统 =====
+    function addFood(meal) {
+        const nameInput = document.getElementById(meal + '-name');
+        const calInput = document.getElementById(meal + '-cal-input');
+        const name = nameInput.value.trim();
+        const cal = parseInt(calInput.value);
+        if (!name || !cal || cal <= 0) { showToast('请输入食物名称和卡路里', true); return; }
+        game.meals[meal].push({name, cal});
+        nameInput.value = '';
+        calInput.value = '';
+        // 吃东西的逻辑：摄入卡路里 -> 对怪物的影响
+        const oldCal = game.todayCalIn;
+        game.todayCalIn += cal;
+        // 如果超标，怪物回血
+        if (oldCal <= game.targetCal && game.todayCalIn > game.targetCal) {
+            const over = game.todayCalIn - game.targetCal;
+            healEnemy(Math.round(over * 0.3));
+            showToast('超标了！脂肪怪恢复了 ' + Math.round(over * 0.3) + ' 点血量！', true);
+        }
+        // 摄入卡路里也会少量增加怪物血量
+        healEnemy(Math.round(cal * 0.05));
+        updateFoodUI();
+        updateSummary();
+    }
+
+    function quickAddFood(meal, name, cal) {
+        game.meals[meal].push({name, cal});
+        const oldCal = game.todayCalIn;
+        game.todayCalIn += cal;
+        if (oldCal <= game.targetCal && game.todayCalIn > game.targetCal) {
+            const over = game.todayCalIn - game.targetCal;
+            healEnemy(Math.round(over * 0.3));
+            showToast('超标了！脂肪怪恢复了 ' + Math.round(over * 0.3) + ' 点血量！', true);
+        }
+        healEnemy(Math.round(cal * 0.05));
+        updateFoodUI();
+        updateSummary();
+    }
+
+    function removeFood(meal, idx) {
+        const item = game.meals[meal][idx];
+        game.todayCalIn -= item.cal;
+        game.meals[meal].splice(idx, 1);
+        // 减少怪物回血的效果（近似）
+        game.enemyHp = Math.max(0, game.enemyHp - Math.round(item.cal * 0.05));
+        updateFoodUI();
+        updateBattleUI();
+        updateSummary();
+    }
+
+    function updateFoodUI() {
+        ['breakfast','lunch','dinner','snack'].forEach(meal => {
+            const list = document.getElementById(meal + '-list');
+            list.innerHTML = '';
+            let total = 0;
+            game.meals[meal].forEach((f, i) => {
+                total += f.cal;
+                const div = document.createElement('div');
+                div.className = 'food-item';
+                div.innerHTML = '<span class="food-name">' + f.name + '</span>' +
+                    '<span><span class="food-cal">' + f.cal + ' kcal</span>' +
+                    '<span class="food-del" onclick="removeFood(\'' + meal + '\',' + i + ')">x</span></span>';
+                list.appendChild(div);
+            });
+            document.getElementById(meal + '-cal').textContent = total + ' kcal';
+        });
+        document.getElementById('food-total-cal').textContent = game.todayCalIn + ' kcal';
+    }
+
+    // ===== 锻炼系统 =====
+    function selectExercise(el, type, calPerMin) {
+        document.querySelectorAll('.exercise-type').forEach(e => e.classList.remove('selected'));
+        el.classList.add('selected');
+        selectedExercise = {type, calPerMin};
+        document.getElementById('btn-do-exercise').disabled = false;
+        document.getElementById('btn-do-exercise').style.opacity = '1';
+        updateExercisePreview();
+    }
+
+    function selectDuration(el, min) {
+        document.querySelectorAll('.duration-btn').forEach(b => b.classList.remove('selected'));
+        el.classList.add('selected');
+        selectedDuration = min;
+        updateExercisePreview();
+    }
+
+    function updateExercisePreview() {
+        if (!selectedExercise) return;
+        const cal = selectedExercise.calPerMin * selectedDuration;
+        const damage = Math.round(cal * 0.8); // 锻炼造成的伤害是消耗的80%
+        document.getElementById('exercise-preview').textContent = cal + ' kcal';
+        document.getElementById('exercise-damage-preview').textContent = damage + ' 伤害';
+    }
+
+    function doExercise() {
+        if (!selectedExercise) return;
+        const cal = selectedExercise.calPerMin * selectedDuration;
+        const damage = Math.round(cal * 0.8);
+        // 记录
+        game.exercises.push({
+            type: selectedExercise.type,
+            duration: selectedDuration,
+            cal: cal,
+            damage: damage,
+            time: new Date().toLocaleTimeString('zh-CN', {hour:'2-digit', minute:'2-digit'})
+        });
+        game.todayCalExercise += cal;
+        // 对怪物造成伤害
+        damageEnemy(damage);
+        updateExerciseUI();
+        updateSummary();
+        updateStats();
+        showToast(EXERCISE_NAMES[selectedExercise.type] + ' ' + selectedDuration + '分钟！造成 ' + damage + ' 点伤害！');
+    }
+
+    function removeExercise(idx) {
+        const ex = game.exercises[idx];
+        game.todayCalExercise -= ex.cal;
+        game.todayDamage -= ex.damage;
+        game.totalDamage -= ex.damage;
+        game.totalExercise -= ex.cal;
+        game.enemyHp = Math.min(game.enemyMaxHp, game.enemyHp + ex.damage);
+        game.exercises.splice(idx, 1);
+        updateExerciseUI();
+        updateBattleUI();
+        updateSummary();
+        updateStats();
+    }
+
+    function updateExerciseUI() {
+        const list = document.getElementById('exercise-list');
+        list.innerHTML = '';
+        let totalDmg = 0;
+        game.exercises.forEach((ex, i) => {
+            totalDmg += ex.damage;
+            const div = document.createElement('div');
+            div.className = 'exercise-item';
+            div.innerHTML = '<div class="ex-info">' +
+                '<span class="ex-emoji">' + EXERCISE_EMOJIS[ex.type] + '</span>' +
+                '<div class="ex-detail">' + EXERCISE_NAMES[ex.type] + ' ' + ex.duration + '分钟' +
+                '<div class="ex-time">' + ex.time + ' · ' + ex.cal + ' kcal</div></div></div>' +
+                '<div style="display:flex;align-items:center">' +
+                '<span class="ex-dmg">-' + ex.damage + '</span>' +
+                '<span class="ex-del" onclick="removeExercise(' + i + ')">x</span></div>';
+            list.appendChild(div);
+        });
+        document.getElementById('exercise-total-dmg').textContent = totalDmg + ' 伤害';
+    }
+
+    // ===== 统计 =====
+    function updateStats() {
+        document.getElementById('stat-weight').textContent = game.weight || '--';
+        document.getElementById('stat-target').textContent = game.targetWeight || '--';
+        document.getElementById('stat-bmi').textContent = game.bmi ? game.bmi.toFixed(1) : '--';
+        document.getElementById('stat-day').textContent = game.day;
+        document.getElementById('stat-kills').textContent = game.kills;
+        document.getElementById('stat-coins').textContent = game.coins;
+        document.getElementById('stat-total-damage').textContent = game.totalDamage;
+        document.getElementById('stat-total-exercise').textContent = game.totalExercise;
+        // 减重进度
+        if (game.weight && game.targetWeight) {
+            const total = game.weight - game.targetWeight;
+            const pct = Math.min(100, Math.round((total > 0 ? (game.day * 0.1 / total) : 0) * 100));
+            document.getElementById('stat-progress-text').textContent = pct + '%';
+            document.getElementById('stat-progress-bar').style.width = pct + '%';
+        }
+        // 本周概览
+        if (game.weekData.length > 0) {
+            const week = game.weekData.slice(-7);
+            let html = '';
+            week.forEach(d => {
+                const status = d.killed ? '\u2705' : '\u274C';
+                html += '<div class="summary-row"><span class="label">Day ' + d.day + ' ' + status + '</span>' +
+                    '<span class="value">' + d.calIn + 'kcal / -' + d.damage + 'dmg</span></div>';
+            });
+            document.getElementById('weekly-overview').innerHTML = html;
+        }
+    }
+
+    // ===== Toast =====
+    function showToast(msg, isError) {
+        const t = document.createElement('div');
+        t.className = 'toast' + (isError ? ' error' : '');
+        t.textContent = msg;
+        document.body.appendChild(t);
+        setTimeout(() => t.remove(), 2500);
+    }
+
+    // ===== 重置 =====
+    function resetGame() {
+        if (confirm('确定要重置所有游戏数据吗？')) {
+            localStorage.removeItem('fatBattleGame');
+            location.reload();
+        }
+    }
+
+    // ===== 存档 =====
+    function saveGame() {
+        try { localStorage.setItem('fatBattleGame', JSON.stringify(game)); } catch(e) {}
+    }
+    function loadGame() {
+        try {
+            const data = localStorage.getItem('fatBattleGame');
+            if (data) {
+                const saved = JSON.parse(data);
+                Object.assign(game, saved);
+                if (game.weight > 0) {
+                    showPage('page-home');
+                    updateGreeting();
+                    updateBattleUI();
+                    updateSummary();
+                    updateFoodUI();
+                    updateExerciseUI();
+                    updateStats();
+                    return true;
+                }
+            }
+        } catch(e) {}
+        return false;
+    }
+
+    // ===== 初始化 =====
+    window.addEventListener('beforeunload', saveGame);
+    if (!loadGame()) {
+        showPage('page-welcome');
+    }
+    </script>
+</body>
+</html>
