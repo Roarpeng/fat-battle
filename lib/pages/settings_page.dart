@@ -102,20 +102,39 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                       ),
                     const Divider(color: AppColors.border),
                     
-                    // 提醒频率
+                    // 通知开关
                     _buildSettingItem(
                       icon: '🔔',
+                      title: '通知提醒',
+                      subtitle: '接收成就与每日摘要通知',
+                      trailing: Switch(
+                        value: gameState.notificationEnabled,
+                        onChanged: (v) {
+                          gameNotifier.updateNotificationEnabled(v);
+                          _showToast(v ? '通知已开启' : '通知已关闭');
+                        },
+                        activeColor: AppColors.green,
+                      ),
+                    ),
+                    const Divider(color: AppColors.border),
+                    
+                    // 提醒频率
+                    _buildSettingItem(
+                      icon: '⏰',
                       title: '提醒频率',
-                      subtitle: '饮食与锻炼提醒',
+                      subtitle: '饮食与锻炼提醒频率',
                       trailing: DropdownButton<String>(
-                        value: 'normal',
+                        value: gameState.reminderFrequency,
                         items: [
                           DropdownMenuItem(value: 'often', child: Text('频繁')),
                           DropdownMenuItem(value: 'normal', child: Text('适中')),
                           DropdownMenuItem(value: 'rare', child: Text('较少')),
                         ].toList(),
                         onChanged: (v) {
-                          _showToast('提醒频率已调整为: ${v == 'often' ? '频繁' : v == 'normal' ? '适中' : '较少'}');
+                          if (v != null) {
+                            gameNotifier.updateReminderFrequency(v);
+                            _showToast('提醒频率已调整为: ${v == 'often' ? '频繁' : v == 'normal' ? '适中' : '较少'}');
+                          }
                         },
                         underline: Container(),
                       ),
@@ -128,8 +147,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                       title: '语音播报',
                       subtitle: '战斗语音提示',
                       trailing: Switch(
-                        value: true,
+                        value: gameState.voiceEnabled,
                         onChanged: (v) {
+                          gameNotifier.updateVoiceEnabled(v);
                           _showToast(v ? '语音已开启' : '语音已关闭');
                         },
                         activeColor: AppColors.green,

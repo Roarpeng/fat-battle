@@ -4,13 +4,47 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/game_models.dart';
 import '../constants/app_constants.dart';
 import '../services/game_algorithm.dart';
+import '../services/notification_service.dart';
 
 /// 游戏状态Provider
 class GameStateNotifier extends StateNotifier<GameState> {
   final SharedPreferences? prefs;
+  final NotificationService? notificationService;
+  int _notificationIdCounter = 0;
   
-  GameStateNotifier(this.prefs) : super(GameState()) {
+  GameStateNotifier(this.prefs, {this.notificationService}) : super(GameState()) {
     _loadGame();
+  }
+  
+  Future<void> _sendNotification(String title, String body, {NotificationType type = NotificationType.system}) async {
+    if (notificationService == null) return;
+    if (!state.notificationEnabled) return;
+    
+    final shouldSend = notificationService!.shouldNotifyNow(
+      priority: type == NotificationType.achievement ? NotifyPriority.high : NotifyPriority.normal,
+      dndEnabled: state.dndMode,
+      dndStart: state.dndStart,
+      dndEnd: state.dndEnd,
+    );
+    
+    if (shouldSend) {
+      _notificationIdCounter++;
+      await notificationService!.showNotification(
+        id: _notificationIdCounter,
+        title: title,
+        body: body,
+        type: type,
+      );
+    } else if (type != NotificationType.system) {
+      notificationService!.queue(QueuedNotification(
+        id: _notificationIdCounter.toString(),
+        title: title,
+        body: body,
+        type: type,
+        priority: type == NotificationType.achievement ? NotifyPriority.high : NotifyPriority.normal,
+        createdAt: DateTime.now(),
+      ));
+    }
   }
   
   /// 从本地存储加载游戏
@@ -284,6 +318,12 @@ class GameStateNotifier extends StateNotifier<GameState> {
       ),
     );
     
+    await _sendNotification(
+      state.monster.isBoss ? '🎉 Boss击败！' : '⚔️ 怪物被击败！',
+      '你击败了${state.monster.name}，获得 $reward 金币奖励！',
+      type: NotificationType.achievement,
+    );
+    
     await _checkAchievements();
     await _saveGame();
   }
@@ -384,6 +424,24 @@ class GameStateNotifier extends StateNotifier<GameState> {
     await _saveGame();
   }
   
+  /// 更新通知开关
+  Future<void> updateNotificationEnabled(bool enabled) async {
+    state = state.copyWith(notificationEnabled: enabled);
+    await _saveGame();
+  }
+  
+  /// 更新语音播报开关
+  Future<void> updateVoiceEnabled(bool enabled) async {
+    state = state.copyWith(voiceEnabled: enabled);
+    await _saveGame();
+  }
+  
+  /// 更新提醒频率
+  Future<void> updateReminderFrequency(String frequency) async {
+    state = state.copyWith(reminderFrequency: frequency);
+    await _saveGame();
+  }
+  
   /// 检查成就
   Future<void> _checkAchievements() async {
     final achievements = List<String>.from(state.achievements);
@@ -433,6 +491,11 @@ class GameStateNotifier extends StateNotifier<GameState> {
         
         if (unlocked) {
           achievements.add(achievement.id);
+          _sendNotification(
+            '🏆 成就解锁！',
+            '恭喜你解锁了「${achievement.name}」成就',
+            type: NotificationType.achievement,
+          );
         }
       }
     }
@@ -509,6 +572,9 @@ class GameState {
   final bool dndMode;
   final String dndStart;
   final String dndEnd;
+  final bool notificationEnabled;
+  final bool voiceEnabled;
+  final String reminderFrequency;
   
   const GameState({
     this.user = const User(),
@@ -537,6 +603,9 @@ class GameState {
     this.dndMode = false,
     this.dndStart = '22:00',
     this.dndEnd = '08:00',
+    this.notificationEnabled = true,
+    this.voiceEnabled = true,
+    this.reminderFrequency = 'normal',
   });
   
   GameState copyWith({
@@ -566,6 +635,9 @@ class GameState {
     bool? dndMode,
     String? dndStart,
     String? dndEnd,
+    bool? notificationEnabled,
+    bool? voiceEnabled,
+    String? reminderFrequency,
   }) {
     return GameState(
       user: user ?? this.user,
@@ -594,6 +666,9 @@ class GameState {
       dndMode: dndMode ?? this.dndMode,
       dndStart: dndStart ?? this.dndStart,
       dndEnd: dndEnd ?? this.dndEnd,
+      notificationEnabled: notificationEnabled ?? this.notificationEnabled,
+      voiceEnabled: voiceEnabled ?? this.voiceEnabled,
+      reminderFrequency: reminderFrequency ?? this.reminderFrequency,
     );
   }
   
@@ -659,6 +734,9 @@ class GameState {
       'dndMode': dndMode,
       'dndStart': dndStart,
       'dndEnd': dndEnd,
+      'notificationEnabled': notificationEnabled,
+      'voiceEnabled': voiceEnabled,
+      'reminderFrequency': reminderFrequency,
     };
   }
   
@@ -734,6 +812,9 @@ class GameState {
       dndMode: json['dndMode'] ?? false,
       dndStart: json['dndStart'] ?? '22:00',
       dndEnd: json['dndEnd'] ?? '08:00',
+      notificationEnabled: json['notificationEnabled'] ?? true,
+      voiceEnabled: json['voiceEnabled'] ?? true,
+      reminderFrequency: json['reminderFrequency'] ?? 'normal',
     );
   }
   
@@ -756,12 +837,20 @@ final sharedPreferencesProvider = Provider<SharedPreferences?>((ref) {
 
 final gameStateProvider = StateNotifierProvider<GameStateNotifier, GameState>((ref) {
   SharedPreferences? prefs;
+  NotificationService? notificationService;
   try {
     prefs = ref.watch(sharedPreferencesProvider);
+    notificationService = ref.watch(notificationServiceProvider);
+    // 异步初始化，失败不影响主流程
+    () async {
+      try {
+        await notificationService?.init();
+      } catch (_) {}
+    }();
   } catch (e) {
     // ignore
   }
-  return GameStateNotifier(prefs);
+  return GameStateNotifier(prefs, notificationService: notificationService);
 });
 
 /// 初始化SharedPreferences的FutureProvider

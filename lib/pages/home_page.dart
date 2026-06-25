@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../constants/app_constants.dart';
+import '../models/game_models.dart';
 import '../providers/game_provider.dart';
 import '../widgets/hp_bar.dart';
 import '../widgets/hub_status_dot.dart';
+import '../services/ble_service.dart';
 
 class HomePage extends ConsumerStatefulWidget {
   const HomePage({super.key});
@@ -72,10 +74,27 @@ class _HomePageState extends ConsumerState<HomePage> {
               // 顶部：状态行（Hub状态点 + 天数 + 金币）
               Row(
                 children: [
-                  const HubStatusDot(
-                    status: HubStatus.disconnected,
-                    size: 8,
-                    tooltip: '腰部Hub未连接',
+                  Consumer(
+                    builder: (context, ref, child) {
+                      final bleState = ref.watch(bleConnectionStateProvider);
+                      
+                      HubStatus status = HubStatus.disconnected;
+                      String tooltip = '点击连接腰部Hub';
+                      
+                      bleState.whenData((data) {
+                        if (data.isConnected) {
+                          status = HubStatus.connected;
+                          tooltip = '腰部Hub已连接 - ${data.name}';
+                        }
+                      });
+                      
+                      return HubStatusDot(
+                        status: status,
+                        size: 8,
+                        tooltip: tooltip,
+                        onTap: () => _showHubBottomSheet(context),
+                      );
+                    },
                   ),
                   const Spacer(),
                   Text(
@@ -331,5 +350,218 @@ class _HomePageState extends ConsumerState<HomePage> {
         setState(() => _isShaking = false);
       }
     });
+  }
+  
+  void _showHubBottomSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.card,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return const HubConnectionSheet();
+      },
+    );
+  }
+}
+
+class HubConnectionSheet extends ConsumerStatefulWidget {
+  const HubConnectionSheet({super.key});
+  
+  @override
+  ConsumerState<HubConnectionSheet> createState() => _HubConnectionSheetState();
+}
+
+class _HubConnectionSheetState extends ConsumerState<HubConnectionSheet> {
+  bool _isScanning = false;
+  final List<String> _logs = [];
+  
+  @override
+  void initState() {
+    super.initState();
+    final bleService = ref.read(bleServiceProvider);
+    bleService.logStream.listen((log) {
+      if (mounted) {
+        setState(() {
+          _logs.add(log);
+          if (_logs.length > 50) _logs.removeAt(0);
+        });
+      }
+    });
+  }
+  
+  @override
+  Widget build(BuildContext context) {
+    final bleService = ref.watch(bleServiceProvider);
+    final bleState = ref.watch(bleConnectionStateProvider);
+    
+    return Padding(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Center(
+            child: Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.border,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            '🔗 腰部 Hub 连接',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 16),
+          bleState.when(
+            data: (data) {
+              return _buildStatusRow(data);
+            },
+            loading: () => _buildStatusRow(const BleDeviceState()),
+            error: (_, __) => _buildStatusRow(const BleDeviceState()),
+          ),
+          const SizedBox(height: 16),
+          const Divider(color: AppColors.border),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: _isScanning ? null : _startScan,
+                  icon: Icon(_isScanning ? Icons.hourglass_empty : Icons.search),
+                  label: Text(_isScanning ? '扫描中...' : '扫描设备'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.green,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () => _disconnect(bleService),
+                  icon: const Icon(Icons.bluetooth_disabled),
+                  label: const Text('断开连接'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.red,
+                    side: BorderSide(color: AppColors.red.withOpacity(0.5)),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            '连接日志',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: AppColors.text2,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Container(
+            height: 120,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppColors.bg,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppColors.border),
+            ),
+            child: SingleChildScrollView(
+              reverse: true,
+              child: Text(
+                _logs.isEmpty ? '等待操作...' : _logs.join('\n'),
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: AppColors.text2,
+                  fontFamily: 'monospace',
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+        ],
+      ),
+    );
+  }
+  
+  Widget _buildStatusRow(BleDeviceState data) {
+    HubStatus status = HubStatus.disconnected;
+    String statusText = '未连接';
+    Color statusColor = AppColors.text2;
+    
+    if (data.isConnected) {
+      status = HubStatus.connected;
+      statusText = '已连接';
+      statusColor = AppColors.green;
+    } else if (_isScanning) {
+      status = HubStatus.connecting;
+      statusText = '扫描中...';
+      statusColor = AppColors.gold;
+    }
+    
+    return Row(
+      children: [
+        HubStatusDot(status: status, size: 12),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                data.name.isEmpty ? 'ESP32-Hub' : data.name,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              Text(
+                statusText,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: statusColor,
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (data.deviceId.isNotEmpty)
+          Text(
+            data.deviceId.substring(0, 8),
+            style: const TextStyle(
+              fontSize: 12,
+              color: AppColors.text2,
+              fontFamily: 'monospace',
+            ),
+          ),
+      ],
+    );
+  }
+  
+  Future<void> _startScan() async {
+    final bleService = ref.read(bleServiceProvider);
+    setState(() => _isScanning = true);
+    
+    try {
+      await bleService.startScan();
+    } finally {
+      if (mounted) {
+        setState(() => _isScanning = false);
+      }
+    }
+  }
+  
+  Future<void> _disconnect(BleService bleService) async {
+    await bleService.disconnect();
   }
 }

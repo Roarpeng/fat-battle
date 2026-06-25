@@ -1,3 +1,8 @@
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:timezone/data/latest_all.dart' as tz;
+import 'package:timezone/timezone.dart' as tz;
+
 enum NotificationType { digest, reminder, achievement, system }
 
 enum NotifyPriority { silent, normal, high }
@@ -21,9 +26,134 @@ class QueuedNotification {
 }
 
 class NotificationService {
+  final FlutterLocalNotificationsPlugin _flutterLocalNotificationsPlugin =
+      FlutterLocalNotificationsPlugin();
+  
+  bool _initialized = false;
   final List<QueuedNotification> _queue = [];
 
   List<QueuedNotification> get pending => List.unmodifiable(_queue);
+
+  Future<void> init() async {
+    if (_initialized) return;
+    
+    try {
+      tz.initializeTimeZones();
+      
+      const AndroidInitializationSettings initializationSettingsAndroid =
+          AndroidInitializationSettings('@mipmap/ic_launcher');
+      
+      const InitializationSettings initializationSettings =
+          InitializationSettings(
+        android: initializationSettingsAndroid,
+      );
+      
+      await _flutterLocalNotificationsPlugin.initialize(initializationSettings);
+      _initialized = true;
+    } catch (e) {
+      _initialized = false;
+    }
+  }
+
+  Future<bool> requestPermissions() async {
+    if (!_initialized) await init();
+    
+    bool result = false;
+    
+    final AndroidFlutterLocalNotificationsPlugin? androidImplementation =
+        _flutterLocalNotificationsPlugin.resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>();
+    
+    if (androidImplementation != null) {
+      result = await androidImplementation.requestNotificationsPermission() ?? false;
+    }
+    
+    return result;
+  }
+
+  Future<void> showNotification({
+    required int id,
+    required String title,
+    required String body,
+    NotificationType type = NotificationType.system,
+  }) async {
+    if (!_initialized) await init();
+    
+    const AndroidNotificationDetails androidNotificationDetails =
+        AndroidNotificationDetails(
+      'fat_battle_channel',
+      '减肥大作战',
+      channelDescription: '减肥大作战游戏通知',
+      importance: Importance.max,
+      priority: Priority.high,
+    );
+    
+    const DarwinNotificationDetails darwinNotificationDetails =
+        DarwinNotificationDetails();
+    
+    const NotificationDetails notificationDetails = NotificationDetails(
+      android: androidNotificationDetails,
+      iOS: darwinNotificationDetails,
+    );
+    
+    await _flutterLocalNotificationsPlugin.show(
+      id,
+      title,
+      body,
+      notificationDetails,
+    );
+  }
+
+  Future<void> scheduleNotification({
+    required int id,
+    required String title,
+    required String body,
+    required DateTime scheduledTime,
+    NotificationType type = NotificationType.reminder,
+  }) async {
+    if (!_initialized) await init();
+    
+    const AndroidNotificationDetails androidNotificationDetails =
+        AndroidNotificationDetails(
+      'fat_battle_reminder',
+      '提醒通知',
+      channelDescription: '饮食与锻炼提醒',
+      importance: Importance.high,
+      priority: Priority.high,
+    );
+    
+    const DarwinNotificationDetails darwinNotificationDetails =
+        DarwinNotificationDetails();
+    
+    const NotificationDetails notificationDetails = NotificationDetails(
+      android: androidNotificationDetails,
+      iOS: darwinNotificationDetails,
+    );
+    
+    await _flutterLocalNotificationsPlugin.zonedSchedule(
+      id,
+      title,
+      body,
+      tz.TZDateTime.from(scheduledTime, tz.local),
+      notificationDetails,
+      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      uiLocalNotificationDateInterpretation:
+          UILocalNotificationDateInterpretation.absoluteTime,
+      matchDateTimeComponents: type == NotificationType.reminder
+          ? DateTimeComponents.time
+          : null,
+    );
+  }
+
+  Future<void> cancelNotification(int id) async {
+    if (!_initialized) await init();
+    await _flutterLocalNotificationsPlugin.cancel(id);
+  }
+
+  Future<void> cancelAllNotifications() async {
+    if (!_initialized) await init();
+    await _flutterLocalNotificationsPlugin.cancelAll();
+  }
 
   bool _isDnd(DateTime now, bool dndEnabled, String dndStart, String dndEnd) {
     if (!dndEnabled) return false;
@@ -105,4 +235,6 @@ class NotificationService {
   }
 }
 
-final notificationService = NotificationService();
+final notificationServiceProvider = Provider<NotificationService>((ref) {
+  return NotificationService();
+});

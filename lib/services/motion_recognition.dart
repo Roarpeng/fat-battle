@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'dart:typed_data';
+import 'package:camera/camera.dart';
 import '../models/game_models.dart';
 import '../constants/app_constants.dart';
 
@@ -360,4 +362,231 @@ class FusionRecognitionService {
   
   /// 获取IMU服务
   MotionRecognitionService get imuService => _imuService;
+}
+
+/// 摄像头运动检测器 - 基于帧差分的轻量级运动检测
+class CameraMotionDetector {
+  CameraController? _controller;
+  List<CameraDescription>? _cameras;
+  bool _isDetecting = false;
+  bool _isInitialized = false;
+  
+  int _repCount = 0;
+  String _currentExercise = '';
+  
+  List<int>? _previousFrameLuminance;
+  DateTime _lastRepTime = DateTime.now();
+  String _motionState = 'idle';
+  
+  final int _frameSkip = 2;
+  int _frameCounter = 0;
+  
+  double _motionThreshold = 15.0;
+  final int _debounceMs = 800;
+  
+  Function(int count, String exercise)? onRepDetected;
+  Function(String feedback)? onFeedback;
+  Function(double motionLevel)? onMotionUpdate;
+  
+  CameraController? get controller => _controller;
+  bool get isInitialized => _isInitialized;
+  bool get isDetecting => _isDetecting;
+  int get repCount => _repCount;
+  
+  Future<void> initialize() async {
+    if (_isInitialized) return;
+    
+    try {
+      _cameras = await availableCameras();
+      if (_cameras == null || _cameras!.isEmpty) {
+        throw Exception('没有找到摄像头');
+      }
+      
+      final frontCamera = _cameras!.firstWhere(
+        (cam) => cam.lensDirection == CameraLensDirection.front,
+        orElse: () => _cameras!.first,
+      );
+      
+      _controller = CameraController(
+        frontCamera,
+        ResolutionPreset.low,
+        enableAudio: false,
+      );
+      
+      await _controller!.initialize();
+      _isInitialized = true;
+    } catch (e) {
+      _isInitialized = false;
+      rethrow;
+    }
+  }
+  
+  Future<void> startDetection(String exerciseType) async {
+    if (!_isInitialized || _controller == null) return;
+    
+    _currentExercise = exerciseType;
+    _repCount = 0;
+    _previousFrameLuminance = null;
+    _lastRepTime = DateTime.now();
+    _motionState = 'idle';
+    _isDetecting = true;
+    
+    _controller!.startImageStream(_processCameraImage);
+  }
+  
+  Future<void> stopDetection() async {
+    _isDetecting = false;
+    
+    if (_controller != null && _controller!.value.isStreamingImages) {
+      await _controller!.stopImageStream();
+    }
+    
+    _previousFrameLuminance = null;
+  }
+  
+  void _processCameraImage(CameraImage image) {
+    if (!_isDetecting) return;
+    
+    _frameCounter++;
+    if (_frameCounter < _frameSkip) return;
+    _frameCounter = 0;
+    
+    final luminance = _extractLuminance(image);
+    if (luminance == null) return;
+    
+    if (_previousFrameLuminance != null) {
+      final motionLevel = _calculateMotionLevel(_previousFrameLuminance!, luminance);
+      onMotionUpdate?.call(motionLevel);
+      _analyzeMotion(motionLevel);
+    }
+    
+    _previousFrameLuminance = luminance;
+  }
+  
+  List<int>? _extractLuminance(CameraImage image) {
+    try {
+      final plane = image.planes[0];
+      final bytes = plane.bytes;
+      final width = image.width;
+      final height = image.height;
+      
+      final sampleSize = 8;
+      final sampleWidth = width ~/ sampleSize;
+      final sampleHeight = height ~/ sampleSize;
+      final result = <int>[];
+      
+      for (int y = 0; y < sampleHeight; y++) {
+        for (int x = 0; x < sampleWidth; x++) {
+          final px = x * sampleSize;
+          final py = y * sampleSize;
+          final index = py * plane.bytesPerRow + px;
+          if (index < bytes.length) {
+            result.add(bytes[index]);
+          }
+        }
+      }
+      
+      return result;
+    } catch (e) {
+      return null;
+    }
+  }
+  
+  double _calculateMotionLevel(List<int> prev, List<int> curr) {
+    if (prev.length != curr.length || prev.isEmpty) return 0;
+    
+    int totalDiff = 0;
+    for (int i = 0; i < prev.length; i++) {
+      totalDiff += (curr[i] - prev[i]).abs();
+    }
+    
+    return totalDiff / prev.length;
+  }
+  
+  void _analyzeMotion(double motionLevel) {
+    final now = DateTime.now();
+    final debounceOK = now.difference(_lastRepTime).inMilliseconds > _debounceMs;
+    
+    switch (_currentExercise) {
+      case 'pushup':
+      case 'squat':
+      case 'jumping_jack':
+      case 'hiit':
+      case 'jumprope':
+        if (motionLevel > _motionThreshold && _motionState == 'idle' && debounceOK) {
+          _motionState = 'active';
+        } else if (motionLevel < _motionThreshold * 0.5 && _motionState == 'active') {
+          _motionState = 'idle';
+          _repCount++;
+          _lastRepTime = now;
+          onRepDetected?.call(_repCount, _getExerciseName());
+          onFeedback?.call(_getFeedbackMessage());
+        }
+        break;
+      case 'running':
+      case 'walking':
+      case 'cycling':
+        if (motionLevel > _motionThreshold * 0.7 && debounceOK) {
+          _repCount++;
+          _lastRepTime = now;
+          if (_repCount % 10 == 0) {
+            onRepDetected?.call(_repCount, _getExerciseName());
+            onFeedback?.call(_getFeedbackMessage());
+          }
+        }
+        break;
+      default:
+        if (motionLevel > _motionThreshold && debounceOK) {
+          _repCount++;
+          _lastRepTime = now;
+          onRepDetected?.call(_repCount, _getExerciseName());
+          onFeedback?.call(_getFeedbackMessage());
+        }
+    }
+    
+    if (motionLevel > _motionThreshold * 0.3 && motionLevel < _motionThreshold * 0.7) {
+      onFeedback?.call('动作幅度再大一点！');
+    }
+  }
+  
+  String _getExerciseName() {
+    switch (_currentExercise) {
+      case 'pushup': return '俯卧撑';
+      case 'squat': return '深蹲';
+      case 'jumping_jack': return '开合跳';
+      case 'running': return '跑步';
+      case 'walking': return '快走';
+      case 'cycling': return '骑行';
+      case 'swimming': return '游泳';
+      case 'yoga': return '瑜伽';
+      case 'hiit': return 'HIIT';
+      case 'jumprope': return '跳绳';
+      case 'strength': return '力量训练';
+      default: return '运动';
+    }
+  }
+  
+  String _getFeedbackMessage() {
+    final messages = [
+      '继续加油！',
+      '做得很好！',
+      '坚持住！',
+      '燃烧吧！',
+      '太棒了！',
+      '再快一点！',
+      '你可以的！',
+    ];
+    return '${_repCount}个！${messages[_repCount % messages.length]}';
+  }
+  
+  void setSensitivity(double threshold) {
+    _motionThreshold = threshold.clamp(5.0, 50.0);
+  }
+  
+  Future<void> dispose() async {
+    await stopDetection();
+    await _controller?.dispose();
+    _controller = null;
+    _isInitialized = false;
+  }
 }
