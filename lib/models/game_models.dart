@@ -219,6 +219,7 @@ class Monster {
   final int level;
   final bool isBoss;
   final double healBonus;
+  final int shield;
   
   const Monster({
     this.index = 0,
@@ -229,6 +230,7 @@ class Monster {
     this.level = 1,
     this.isBoss = false,
     this.healBonus = 0,
+    this.shield = 0,
   });
   
   Monster copyWith({
@@ -240,6 +242,7 @@ class Monster {
     int? level,
     bool? isBoss,
     double? healBonus,
+    int? shield,
   }) {
     return Monster(
       index: index ?? this.index,
@@ -250,10 +253,13 @@ class Monster {
       level: level ?? this.level,
       isBoss: isBoss ?? this.isBoss,
       healBonus: healBonus ?? this.healBonus,
+      shield: shield ?? this.shield,
     );
   }
   
   double get hpPercent => hp / maxHp;
+  double get shieldPercent => maxHp > 0 ? (shield / maxHp).clamp(0.0, 1.0) : 0;
+  bool get hasShield => shield > 0;
 }
 
 // 每日状态

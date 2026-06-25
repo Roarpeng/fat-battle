@@ -2,10 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../constants/app_constants.dart';
 import '../providers/game_provider.dart';
-import '../services/game_algorithm.dart';
 import '../widgets/hp_bar.dart';
+import '../widgets/hub_status_dot.dart';
 
-/// 首页（战斗页面）
 class HomePage extends ConsumerStatefulWidget {
   const HomePage({super.key});
   
@@ -15,7 +14,38 @@ class HomePage extends ConsumerStatefulWidget {
 
 class _HomePageState extends ConsumerState<HomePage> {
   bool _isShaking = false;
-  bool _isGlowing = false;
+  
+  String _getStatusMessage(GameState gs) {
+    if (gs.status == GameStatus.won) {
+      return '今日任务完成 🎉 明天继续保持';
+    }
+    if (gs.status == GameStatus.lost) {
+      return '今日体力已用完，好好休息';
+    }
+    if (gs.monster.hasShield) {
+      return '它套了层壳，去走走就能破防';
+    }
+    if (gs.remainingCal >= 0) {
+      return '再消耗 ${(gs.monster.hp * 0.8).toInt()} kcal 就能击败它';
+    } else {
+      return '超出 ${-gs.remainingCal} kcal，动一动就好';
+    }
+  }
+  
+  String _getCalorieDisplay(GameState gs) {
+    final remaining = gs.remainingCal;
+    if (remaining >= 0) {
+      return '今日还能吃 $remaining kcal';
+    } else {
+      return '已超出 ${-remaining} kcal';
+    }
+  }
+  
+  Color _getCalorieColor(GameState gs) {
+    if (gs.remainingCal >= 500) return AppColors.green;
+    if (gs.remainingCal >= 0) return AppColors.gold;
+    return AppColors.red;
+  }
   
   @override
   Widget build(BuildContext context) {
@@ -26,266 +56,186 @@ class _HomePageState extends ConsumerState<HomePage> {
       return const Center(child: Text('请先创建角色'));
     }
     
-    final season = GameAlgorithm.getCurrentSeason();
     final hour = DateTime.now().hour;
-    String greeting = '勇士，准备战斗！';
-    if (hour < 6) greeting = '夜深了，注意休息哦';
-    else if (hour < 12) greeting = '早上好，新的一天！';
-    else if (hour < 18) greeting = '下午好，继续加油！';
-    else greeting = '晚上好，今天表现如何？';
+    String greeting = '今天也加油';
+    if (hour < 6) greeting = '夜深了，早点休息';
+    else if (hour < 12) greeting = '早上好';
+    else if (hour < 18) greeting = '下午好';
+    else greeting = '晚上好';
     
     return Scaffold(
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // 顶部栏
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                // 金币
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: AppColors.card,
-                    borderRadius: BorderRadius.circular(20),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+          child: Column(
+            children: [
+              // 顶部：状态行（Hub状态点 + 天数 + 金币）
+              Row(
+                children: [
+                  const HubStatusDot(
+                    status: HubStatus.disconnected,
+                    size: 8,
+                    tooltip: '腰部Hub未连接',
                   ),
-                  child: Row(
-                    children: [
-                      const Text('🪙', style: TextStyle(fontSize: 16)),
-                      const SizedBox(width: 6),
-                      Text(
-                        '${gameState.coins}',
-                        style: TextStyle(
-                          color: AppColors.gold,
-                          fontWeight: FontWeight.bold,
+                  const Spacer(),
+                  Text(
+                    '第 ${gameState.day} 天',
+                    style: TextStyle(color: AppColors.text2, fontSize: 13),
+                  ),
+                  const SizedBox(width: 16),
+                  Text(
+                    '🪙 ${gameState.coins}',
+                    style: TextStyle(
+                      color: AppColors.gold,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+              
+              // 中部：问候 + 卡路里余额 + 怪物 + 血条 + 状态文案
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      greeting,
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: AppColors.text2,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      _getCalorieDisplay(gameState),
+                      style: TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.bold,
+                        color: _getCalorieColor(gameState),
+                      ),
+                    ),
+                    const SizedBox(height: 48),
+                    
+                    // 怪物
+                    GestureDetector(
+                      onTap: () => _tapMonster(),
+                      child: AnimatedScale(
+                        scale: _isShaking ? 0.92 : 1.0,
+                        duration: const Duration(milliseconds: 100),
+                        child: Text(
+                          gameState.monster.emoji,
+                          style: TextStyle(fontSize: 96),
                         ),
                       ),
-                    ],
-                  ),
-                ),
-                
-                // 天数
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: AppColors.card,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    '📅 第 ${gameState.day} 天',
-                    style: TextStyle(color: AppColors.text2),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            
-            // 问候语
-            Text(
-              greeting,
-              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-            ),
-            Text(
-              gameState.status == GameStatus.won
-                  ? '怪物已被击败！'
-                  : gameState.status == GameStatus.lost
-                      ? '体力耗尽，明天再战'
-                      : '击败${gameState.monster.name}！剩余HP: ${gameState.monster.hp}/${gameState.monster.maxHp}',
-              style: TextStyle(color: AppColors.text2),
-            ),
-            const SizedBox(height: 16),
-            
-            // 怪物卡片
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  children: [
-                    // 赛季徽章
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: AppColors.purple,
-                        borderRadius: BorderRadius.circular(12),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      gameState.monster.name,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
                       ),
-                      child: Text(
-                        'S${((DateTime.now().month - 1) / 3).floor() + 1} ${season.name}',
-                        style: const TextStyle(color: Colors.white, fontSize: 12),
+                    ),
+                    Text(
+                      'Lv.${gameState.monster.level}${gameState.monster.isBoss ? ' 👑' : ''}',
+                      style: TextStyle(color: AppColors.text2, fontSize: 12),
+                    ),
+                    const SizedBox(height: 20),
+                    
+                    // 怪物血条（含护盾）
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: HpBar(
+                        current: gameState.monster.hp,
+                        max: gameState.monster.maxHp,
+                        color: AppColors.red,
+                        shield: gameState.monster.shield,
+                        height: 14,
                       ),
                     ),
                     const SizedBox(height: 16),
                     
-                    // 怪物emoji
-                    GestureDetector(
-                      onTap: () => _tapMonster(gameNotifier, gameState),
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 100),
-                        child: AnimatedScale(
-                          scale: _isShaking ? 0.9 : 1.0,
-                          duration: const Duration(milliseconds: 100),
-                          child: AnimatedDefaultTextStyle(
-                            duration: const Duration(milliseconds: 100),
-                            style: TextStyle(
-                              fontSize: 80,
-                              color: _isGlowing ? Colors.white : AppColors.text,
-                            ),
-                            child: Text(gameState.monster.emoji),
-                          ),
-                        ),
+                    // 状态文案（正向反馈）
+                    Text(
+                      _getStatusMessage(gameState),
+                      style: TextStyle(
+                        color: AppColors.text2,
+                        fontSize: 14,
                       ),
                     ),
-                    const SizedBox(height: 8),
-                    
-                    // 怪物名称
-                    Text(
-                      gameState.monster.name,
-                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                    ),
-                    Text(
-                      'Lv.${gameState.monster.level}${gameState.monster.isBoss ? ' 👑 BOSS' : ''}',
-                      style: TextStyle(color: AppColors.purple, fontSize: 12),
-                    ),
-                    const SizedBox(height: 12),
-                    
-                    // 怪物血条
-                    HpBar(
-                      current: gameState.monster.hp,
-                      max: gameState.monster.maxHp,
-                      color: AppColors.red,
-                    ),
                   ],
                 ),
               ),
-            ),
-            const SizedBox(height: 12),
-            
-            // 玩家体力
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+              
+              // 底部：3个入口按钮
+              Padding(
+                padding: const EdgeInsets.only(bottom: 24),
+                child: Row(
                   children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text('❤️ 我的体力'),
-                        Text('${gameState.playerHp}/${gameState.playerMaxHp}'),
-                      ],
+                    _buildActionButton(
+                      emoji: '🍽️',
+                      label: '饮食',
+                      onTap: () {},
                     ),
-                    const SizedBox(height: 8),
-                    HpBar(
-                      current: gameState.playerHp,
-                      max: gameState.playerMaxHp,
-                      color: AppColors.green,
+                    const SizedBox(width: 12),
+                    _buildActionButton(
+                      emoji: '🏋️',
+                      label: '锻炼',
+                      onTap: () {},
+                      isPrimary: true,
                     ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            
-            // 快捷操作
-            Row(
-              children: [
-                _buildQuickAction(
-                  emoji: '🍽️',
-                  name: '记录饮食',
-                  onTap: () {}, // 导航到饮食页
-                ),
-                const SizedBox(width: 10),
-                _buildQuickAction(
-                  emoji: '🏋️',
-                  name: '去锻炼',
-                  onTap: () {}, // 导航到锻炼页
-                ),
-                const SizedBox(width: 10),
-                _buildQuickAction(
-                  emoji: '🛡️',
-                  name: '护盾(${gameState.shieldCount})',
-                  onTap: () => gameNotifier.useShield(),
-                ),
-                const SizedBox(width: 10),
-                _buildQuickAction(
-                  emoji: '😴',
-                  name: '休息(${gameState.restDaysLeft})',
-                  onTap: () => gameNotifier.useRestDay(),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            
-            // 今日战况
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      '📊 今日战况',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        _buildStatBox(
-                          value: gameState.todayCalIn.toString(),
-                          label: '摄入(千卡)',
-                        ),
-                        const SizedBox(width: 8),
-                        _buildStatBox(
-                          value: gameState.todayCalExercise.toString(),
-                          label: '消耗(千卡)',
-                        ),
-                        const SizedBox(width: 8),
-                        _buildStatBox(
-                          value: gameState.todayDamage.toString(),
-                          label: '总伤害',
-                        ),
-                      ],
+                    const SizedBox(width: 12),
+                    _buildActionButton(
+                      emoji: '⚖️',
+                      label: '称重',
+                      onTap: () {},
                     ),
                   ],
                 ),
               ),
-            ),
-            
-            // 胜利/失败弹窗
-            if (gameState.status == GameStatus.won)
-              _buildVictoryDialog(gameState, gameNotifier),
-            if (gameState.status == GameStatus.lost)
-              _buildDefeatDialog(gameNotifier),
-          ],
+              
+              // 胜利/失败轻提示（非弹窗，静默展示）
+              if (gameState.status == GameStatus.won)
+                _buildWinBanner(gameNotifier),
+              if (gameState.status == GameStatus.lost)
+                _buildLoseBanner(),
+            ],
+          ),
         ),
       ),
     );
   }
   
-  /// 快捷操作按钮
-  Widget _buildQuickAction({
+  Widget _buildActionButton({
     required String emoji,
-    required String name,
+    required String label,
     required VoidCallback onTap,
+    bool isPrimary = false,
   }) {
     return Expanded(
       child: GestureDetector(
         onTap: onTap,
         child: Container(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.symmetric(vertical: 16),
           decoration: BoxDecoration(
-            color: AppColors.card,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: AppColors.border),
+            color: isPrimary ? AppColors.green : AppColors.card,
+            borderRadius: BorderRadius.circular(16),
+            border: isPrimary
+                ? null
+                : Border.all(color: AppColors.border),
           ),
           child: Column(
             children: [
               Text(emoji, style: const TextStyle(fontSize: 28)),
-              const SizedBox(height: 4),
+              const SizedBox(height: 6),
               Text(
-                name,
-                style: TextStyle(color: AppColors.text2, fontSize: 12),
+                label,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                  color: isPrimary ? Colors.white : AppColors.text,
+                ),
               ),
             ],
           ),
@@ -294,122 +244,92 @@ class _HomePageState extends ConsumerState<HomePage> {
     );
   }
   
-  /// 统计盒子
-  Widget _buildStatBox({required String value, required String label}) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          color: AppColors.bg2,
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Column(
-          children: [
-            Text(
-              value,
-              style: TextStyle(
-                color: AppColors.gold,
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
+  Widget _buildWinBanner(GameStateNotifier notifier) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.green.withOpacity(0.15),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.green.withOpacity(0.4)),
+      ),
+      child: Row(
+        children: [
+          const Text('🎉', style: TextStyle(fontSize: 20)),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  '今日任务完成',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.green,
+                  ),
+                ),
+                Text(
+                  '明日继续保持',
+                  style: TextStyle(color: AppColors.text2, fontSize: 12),
+                ),
+              ],
             ),
-            Text(
-              label,
-              style: TextStyle(color: AppColors.text2, fontSize: 11),
-            ),
-          ],
-        ),
+          ),
+          TextButton(
+            onPressed: () => notifier.startNewChallenge(),
+            child: const Text('再来一次'),
+          ),
+        ],
       ),
     );
   }
   
-  /// 点击怪物
-  void _tapMonster(GameStateNotifier gameNotifier, GameState gameState) {
-    if (gameState.status != GameStatus.playing) return;
-    
+  Widget _buildLoseBanner() {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.purple.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.purple.withOpacity(0.3)),
+      ),
+      child: Row(
+        children: [
+          const Text('😴', style: TextStyle(fontSize: 20)),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  '今日体力已用完',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.purple,
+                  ),
+                ),
+                Text(
+                  '好好休息，明天满血归来',
+                  style: TextStyle(color: AppColors.text2, fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  void _tapMonster() {
     setState(() {
       _isShaking = true;
     });
-    
     Future.delayed(const Duration(milliseconds: 100), () {
-      setState(() {
-        _isShaking = false;
-      });
+      if (mounted) {
+        setState(() => _isShaking = false);
+      }
     });
-    
-    // 小伤害
-    // gameNotifier.tapMonster(1);
-  }
-  
-  /// 胜利弹窗
-  Widget _buildVictoryDialog(GameState gameState, GameStateNotifier gameNotifier) {
-    final reward = GameAlgorithm.calcKillReward(gameState.monster.isBoss);
-    
-    return Container(
-      margin: const EdgeInsets.only(top: 16),
-      padding: const EdgeInsets.all(30),
-      decoration: BoxDecoration(
-        color: AppColors.card,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppColors.gold),
-      ),
-      child: Column(
-        children: [
-          const Text('🎉', style: TextStyle(fontSize: 60)),
-          const SizedBox(height: 12),
-          const Text(
-            '胜利！',
-            style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-          ),
-          Text(
-            '你击败了 ${gameState.monster.name}！',
-            style: TextStyle(color: AppColors.text2),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            '🪙 +$reward 金币',
-            style: TextStyle(color: AppColors.gold, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 16),
-          ElevatedButton(
-            onPressed: () => gameNotifier.startNewChallenge(),
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.gold),
-            child: const Text('迎接新挑战'),
-          ),
-        ],
-      ),
-    );
-  }
-  
-  /// 失败弹窗
-  Widget _buildDefeatDialog(GameStateNotifier gameNotifier) {
-    return Container(
-      margin: const EdgeInsets.only(top: 16),
-      padding: const EdgeInsets.all(30),
-      decoration: BoxDecoration(
-        color: AppColors.card,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppColors.red),
-      ),
-      child: Column(
-        children: [
-          const Text('💥', style: TextStyle(fontSize: 60)),
-          const SizedBox(height: 12),
-          const Text(
-            '体力耗尽',
-            style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-          ),
-          Text(
-            '今天的挑战失败了...',
-            style: TextStyle(color: AppColors.text2),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            '明天再战，勇士永不放弃！',
-            style: TextStyle(color: AppColors.text2),
-          ),
-        ],
-      ),
-    );
   }
 }

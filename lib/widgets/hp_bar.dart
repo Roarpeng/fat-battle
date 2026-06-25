@@ -8,6 +8,8 @@ class HpBar extends StatelessWidget {
   final Color color;
   final double height;
   final bool showText;
+  final int shield;
+  final Color shieldColor;
   
   const HpBar({
     super.key,
@@ -16,11 +18,14 @@ class HpBar extends StatelessWidget {
     required this.color,
     this.height = 20,
     this.showText = true,
+    this.shield = 0,
+    this.shieldColor = AppColors.purple,
   });
   
   @override
   Widget build(BuildContext context) {
     final percent = (current / max).clamp(0.0, 1.0);
+    final shieldPercent = (shield / max).clamp(0.0, 1.0);
     
     return Container(
       height: height,
@@ -49,11 +54,33 @@ class HpBar extends StatelessWidget {
             ),
           ),
           
+          // 护盾层
+          if (shield > 0)
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 500),
+              width: double.infinity,
+              height: height,
+              child: FractionallySizedBox(
+                alignment: Alignment.centerLeft,
+                widthFactor: (percent + shieldPercent).clamp(0.0, 1.0),
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [Colors.transparent, shieldColor.withOpacity(0.6)],
+                      stops: [0.7, 1.0],
+                    ),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: shieldColor.withOpacity(0.8), width: 1.5),
+                  ),
+                ),
+              ),
+            ),
+          
           // 文字
           if (showText)
             Center(
               child: Text(
-                '$current/$max',
+                shield > 0 ? '$current+$shield/$max' : '$current/$max',
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 11,

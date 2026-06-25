@@ -81,7 +81,7 @@ class GameAlgorithm {
     }
   }
   
-  /// 饮食对怪物的影响（怪物回血）
+  /// 饮食对怪物的影响（怪物获得护盾而非回血，减少挫败感）
   static FoodImpactResult foodImpactOnMonster(
     int foodCal,
     int todayCalIn,
@@ -89,40 +89,45 @@ class GameAlgorithm {
     int monsterMaxHp,
     int currentMonsterHp,
     double healBonus,
+    int currentShield,
   ) {
-    // 基础回血：摄入卡路里的5%
-    final baseHeal = (foodCal * 0.05).toInt();
+    // 基础护盾：摄入卡路里的5%转为护盾（而非回血）
+    final baseShield = (foodCal * 0.05).toInt();
     
-    // 超标回血：如果超过目标卡路里，额外回血
-    int overageHeal = 0;
+    // 超标护盾：如果超过目标卡路里，额外增加护盾
+    int overageShield = 0;
     final previousCal = todayCalIn - foodCal;
     
     if (previousCal <= targetCal && todayCalIn > targetCal) {
       final over = todayCalIn - targetCal;
-      overageHeal = (over * 0.3).toInt();
+      overageShield = (over * 0.3).toInt();
     }
     
-    // 总回血
-    final totalHeal = ((baseHeal + overageHeal) * (1 + healBonus)).toInt();
+    // 总护盾
+    final totalShieldGain = ((baseShield + overageShield) * (1 + healBonus)).toInt();
+    final newShield = currentShield + totalShieldGain;
     
-    // 新血量（不超过最大值）
-    final newHp = (currentMonsterHp + totalHeal).clamp(0, monsterMaxHp);
+    // HP 不变（正向反馈：不会让怪物变强，只是暂时更抗揍）
+    final newHp = currentMonsterHp;
     
     return FoodImpactResult(
-      heal: totalHeal,
+      heal: 0,
+      shieldGained: totalShieldGain,
       newMonsterHp: newHp,
-      isOverage: overageHeal > 0,
-      baseHeal: baseHeal,
-      overageHeal: overageHeal,
+      newMonsterShield: newShield,
+      isOverage: overageShield > 0,
+      baseHeal: baseShield,
+      overageHeal: overageShield,
     );
   }
   
-  /// 锻炼对怪物的影响（伤害）
+  /// 锻炼对怪物的影响（伤害优先消耗护盾，护盾归零后才掉血）
   static ExerciseImpactResult exerciseImpactOnMonster(
     int calBurned,
     String mode,
     int monsterHp,
     int monsterMaxHp,
+    int monsterShield,
   ) {
     // 基础伤害：消耗卡路里的80%
     double baseDamage = calBurned * 0.8;
@@ -138,11 +143,32 @@ class GameAlgorithm {
     }
     
     final damage = baseDamage.toInt();
-    final newHp = (monsterHp - damage).clamp(0, monsterMaxHp);
+    
+    // 先消耗护盾
+    int remainingDamage = damage;
+    int newShield = monsterShield;
+    int shieldBroken = 0;
+    
+    if (newShield > 0) {
+      if (remainingDamage >= newShield) {
+        shieldBroken = newShield;
+        remainingDamage -= newShield;
+        newShield = 0;
+      } else {
+        shieldBroken = remainingDamage;
+        newShield -= remainingDamage;
+        remainingDamage = 0;
+      }
+    }
+    
+    // 再扣血
+    final newHp = (monsterHp - remainingDamage).clamp(0, monsterMaxHp);
     
     return ExerciseImpactResult(
       damage: damage,
+      shieldDamage: shieldBroken,
       newMonsterHp: newHp,
+      newMonsterShield: newShield,
       killed: newHp == 0,
     );
   }
@@ -248,14 +274,18 @@ class GameAlgorithm {
 /// 饮食影响结果
 class FoodImpactResult {
   final int heal;
+  final int shieldGained;
   final int newMonsterHp;
+  final int newMonsterShield;
   final bool isOverage;
   final int baseHeal;
   final int overageHeal;
   
   const FoodImpactResult({
     required this.heal,
+    required this.shieldGained,
     required this.newMonsterHp,
+    required this.newMonsterShield,
     required this.isOverage,
     required this.baseHeal,
     required this.overageHeal,
@@ -265,12 +295,16 @@ class FoodImpactResult {
 /// 锻炼影响结果
 class ExerciseImpactResult {
   final int damage;
+  final int shieldDamage;
   final int newMonsterHp;
+  final int newMonsterShield;
   final bool killed;
   
   const ExerciseImpactResult({
     required this.damage,
+    required this.shieldDamage,
     required this.newMonsterHp,
+    required this.newMonsterShield,
     required this.killed,
   });
 }

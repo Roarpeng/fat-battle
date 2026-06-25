@@ -306,7 +306,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
   /// 计算预览伤害
   int _calcPreviewDamage() {
     final cal = _calcPreviewCal();
-    final result = GameAlgorithm.exerciseImpactOnMonster(cal, _exerciseMode, 100, 100);
+    final result = GameAlgorithm.exerciseImpactOnMonster(cal, _exerciseMode, 100, 100, 0);
     return result.damage;
   }
   

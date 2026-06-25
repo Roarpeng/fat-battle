@@ -96,7 +96,7 @@ class GameStateNotifier extends StateNotifier<GameState> {
       state.fitnessLevel,
     );
     
-    state = state.copyWith(monster: monster);
+    state = state.copyWith(monster: monster.copyWith(shield: 0));
   }
   
   /// 创建新游戏（角色创建后）
@@ -157,7 +157,7 @@ class GameStateNotifier extends StateNotifier<GameState> {
     
     final newCalIn = state.todayCalIn + food.totalCal;
     
-    // 计算怪物回血
+    // 计算怪物护盾（正向反馈：吃多了只是加护盾，不会回血）
     final result = GameAlgorithm.foodImpactOnMonster(
       food.totalCal,
       newCalIn,
@@ -165,12 +165,16 @@ class GameStateNotifier extends StateNotifier<GameState> {
       state.monster.maxHp,
       state.monster.hp,
       state.monster.healBonus,
+      state.monster.shield,
     );
     
     state = state.copyWith(
       meals: meals,
       todayCalIn: newCalIn,
-      monster: state.monster.copyWith(hp: result.newMonsterHp),
+      monster: state.monster.copyWith(
+        hp: result.newMonsterHp,
+        shield: result.newMonsterShield,
+      ),
     );
     
     await _saveGame();
@@ -185,7 +189,7 @@ class GameStateNotifier extends StateNotifier<GameState> {
       
       final newCalIn = state.todayCalIn - food.totalCal;
       
-      // 回滚怪物回血
+      // 回滚护盾（正向反馈：撤销食物直接减护盾，不影响HP）
       final result = GameAlgorithm.foodImpactOnMonster(
         food.totalCal,
         state.todayCalIn,
@@ -193,14 +197,17 @@ class GameStateNotifier extends StateNotifier<GameState> {
         state.monster.maxHp,
         state.monster.hp,
         state.monster.healBonus,
+        state.monster.shield,
       );
       
-      final newHp = (state.monster.hp - result.heal).clamp(0, state.monster.maxHp).toInt();
+      final newShield = (state.monster.shield - result.shieldGained).clamp(0, state.monster.maxHp).toInt();
       
       state = state.copyWith(
         meals: meals,
         todayCalIn: newCalIn,
-        monster: state.monster.copyWith(hp: newHp),
+        monster: state.monster.copyWith(
+          shield: newShield,
+        ),
       );
       
       await _saveGame();
@@ -212,12 +219,13 @@ class GameStateNotifier extends StateNotifier<GameState> {
     final exercises = List<ExerciseRecord>.from(state.exercises);
     exercises.add(exercise);
     
-    // 计算伤害
+    // 计算伤害（先破盾再掉血）
     final result = GameAlgorithm.exerciseImpactOnMonster(
       exercise.cal,
       exercise.mode,
       state.monster.hp,
       state.monster.maxHp,
+      state.monster.shield,
     );
     
     // 计算疲劳
@@ -228,7 +236,10 @@ class GameStateNotifier extends StateNotifier<GameState> {
       exercises: exercises,
       todayCalExercise: state.todayCalExercise + exercise.cal,
       todayDamage: state.todayDamage + result.damage,
-      monster: state.monster.copyWith(hp: result.newMonsterHp),
+      monster: state.monster.copyWith(
+        hp: result.newMonsterHp,
+        shield: result.newMonsterShield,
+      ),
       playerHp: newPlayerHp,
       user: state.user.copyWith(
         totalExercise: state.user.totalExercise + exercise.cal,
@@ -248,6 +259,16 @@ class GameStateNotifier extends StateNotifier<GameState> {
     
     await _checkAchievements();
     await _saveGame();
+  }
+  
+  /// 添加自动锻炼记录（来自IMU被动采集）
+  Future<void> addAutoExercise(ExerciseRecord exercise) async {
+    final autoExercises = state.exercises.where((e) => e.mode == 'auto').toList();
+    final todayAutoCal = autoExercises.fold<int>(0, (sum, e) => sum + e.cal);
+    
+    if (todayAutoCal + exercise.cal > 500) return;
+    
+    await addExercise(exercise);
   }
   
   /// 怪物被击败
@@ -588,6 +609,7 @@ class GameState {
         'level': monster.level,
         'isBoss': monster.isBoss,
         'healBonus': monster.healBonus,
+        'shield': monster.shield,
       },
       'playerMaxHp': playerMaxHp,
       'playerHp': playerHp,
@@ -667,6 +689,7 @@ class GameState {
         level: json['monster']?['level'] ?? 1,
         isBoss: json['monster']?['isBoss'] ?? false,
         healBonus: (json['monster']?['healBonus'] ?? 0).toDouble(),
+        shield: json['monster']?['shield'] ?? 0,
       ),
       playerMaxHp: json['playerMaxHp'] ?? 100,
       playerHp: json['playerHp'] ?? 100,
@@ -715,6 +738,8 @@ class GameState {
   }
   
   bool get hasGame => lastDate.isNotEmpty;
+  
+  int get remainingCal => targetCal - todayCalIn + todayCalExercise;
 }
 
 /// DateTime扩展
