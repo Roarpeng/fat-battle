@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../constants/app_constants.dart';
@@ -13,6 +14,128 @@ class FoodPage extends ConsumerStatefulWidget {
 }
 
 class _FoodPageState extends ConsumerState<FoodPage> {
+  late final Map<MealType, TextEditingController> _foodNameControllers;
+  late final Map<MealType, TextEditingController> _foodCalControllers;
+
+  static final List<QuickFood> _allFoods = [
+    ...QuickFoods.breakfast,
+    ...QuickFoods.lunch,
+    ...QuickFoods.dinner,
+    ...QuickFoods.snack,
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _foodNameControllers = {
+      for (var meal in MealType.values) meal: TextEditingController()
+    };
+    _foodCalControllers = {
+      for (var meal in MealType.values) meal: TextEditingController()
+    };
+  }
+
+  @override
+  void dispose() {
+    for (var controller in _foodNameControllers.values) {
+      controller.dispose();
+    }
+    for (var controller in _foodCalControllers.values) {
+      controller.dispose();
+    }
+    super.dispose();
+  }
+
+  /// 模拟AI拍照识别食物
+  void _startFoodRecognition() {
+    final random = Random();
+    final count = 2 + random.nextInt(3); // 2~4种
+    // 随机打乱并取前count个
+    final shuffled = List<QuickFood>.from(_allFoods)..shuffle(random);
+    final suggested = shuffled.take(count).toList();
+    final selected = <String, int>{};
+
+    // 默认全部勾选
+    for (final food in suggested) {
+      selected[food.name] = food.cal;
+    }
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('📷 AI识别结果（模拟）'),
+        content: StatefulBuilder(
+          builder: (context, sb) {
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '请确认识别到的食物（可取消勾选）：',
+                  style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+                ),
+                const SizedBox(height: 12),
+                ...suggested.map((food) {
+                  final checked = selected.containsKey(food.name);
+                  return CheckboxListTile(
+                    title: Text(food.name),
+                    subtitle: Text('${food.cal} kcal'),
+                    value: checked,
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    onChanged: (v) {
+                      if (v == true) {
+                        selected[food.name] = food.cal;
+                      } else {
+                        selected.remove(food.name);
+                      }
+                      sb(() {});
+                    },
+                  );
+                }).toList(),
+              ],
+            );
+          },
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('取消'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              if (selected.isEmpty) return;
+              final hour = DateTime.now().hour;
+              final meal = hour < 10
+                  ? MealType.breakfast
+                  : hour < 14
+                      ? MealType.lunch
+                      : hour < 20
+                          ? MealType.dinner
+                          : MealType.snack;
+              selected.forEach((name, cal) {
+                ref.read(gameStateProvider.notifier).addFood(
+                  FoodItem(
+                    name: name,
+                    baseCal: cal,
+                    size: FoodSize.medium,
+                    totalCal: cal,
+                    meal: meal,
+                  ),
+                );
+              });
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('已记录${selected.length}种食物到${meal.name}')),
+              );
+            },
+            child: const Text('确认记录'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final gameState = ref.watch(gameStateProvider);
@@ -60,10 +183,8 @@ class _FoodPageState extends ConsumerState<FoodPage> {
                   ),
                 ),
                 TextButton(
-                  onPressed: () {
-                    // TODO: 打开摄像头拍照识别
-                  },
-                  child: const Text('展开'),
+                  onPressed: _startFoodRecognition,
+                  child: const Text('拍照识别'),
                 ),
               ],
             ),
@@ -173,8 +294,8 @@ class _FoodPageState extends ConsumerState<FoodPage> {
   
   /// 食物输入
   Widget _buildFoodInput(MealType meal, GameStateNotifier gameNotifier) {
-    final nameController = TextEditingController();
-    final calController = TextEditingController();
+    final nameController = _foodNameControllers[meal]!;
+    final calController = _foodCalControllers[meal]!;
     String selectedSize = 'medium';
     
     return Row(

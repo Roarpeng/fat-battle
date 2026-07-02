@@ -197,22 +197,26 @@ class _DamageFloatState extends State<DamageFloat>
     return AnimatedBuilder(
       animation: _animation,
       builder: (context, child) {
-        return Positioned(
-          top: 30 + _animation.value,
-          left: 40 + (40 * (_animation.value / -60)),
-          child: Opacity(
-            opacity: 1 - (_animation.value / -60),
-            child: Text(
-              '${widget.isHeal ? '+' : '-'}${widget.value}',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: widget.isHeal ? AppColors.red : AppColors.green,
-              ),
-            ),
+        final progress = _animation.value / -60;
+        final opacity = 1.0 - progress;
+        final dy = _animation.value;
+        return Opacity(
+          opacity: opacity,
+          child: Transform.translate(
+            offset: Offset(0, dy),
+            child: child,
           ),
         );
       },
+      child: Text(
+        '${widget.isHeal ? '+' : '-'}${widget.value}',
+        style: TextStyle(
+          fontSize: 24,
+          fontWeight: FontWeight.bold,
+          color: widget.isHeal ? AppColors.green : AppColors.red,
+          shadows: const [Shadow(blurRadius: 4, color: Colors.black38)],
+        ),
+      ),
     );
   }
 }

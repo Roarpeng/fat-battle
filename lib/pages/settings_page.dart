@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../constants/app_constants.dart';
 import '../providers/game_provider.dart';
+import '../services/voice_service.dart';
 import '../pages/welcome_page.dart';
 
 /// 设置页面
@@ -149,11 +150,52 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                       trailing: Switch(
                         value: gameState.voiceEnabled,
                         onChanged: (v) {
+                          VoiceService().setEnabled(v);
                           gameNotifier.updateVoiceEnabled(v);
                           _showToast(v ? '语音已开启' : '语音已关闭');
                         },
                         activeColor: AppColors.green,
                       ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            
+            // 角色风格选择
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('角色风格', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.text)),
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 10,
+                      runSpacing: 10,
+                      children: CharacterStyle.values.map((style) {
+                        return ChoiceChip(
+                          label: Text('${style.emoji} ${style.name}'),
+                          selected: false,
+                          onSelected: (_) {
+                            // 映射角色风格到语音风格
+                            final voiceStyleMap = {
+                              CharacterStyle.pet: VoiceStyle.pet,
+                              CharacterStyle.warrior: VoiceStyle.warrior,
+                              CharacterStyle.mage: VoiceStyle.mage,
+                              CharacterStyle.assassin: VoiceStyle.assassin,
+                            };
+                            VoiceService().setStyle(voiceStyleMap[style]!);
+                            _showToast('已切换为${style.name}风格');
+                          },
+                          selectedColor: AppColors.purple.withOpacity(0.3),
+                          backgroundColor: AppColors.card,
+                          labelStyle: TextStyle(color: AppColors.text),
+                          side: BorderSide(color: AppColors.border),
+                        );
+                      }).toList(),
                     ),
                   ],
                 ),

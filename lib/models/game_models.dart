@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import '../constants/app_constants.dart';
 
 // 用户模型
@@ -464,7 +465,7 @@ class ImuData {
   // 计算角速度幅值
   double get gyroMagnitude => sqrt(gx * gx + gy * gy + gz * gz);
   
-  double sqrt(double x) => x < 0 ? 0 : x;
+  double sqrt(double x) => x < 0 ? 0 : math.sqrt(x);
 }
 
 // BLE设备状态

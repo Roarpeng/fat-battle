@@ -91,9 +91,11 @@ class MainPage extends ConsumerStatefulWidget {
 
 class _MainPageState extends ConsumerState<MainPage> {
   int _currentIndex = 0;
-  
-  final List<Widget> _pages = [
-    const HomePage(),
+
+  late final List<Widget> _pages = [
+    HomePage(onTabSwitch: (index) {
+      setState(() => _currentIndex = index);
+    }),
     const FoodPage(),
     const ExercisePage(),
     const StatsPage(),

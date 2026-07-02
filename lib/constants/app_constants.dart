@@ -279,7 +279,7 @@ extension ExerciseTimeExt on ExerciseTime {
 }
 
 // 角色风格
-enum CharacterStyle { pet, warrior, mage }
+enum CharacterStyle { pet, warrior, mage, assassin }
 
 extension CharacterStyleExt on CharacterStyle {
   String get name {
@@ -287,7 +287,102 @@ extension CharacterStyleExt on CharacterStyle {
       case CharacterStyle.pet: return '可爱萌宠';
       case CharacterStyle.warrior: return '战斗勇士';
       case CharacterStyle.mage: return '魔法师';
+      case CharacterStyle.assassin: return '神秘刺客';
     }
+  }
+
+  String get emoji {
+    switch (this) {
+      case CharacterStyle.pet: return '🐱';
+      case CharacterStyle.warrior: return '⚔️';
+      case CharacterStyle.mage: return '🧙';
+      case CharacterStyle.assassin: return '🗡️';
+    }
+  }
+}
+
+// 赛季配置
+class SeasonConfig {
+  final String name;
+  final String theme;
+  final String emoji;
+  final String description;
+  final double killRewardMultiplier;
+  final double exerciseDamageBonus;
+  final int coinBonus;
+  final int startMonth; // 1-12
+  final int endMonth;   // 1-12
+
+  const SeasonConfig({
+    required this.name,
+    required this.theme,
+    required this.emoji,
+    required this.description,
+    required this.killRewardMultiplier,
+    required this.exerciseDamageBonus,
+    required this.coinBonus,
+    required this.startMonth,
+    required this.endMonth,
+  });
+}
+
+class Seasons {
+  static const List<SeasonConfig> all = [
+    SeasonConfig(
+      name: '春节季',
+      theme: 'spring_festival',
+      emoji: '🧧',
+      description: '新春新气象，击败奖励翻倍！',
+      killRewardMultiplier: 2.0,
+      exerciseDamageBonus: 0.0,
+      coinBonus: 50,
+      startMonth: 1,
+      endMonth: 3,
+    ),
+    SeasonConfig(
+      name: '夏日季',
+      theme: 'summer',
+      emoji: '☀️',
+      description: '挥洒汗水，锻炼伤害+15%！',
+      killRewardMultiplier: 1.0,
+      exerciseDamageBonus: 0.15,
+      coinBonus: 0,
+      startMonth: 4,
+      endMonth: 6,
+    ),
+    SeasonConfig(
+      name: '开学季',
+      theme: 'school',
+      emoji: '📚',
+      description: '重返校园，连续打卡额外+20金币！',
+      killRewardMultiplier: 1.0,
+      exerciseDamageBonus: 0.0,
+      coinBonus: 20,
+      startMonth: 7,
+      endMonth: 9,
+    ),
+    SeasonConfig(
+      name: '年末季',
+      theme: 'year_end',
+      emoji: '🎄',
+      description: '年终冲刺，击败奖励+50%！',
+      killRewardMultiplier: 1.5,
+      exerciseDamageBonus: 0.05,
+      coinBonus: 30,
+      startMonth: 10,
+      endMonth: 12,
+    ),
+  ];
+
+  /// 根据当前月份获取赛季配置
+  static SeasonConfig getCurrentSeason() {
+    final month = DateTime.now().month;
+    for (final season in all) {
+      if (month >= season.startMonth && month <= season.endMonth) {
+        return season;
+      }
+    }
+    return all.first; // 默认返回春节季
   }
 }
 

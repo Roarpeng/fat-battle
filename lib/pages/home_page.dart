@@ -8,7 +8,9 @@ import '../widgets/hub_status_dot.dart';
 import '../services/ble_service.dart';
 
 class HomePage extends ConsumerStatefulWidget {
-  const HomePage({super.key});
+  final void Function(int index)? onTabSwitch;
+
+  const HomePage({super.key, this.onTabSwitch});
   
   @override
   ConsumerState<HomePage> createState() => _HomePageState();
@@ -195,20 +197,20 @@ class _HomePageState extends ConsumerState<HomePage> {
                     _buildActionButton(
                       emoji: '🍽️',
                       label: '饮食',
-                      onTap: () {},
+                      onTap: () => widget.onTabSwitch?.call(1),
                     ),
                     const SizedBox(width: 12),
                     _buildActionButton(
                       emoji: '🏋️',
                       label: '锻炼',
-                      onTap: () {},
+                      onTap: () => widget.onTabSwitch?.call(2),
                       isPrimary: true,
                     ),
                     const SizedBox(width: 12),
                     _buildActionButton(
                       emoji: '⚖️',
                       label: '称重',
-                      onTap: () {},
+                      onTap: () => widget.onTabSwitch?.call(3),
                     ),
                   ],
                 ),

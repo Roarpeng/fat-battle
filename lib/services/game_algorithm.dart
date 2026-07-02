@@ -122,13 +122,15 @@ class GameAlgorithm {
   }
   
   /// 锻炼对怪物的影响（伤害优先消耗护盾，护盾归零后才掉血）
+  /// [season] 可选赛季配置，提供伤害加成
   static ExerciseImpactResult exerciseImpactOnMonster(
     int calBurned,
     String mode,
     int monsterHp,
     int monsterMaxHp,
-    int monsterShield,
-  ) {
+    int monsterShield, {
+    SeasonConfig? season,
+  }) {
     // 基础伤害：消耗卡路里的80%
     double baseDamage = calBurned * 0.8;
     
@@ -140,6 +142,11 @@ class GameAlgorithm {
     // 摄像头/IMU模式有额外加成
     if (mode == 'camera' || mode == 'imu') {
       baseDamage *= 1.1;
+    }
+    
+    // 赛季加成：锻炼伤害额外加成
+    if (season != null && season.exerciseDamageBonus > 0) {
+      baseDamage *= (1 + season.exerciseDamageBonus);
     }
     
     final damage = baseDamage.toInt();
@@ -184,8 +191,18 @@ class GameAlgorithm {
   }
   
   /// 计算击败奖励
-  static int calcKillReward(bool isBoss) {
-    return isBoss ? 200 : 100;
+  /// [season] 可选赛季配置，提供奖励翻倍加成
+  static int calcKillReward(bool isBoss, {SeasonConfig? season}) {
+    int baseReward = isBoss ? 200 : 100;
+    
+    // 赛季加成：击败奖励乘数
+    if (season != null) {
+      baseReward = (baseReward * season.killRewardMultiplier).toInt();
+      // 额外赛季金币奖励
+      baseReward += season.coinBonus;
+    }
+    
+    return baseReward;
   }
   
   /// 生成新怪物

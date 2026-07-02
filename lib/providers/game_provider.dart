@@ -5,6 +5,7 @@ import '../models/game_models.dart';
 import '../constants/app_constants.dart';
 import '../services/game_algorithm.dart';
 import '../services/notification_service.dart';
+import '../services/voice_service.dart';
 
 /// 游戏状态Provider
 class GameStateNotifier extends StateNotifier<GameState> {
@@ -253,13 +254,17 @@ class GameStateNotifier extends StateNotifier<GameState> {
     final exercises = List<ExerciseRecord>.from(state.exercises);
     exercises.add(exercise);
     
-    // 计算伤害（先破盾再掉血）
+    // 获取当前赛季配置
+    final season = Seasons.getCurrentSeason();
+    
+    // 计算伤害（先破盾再掉血），传入赛季加成
     final result = GameAlgorithm.exerciseImpactOnMonster(
       exercise.cal,
       exercise.mode,
       state.monster.hp,
       state.monster.maxHp,
       state.monster.shield,
+      season: season,
     );
     
     // 计算疲劳
@@ -307,7 +312,12 @@ class GameStateNotifier extends StateNotifier<GameState> {
   
   /// 怪物被击败
   Future<void> _onMonsterDefeated() async {
-    final reward = GameAlgorithm.calcKillReward(state.monster.isBoss);
+    // 获取当前赛季配置，计算赛季加成奖励
+    final season = Seasons.getCurrentSeason();
+    final reward = GameAlgorithm.calcKillReward(
+      state.monster.isBoss,
+      season: season,
+    );
     
     state = state.copyWith(
       status: GameStatus.won,
@@ -318,9 +328,16 @@ class GameStateNotifier extends StateNotifier<GameState> {
       ),
     );
     
+    // 语音播报：怪物击败
+    if (state.voiceEnabled) {
+      VoiceService().monsterDefeated(state.monster.name, reward);
+    }
+    
     await _sendNotification(
-      state.monster.isBoss ? '🎉 Boss击败！' : '⚔️ 怪物被击败！',
-      '你击败了${state.monster.name}，获得 $reward 金币奖励！',
+      state.monster.isBoss ? 'Boss击败！' : '怪物被击败！',
+      '你击败了${state.monster.name}，获得 $reward 金币奖励！'
+          '${season.coinBonus > 0 ? ' (含${season.name}赛季加成 ${season.coinBonus}金币)' : ''}'
+          '${season.killRewardMultiplier > 1 ? ' (奖励x${season.killRewardMultiplier})' : ''}',
       type: NotificationType.achievement,
     );
     
@@ -381,10 +398,16 @@ class GameStateNotifier extends StateNotifier<GameState> {
     
     final bmi = GameAlgorithm.calcBMI(weight, state.user.height);
     
-    // 检查是否达到目标体重
+    // 检查是否达到目标体重，自动切换到maintenance模式
     GameStatus newStatus = state.status;
-    if (weight <= state.user.targetWeight && state.status != GameStatus.maintenance) {
+    bool newMaintenanceMode = state.maintenanceMode;
+    if (weight <= state.user.targetWeight && !state.maintenanceMode) {
       newStatus = GameStatus.maintenance;
+      newMaintenanceMode = true;
+      // 语音播报：进入维护模式
+      if (state.voiceEnabled) {
+        VoiceService().maintenanceEnter();
+      }
     }
     
     state = state.copyWith(
@@ -394,6 +417,7 @@ class GameStateNotifier extends StateNotifier<GameState> {
         bmi: bmi,
         status: newStatus,
       ),
+      maintenanceMode: newMaintenanceMode,
     );
     
     await _checkAchievements();
@@ -432,6 +456,7 @@ class GameStateNotifier extends StateNotifier<GameState> {
   
   /// 更新语音播报开关
   Future<void> updateVoiceEnabled(bool enabled) async {
+    VoiceService().setEnabled(enabled);
     state = state.copyWith(voiceEnabled: enabled);
     await _saveGame();
   }
@@ -574,6 +599,7 @@ class GameState {
   final String dndEnd;
   final bool notificationEnabled;
   final bool voiceEnabled;
+  final bool maintenanceMode;
   final String reminderFrequency;
   
   const GameState({
@@ -605,6 +631,7 @@ class GameState {
     this.dndEnd = '08:00',
     this.notificationEnabled = true,
     this.voiceEnabled = true,
+    this.maintenanceMode = false,
     this.reminderFrequency = 'normal',
   });
   
@@ -637,6 +664,7 @@ class GameState {
     String? dndEnd,
     bool? notificationEnabled,
     bool? voiceEnabled,
+    bool? maintenanceMode,
     String? reminderFrequency,
   }) {
     return GameState(
@@ -668,6 +696,7 @@ class GameState {
       dndEnd: dndEnd ?? this.dndEnd,
       notificationEnabled: notificationEnabled ?? this.notificationEnabled,
       voiceEnabled: voiceEnabled ?? this.voiceEnabled,
+      maintenanceMode: maintenanceMode ?? this.maintenanceMode,
       reminderFrequency: reminderFrequency ?? this.reminderFrequency,
     );
   }
@@ -736,6 +765,7 @@ class GameState {
       'dndEnd': dndEnd,
       'notificationEnabled': notificationEnabled,
       'voiceEnabled': voiceEnabled,
+      'maintenanceMode': maintenanceMode,
       'reminderFrequency': reminderFrequency,
     };
   }
@@ -814,6 +844,7 @@ class GameState {
       dndEnd: json['dndEnd'] ?? '08:00',
       notificationEnabled: json['notificationEnabled'] ?? true,
       voiceEnabled: json['voiceEnabled'] ?? true,
+      maintenanceMode: json['maintenanceMode'] ?? false,
       reminderFrequency: json['reminderFrequency'] ?? 'normal',
     );
   }
