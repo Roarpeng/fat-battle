@@ -38,7 +38,19 @@ const exercises: { id: ExerciseType; name: string; emoji: string; description: s
   { id: 'mountainclimber', name: '登山跑', emoji: '⛰️', description: '平板姿势交替提膝，快速燃脂' },
 ]
 
-const TARGET_REPS = 15
+const SET_REPS = 5
+
+// 训练计划：每个动作完成后推荐的下一步动作
+const trainingFlow: Record<ExerciseType, { next: ExerciseType; label: string; tip: string }> = {
+  squat: { next: 'plank', label: '平板支撑', tip: '深蹲完成！接下来用平板支撑拉伸核心' },
+  pushup: { next: 'highknee', label: '高抬腿', tip: '俯卧撑完成！接下来高抬腿提升心率' },
+  highknee: { next: 'squat', label: '深蹲', tip: '高抬腿完成！接下来深蹲锻炼腿部' },
+  jumprope: { next: 'lunge', label: '弓步蹲', tip: '开合跳完成！接下来弓步蹲强化下肢' },
+  plank: { next: 'burpee', label: '波比跳', tip: '平板支撑完成！接下来波比跳全身燃脂' },
+  burpee: { next: 'plank', label: '平板支撑', tip: '波比跳完成！接下来平板支撑放松核心' },
+  lunge: { next: 'pushup', label: '俯卧撑', tip: '弓步蹲完成！接下来俯卧撑锻炼上肢' },
+  mountainclimber: { next: 'squat', label: '深蹲', tip: '登山跑完成！接下来深蹲锻炼腿部' },
+}
 
 export default function PoseDetectionPage() {
   const navigate = useNavigate()
@@ -66,6 +78,8 @@ export default function PoseDetectionPage() {
   const [kneeAngle, setKneeAngle] = useState(180)
   const [elbowAngle, setElbowAngle] = useState(180)
   const [currentPhase, setCurrentPhase] = useState<string>('待机')
+  const [showNextStep, setShowNextStep] = useState(false)
+  const [completedSets, setCompletedSets] = useState(0)
 
   const { attackMonster, addExerciseRecord, user, coins, streak, days, monster } = useGameStore()
 
@@ -214,6 +228,7 @@ export default function PoseDetectionPage() {
     setIsRunning(false)
     setPoseStatus('ready')
     setIsCompleted(true)
+    setCompletedSets(prev => prev + 1)
 
     const exercise = getExerciseById(selectedExercise)
     const durationMinutes = Math.max(1, Math.round(elapsedTimeRef.current / 60))
@@ -236,6 +251,8 @@ export default function PoseDetectionPage() {
     setDamageValue(damage)
     setShowDamage(true)
     setTimeout(() => setShowDamage(false), 1500)
+    // 延迟显示下一步引导
+    setTimeout(() => setShowNextStep(true), 1800)
   }, [selectedExercise, user, addExerciseRecord, attackMonster, stopTimer])
 
   const startMockDetection = useCallback(() => {
@@ -264,8 +281,10 @@ export default function PoseDetectionPage() {
     const ctx = canvas?.getContext('2d')
 
     if (canvas && ctx) {
-      canvas.width = 640
-      canvas.height = 480
+      const dpr = window.devicePixelRatio || 1
+      const rect = canvas.getBoundingClientRect()
+      canvas.width = rect.width * dpr
+      canvas.height = rect.height * dpr
     }
 
     mockIntervalRef.current = window.setInterval(() => {
@@ -284,7 +303,7 @@ export default function PoseDetectionPage() {
           setCount(mockCount)
           setCurrentPhase('站立')
           setCaloriesBurned(Math.round((5.0 * user.weight * (mockCount / 20)) / 200 * 10) / 10)
-          if (mockCount >= TARGET_REPS) {
+          if (mockCount >= SET_REPS) {
             elapsedTimeRef.current = Math.floor(mockTime)
             setElapsedTime(Math.floor(mockTime))
             handleComplete(mockCount)
@@ -329,7 +348,7 @@ export default function PoseDetectionPage() {
         onCount: (newCount: number) => {
           if (isCompletingRef.current) return
           setCount(newCount)
-          if (newCount >= TARGET_REPS) {
+          if (newCount >= SET_REPS) {
             handleComplete(newCount)
           }
         },
@@ -421,6 +440,7 @@ export default function PoseDetectionPage() {
     isCompletingRef.current = false
     elapsedTimeRef.current = 0
     setIsCompleted(false)
+    setShowNextStep(false)
     setCount(0)
     setKneeAngle(180)
     setElbowAngle(180)
@@ -441,13 +461,23 @@ export default function PoseDetectionPage() {
     }
   }, [isRunning, resetSession])
 
+  const goToNextExercise = useCallback(() => {
+    const next = trainingFlow[selectedExercise].next
+    setSelectedExercise(next)
+    resetSession()
+    if (poseServiceRef.current) {
+      poseServiceRef.current.setExerciseType(next)
+    }
+    setTimeout(() => startDetection(), 200)
+  }, [selectedExercise, resetSession, startDetection])
+
   const formatTime = (seconds: number): string => {
     const mins = Math.floor(seconds / 60)
     const secs = seconds % 60
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
   }
 
-  const progress = (count / TARGET_REPS) * 100
+  const progress = (count / SET_REPS) * 100
 
   const getAngleDisplay = () => {
     if (selectedExercise === 'squat') {
@@ -464,7 +494,7 @@ export default function PoseDetectionPage() {
   const angleDisplay = getAngleDisplay()
 
   return (
-    <div className="min-h-full flex flex-col px-4 py-4 gap-4">
+    <div className="min-h-screen flex flex-col px-3 py-3 gap-3 bg-bg">
       <AnimatePresence>
         {showDamage && (
           <DamageNumber value={damageValue} type="damage" />
@@ -479,28 +509,26 @@ export default function PoseDetectionPage() {
       >
         <button
           onClick={() => navigate(-1)}
-          className="w-9 h-9 flex items-center justify-center bg-card border border-border rounded-full hover:bg-bg2 transition-colors text-text"
+          className="w-8 h-8 flex items-center justify-center bg-card border border-border rounded-full hover:bg-bg2 transition-colors text-text"
         >
-          <ArrowLeft size={18} />
+          <ArrowLeft size={16} />
         </button>
 
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1.5 px-3 py-1.5 bg-card border border-border rounded-full">
-            <Target className="w-4 h-4 text-purple" />
-            <span className="font-bold text-sm">Day {days}</span>
-          </div>
+        <div className="flex items-center gap-1.5 px-2 py-1 bg-card border border-border rounded-full">
+          <Target className="w-3.5 h-3.5 text-purple" />
+          <span className="font-bold text-xs">Day {days}</span>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1">
           {streak > 0 && (
-            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-card border border-border rounded-full">
-              <Flame className="w-4 h-4 text-orange" />
-              <span className="font-bold text-sm text-orange">{streak}天</span>
+            <div className="flex items-center gap-1 px-2 py-1 bg-card border border-border rounded-full">
+              <Flame className="w-3.5 h-3.5 text-orange" />
+              <span className="font-bold text-xs text-orange">{streak}天</span>
             </div>
           )}
-          <div className="flex items-center gap-1.5 px-3 py-1.5 bg-card border border-border rounded-full">
-            <Coins className="w-4 h-4 text-gold" />
-            <span className="font-bold text-sm text-gold">{coins}</span>
+          <div className="flex items-center gap-1 px-2 py-1 bg-card border border-border rounded-full">
+            <Coins className="w-3.5 h-3.5 text-gold" />
+            <span className="font-bold text-xs text-gold">{coins}</span>
           </div>
         </div>
       </motion.div>
@@ -511,85 +539,114 @@ export default function PoseDetectionPage() {
         transition={{ duration: 0.3, delay: 0.1 }}
         className="text-center"
       >
-        <h1 className="text-2xl font-black bg-gradient-to-r from-purple via-blue to-green bg-clip-text text-transparent">
+        <h1 className="text-xl font-bold bg-gradient-to-r from-purple via-blue to-green bg-clip-text text-transparent">
           姿态挑战
         </h1>
-        <p className="text-text2 text-sm mt-1">
+        <p className="text-text2 text-xs mt-0.5">
           击败 <span className="text-text font-bold">{monster.name}</span> · Lv.{monster.level}
         </p>
       </motion.div>
 
-      <Card className="p-2 bg-gradient-to-r from-purple/5 to-blue/5">
-        <div className="grid grid-cols-4 gap-2">
+      <Card className="p-1.5 bg-gradient-to-r from-purple/5 to-blue/5">
+        <div className="grid grid-cols-4 gap-1.5">
           {exercises.map((ex) => (
             <button
               key={ex.id}
               onClick={() => changeExercise(ex.id)}
               disabled={isRunning}
-              className={`flex flex-col items-center justify-center gap-1 py-3 px-2 rounded-xl font-bold text-sm transition-all duration-200 ${
+              className={`flex flex-col items-center justify-center gap-0.5 py-2 px-1.5 rounded-lg font-bold text-xs transition-all duration-200 ${
                 selectedExercise === ex.id
                   ? 'bg-gradient-to-br from-purple to-blue text-white shadow-md shadow-purple/20 scale-105'
                   : 'text-text2 hover:text-text hover:bg-white/50'
               } ${isRunning ? 'opacity-50 cursor-not-allowed scale-100' : ''}`}
             >
-              <span className="text-2xl">{ex.emoji}</span>
-              <span className="text-xs">{ex.name}</span>
+              <span className="text-xl">{ex.emoji}</span>
+              <span className="text-[10px]">{ex.name}</span>
             </button>
           ))}
         </div>
       </Card>
 
-      <Card className="p-0 overflow-hidden shadow-lg shadow-purple/10">
-        <div className="relative aspect-video bg-gradient-to-br from-bg2 to-bg">
+      <Card className="p-0 overflow-hidden shadow-lg shadow-purple/10 max-w-full">
+        <div className="relative w-full mx-auto bg-gradient-to-br from-bg2 to-bg rounded-xl overflow-hidden" style={{ aspectRatio: '3 / 2', maxWidth: '100%' }}>
           <video
             ref={videoRef}
             className="absolute inset-0 w-full h-full object-cover"
             playsInline
             muted
-            style={{ transform: cameraFacing === 'user' ? 'scaleX(-1)' : 'none' }}
           />
           <canvas
             ref={canvasRef}
-            className="absolute inset-0 w-full h-full object-cover"
-            style={{ transform: cameraFacing === 'user' ? 'scaleX(-1)' : 'none' }}
+            className="absolute inset-0 w-full h-full pointer-events-none"
+            style={{ imageRendering: 'crisp-edges' }}
           />
 
           {!isRunning && poseStatus === 'idle' && !useMock && (
             <div className="absolute inset-0 flex flex-col items-center justify-center bg-bg2/80">
-              <div className="w-16 h-16 mb-3 rounded-full bg-gradient-to-br from-blue to-purple flex items-center justify-center">
-                <Camera size={32} className="text-white" />
+              <div className="w-12 h-12 mb-2 rounded-full bg-gradient-to-br from-blue to-purple flex items-center justify-center">
+                <Camera size={24} className="text-white" />
               </div>
-              <p className="text-text font-bold">点击下方按钮开始检测</p>
-              <p className="text-text3 text-xs mt-1">AI实时识别运动姿态</p>
+              <p className="text-text font-bold text-sm">点击下方按钮开始检测</p>
+              <p className="text-text3 text-[10px] mt-0.5">AI实时识别运动姿态</p>
             </div>
           )}
 
           {isLoading && (
             <div className="absolute inset-0 flex flex-col items-center justify-center bg-bg2/90">
-              <div className="w-12 h-12 mb-3 border-4 border-purple/30 border-t-purple rounded-full animate-spin" />
-              <p className="text-text font-bold">正在加载AI模型...</p>
-              <p className="text-text3 text-xs mt-1">首次加载可能需要几秒</p>
+              <div className="w-10 h-10 mb-2 border-4 border-purple/30 border-t-purple rounded-full animate-spin" />
+              <p className="text-text font-bold text-sm">正在加载AI模型...</p>
+              <p className="text-text3 text-[10px] mt-0.5">首次加载可能需要几秒</p>
             </div>
           )}
 
           {errorMsg && !isRunning && !isCompleted && (
-            <div className="absolute top-3 left-3 right-3 bg-orange/20 border border-orange/50 rounded-xl p-3 flex items-start gap-2">
-              <AlertTriangle size={18} className="text-orange shrink-0 mt-0.5" />
-              <p className="text-orange text-xs">{errorMsg}</p>
+            <div className="absolute top-2 left-2 right-2 bg-orange/20 border border-orange/50 rounded-xl p-2 flex items-start gap-1.5">
+              <AlertTriangle size={14} className="text-orange shrink-0 mt-0.5" />
+              <p className="text-orange text-[10px]">{errorMsg}</p>
             </div>
           )}
 
           {useMock && isRunning && (
-            <div className="absolute top-3 right-3 bg-blue/20 border border-blue/50 rounded-lg px-2 py-1 flex items-center gap-1.5">
-              <span className="w-2 h-2 bg-blue rounded-full animate-pulse" />
-              <span className="text-blue text-xs font-bold">模拟模式</span>
+            <div className="absolute top-2 right-2 bg-blue/20 border border-blue/50 rounded-lg px-1.5 py-0.5 flex items-center gap-1">
+              <span className="w-1.5 h-1.5 bg-blue rounded-full animate-pulse" />
+              <span className="text-blue text-[10px] font-bold">模拟模式</span>
             </div>
           )}
 
           {isRunning && !useMock && (
-            <div className="absolute top-3 right-3 bg-green/20 border border-green/50 rounded-lg px-2 py-1 flex items-center gap-1.5">
-              <span className="w-2 h-2 bg-green rounded-full animate-pulse" />
-              <span className="text-green text-xs font-bold">AI检测中</span>
+            <div className="absolute top-2 right-2 bg-green/20 border border-green/50 rounded-lg px-1.5 py-0.5 flex items-center gap-1">
+              <span className="w-1.5 h-1.5 bg-green rounded-full animate-pulse" />
+              <span className="text-green text-[10px] font-bold">AI检测中</span>
+            </div>
+          )}
+
+          {/* 动作进度图标网格 - 游戏化引导 */}
+          {isRunning && (
+            <div className="absolute bottom-1.5 left-1.5 right-1.5 flex justify-center gap-1">
+              {Array.from({ length: SET_REPS }).map((_, i) => {
+                const isDone = i < count
+                const isCurrent = i === count
+                return (
+                  <motion.div
+                    key={i}
+                    initial={{ scale: 0.8, opacity: 0.5 }}
+                    animate={{
+                      scale: isCurrent ? 1.1 : 1,
+                      opacity: 1,
+                    }}
+                    transition={{ type: 'spring', stiffness: 300 }}
+                    className={`w-6 h-6 rounded-md flex items-center justify-center text-xs backdrop-blur-sm border-2 ${
+                      isDone
+                        ? 'bg-gradient-to-br from-green to-green-dark border-green text-white shadow-md shadow-green/30'
+                        : isCurrent
+                          ? 'bg-gold/30 border-gold animate-pulse'
+                          : 'bg-bg2/60 border-border/50 grayscale opacity-50'
+                    }`}
+                  >
+                    {isDone ? '✓' : exercises.find(e => e.id === selectedExercise)?.emoji}
+                  </motion.div>
+                )
+              })}
             </div>
           )}
 
@@ -597,32 +654,32 @@ export default function PoseDetectionPage() {
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              className="absolute inset-0 flex flex-col items-center justify-center bg-black/70 backdrop-blur-sm"
+              className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 backdrop-blur-sm"
             >
               <motion.div
                 initial={{ scale: 0 }}
                 animate={{ scale: 1 }}
                 transition={{ type: 'spring', delay: 0.2 }}
-                className="w-20 h-20 mb-4 rounded-full bg-gradient-to-br from-green to-green-dark flex items-center justify-center"
+                className="w-12 h-12 mb-2 rounded-full bg-gradient-to-br from-green to-green-dark flex items-center justify-center"
               >
-                <CheckCircle2 size={48} className="text-white" />
+                <CheckCircle2 size={28} className="text-white" />
               </motion.div>
-              <h3 className="text-2xl font-black text-white mb-1">挑战完成！</h3>
-              <p className="text-white/80 mb-4 text-sm">
-                你完成了 {TARGET_REPS} 次{exercises.find(e => e.id === selectedExercise)?.name}
+              <h3 className="text-lg font-bold text-white mb-0.5">挑战完成！</h3>
+              <p className="text-white/80 mb-2 text-[10px]">
+                你完成了 {SET_REPS} 次{exercises.find(e => e.id === selectedExercise)?.name}
               </p>
-              <div className="grid grid-cols-3 gap-2 px-4 w-full max-w-xs">
-                <div className="bg-white/10 rounded-xl px-3 py-2 text-center">
-                  <div className="text-lg font-black text-orange">{damageValue}</div>
-                  <div className="text-[10px] text-white/60">造成伤害</div>
+              <div className="grid grid-cols-3 gap-1.5 px-3 w-full max-w-xs">
+                <div className="bg-white/10 rounded-md px-1.5 py-1 text-center">
+                  <div className="text-sm font-bold text-orange">{damageValue}</div>
+                  <div className="text-[9px] text-white/60">伤害</div>
                 </div>
-                <div className="bg-white/10 rounded-xl px-3 py-2 text-center">
-                  <div className="text-lg font-black text-blue">{formatTime(elapsedTime)}</div>
-                  <div className="text-[10px] text-white/60">用时</div>
+                <div className="bg-white/10 rounded-md px-1.5 py-1 text-center">
+                  <div className="text-sm font-bold text-blue">{formatTime(elapsedTime)}</div>
+                  <div className="text-[9px] text-white/60">用时</div>
                 </div>
-                <div className="bg-white/10 rounded-xl px-3 py-2 text-center">
-                  <div className="text-lg font-black text-green">{caloriesBurned}</div>
-                  <div className="text-[10px] text-white/60">消耗卡路里</div>
+                <div className="bg-white/10 rounded-md px-1.5 py-1 text-center">
+                  <div className="text-sm font-bold text-green">{caloriesBurned}</div>
+                  <div className="text-[9px] text-white/60">卡路里</div>
                 </div>
               </div>
             </motion.div>
@@ -630,58 +687,57 @@ export default function PoseDetectionPage() {
         </div>
       </Card>
 
-      <Card className="flex flex-col gap-3">
+      <Card className="flex flex-col gap-2">
         <div className="flex items-center justify-between">
-          <h2 className="font-bold text-text flex items-center gap-2">
-            <Activity className="w-5 h-5 text-purple" />
+          <h2 className="font-bold text-sm text-text flex items-center gap-1.5">
+            <Activity className="w-4 h-4 text-purple" />
             战斗数据
           </h2>
-          <div className="flex items-center gap-1.5 px-3 py-1 bg-gold/10 rounded-full">
-            <Target size={12} className="text-gold" />
-            <span className="text-xs text-gold font-bold">目标 {TARGET_REPS}次</span>
+          <div className="flex items-center gap-1 px-2 py-0.5 bg-gold/10 rounded-full">
+            <Target size={10} className="text-gold" />
+            <span className="text-[10px] text-gold font-bold">{count}/{SET_REPS}</span>
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          <div className="bg-bg2 rounded-xl p-3">
-            <div className="flex items-center gap-1.5 mb-1">
-              <Zap className="w-4 h-4 text-purple" />
-              <span className="text-xs text-text3">动作计数</span>
+        <div className="grid grid-cols-4 gap-1.5">
+          <div className="bg-bg2 rounded-lg p-2 text-center">
+            <div className="flex items-center justify-center gap-1 mb-0.5">
+              <Zap className="w-3 h-3 text-purple" />
+              <span className="text-[9px] text-text3">计数</span>
             </div>
-            <div className="text-xl font-bold text-text">{count}<span className="text-xs font-normal text-text3 ml-1">次</span></div>
+            <div className="text-base font-bold text-text">{count}</div>
           </div>
-          <div className="bg-bg2 rounded-xl p-3">
-            <div className="flex items-center gap-1.5 mb-1">
-              <Clock className="w-4 h-4 text-blue" />
-              <span className="text-xs text-text3">运动时长</span>
+          <div className="bg-bg2 rounded-lg p-2 text-center">
+            <div className="flex items-center justify-center gap-1 mb-0.5">
+              <Clock className="w-3 h-3 text-blue" />
+              <span className="text-[9px] text-text3">时长</span>
             </div>
-            <div className="text-xl font-bold text-text">{formatTime(elapsedTime)}</div>
+            <div className="text-base font-bold text-text">{formatTime(elapsedTime)}</div>
           </div>
-          <div className="bg-bg2 rounded-xl p-3">
-            <div className="flex items-center gap-1.5 mb-1">
-              <Flame className="w-4 h-4 text-orange" />
-              <span className="text-xs text-text3">消耗卡路里</span>
+          <div className="bg-bg2 rounded-lg p-2 text-center">
+            <div className="flex items-center justify-center gap-1 mb-0.5">
+              <Flame className="w-3 h-3 text-orange" />
+              <span className="text-[9px] text-text3">卡路里</span>
             </div>
-            <div className="text-xl font-bold text-orange">{caloriesBurned}<span className="text-xs font-normal text-text3 ml-1">kcal</span></div>
+            <div className="text-base font-bold text-orange">{caloriesBurned}</div>
           </div>
-          <div className="bg-bg2 rounded-xl p-3">
-            <div className="flex items-center gap-1.5 mb-1">
-              <Target className="w-4 h-4 text-green" />
-              <span className="text-xs text-text3">{angleDisplay.label}</span>
+          <div className="bg-bg2 rounded-lg p-2 text-center">
+            <div className="flex items-center justify-center gap-1 mb-0.5">
+              <Target className="w-3 h-3 text-green" />
+              <span className="text-[9px] text-text3">{angleDisplay.label}</span>
             </div>
-            <div className="text-xl font-bold text-green">{angleDisplay.value}<span className="text-xs font-normal text-text3 ml-1">{angleDisplay.unit}</span></div>
+            <div className="text-base font-bold text-green">{angleDisplay.value}</div>
           </div>
         </div>
 
         <div>
-          <div className="flex justify-between text-xs text-text3 mb-2">
-            <span className="flex items-center gap-1.5">
-              <Sparkles size={12} className="text-gold" />
+          <div className="flex justify-between text-[10px] text-text3 mb-1">
+            <span className="flex items-center gap-1">
+              <Sparkles size={10} className="text-gold" />
               击败进度
             </span>
-            <span className="font-bold text-text">{count} / {TARGET_REPS}</span>
           </div>
-          <div className="h-3 bg-bg2 rounded-full overflow-hidden border border-border">
+          <div className="h-2 bg-bg2 rounded-full overflow-hidden border border-border">
             <motion.div
               className="h-full bg-gradient-to-r from-purple via-blue to-green rounded-full"
               initial={{ width: 0 }}
@@ -692,114 +748,109 @@ export default function PoseDetectionPage() {
         </div>
       </Card>
 
-      <Card className="flex flex-col gap-3">
-        <div className="flex items-center gap-2">
-          <Activity className="text-gold" size={20} />
-          <h2 className="font-bold text-text">动作状态</h2>
+      <Card className="flex items-center gap-2">
+        <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-xl ${
+          isRunning
+            ? currentPhase === '下蹲中' || currentPhase === '下放中' || currentPhase === '跳跃中' || currentPhase === '抬腿中'
+              ? 'bg-gradient-to-br from-gold to-orange animate-pulse'
+              : 'bg-gradient-to-br from-green to-green-dark'
+            : 'bg-bg2'
+        }`}>
+          {exerciseInfo?.emoji || '🏋️'}
         </div>
-        <div className="flex items-center gap-3">
-          <div className={`w-14 h-14 rounded-xl flex items-center justify-center text-2xl ${
-            isRunning
-              ? currentPhase === '下蹲中' || currentPhase === '下放中' || currentPhase === '跳跃中' || currentPhase === '抬腿中'
-                ? 'bg-gradient-to-br from-gold to-orange animate-pulse'
-                : 'bg-gradient-to-br from-green to-green-dark'
-              : 'bg-bg2'
-          }`}>
-            {exerciseInfo?.emoji || '🏋️'}
+        <div className="flex-1 min-w-0">
+          <div className="font-bold text-sm">
+            {isRunning ? currentPhase : '准备就绪'}
           </div>
-          <div className="flex-1 min-w-0">
-            <div className="font-bold text-lg">
-              {isRunning ? currentPhase : '准备就绪'}
-            </div>
-            <div className="text-xs text-text3 mt-1">
-              {isRunning
-                ? count > 0
-                  ? `已完成 ${count} 个动作，继续加油！`
-                  : '请按照标准动作开始运动'
-                : '点击开始按钮开启姿态检测'
-              }
-            </div>
+          <div className="text-[10px] text-text3">
+            {isRunning
+              ? count > 0
+                ? `已完成 ${count} 个，继续加油！`
+                : '请按照标准动作开始运动'
+              : '点击开始按钮开启检测'
+            }
           </div>
-          {isRunning && (
-            <div className="flex flex-col items-center gap-1">
-              <div className="w-2.5 h-2.5 rounded-full bg-green animate-pulse" />
-              <span className="text-[10px] text-text3">检测中</span>
-            </div>
-          )}
         </div>
+        {isRunning && (
+          <div className="flex flex-col items-center gap-0.5">
+            <div className="w-2 h-2 rounded-full bg-green animate-pulse" />
+            <span className="text-[9px] text-text3">检测中</span>
+          </div>
+        )}
       </Card>
 
-      {exerciseInfo && (
-        <Card className="bg-gradient-to-br from-purple/10 to-blue/10">
-          <div className="flex items-center gap-3">
-            <div className="text-3xl">{exerciseInfo.emoji}</div>
-            <div className="flex-1 min-w-0">
-              <div className="font-bold text-base text-text">{exerciseInfo.name}</div>
-              <div className="text-xs text-text3 mt-1 flex items-center gap-3">
-                <span className="flex items-center gap-1">
-                  <Flame size={12} className="text-orange" />
-                  {exerciseInfo.caloriesPerMinute}卡/分
-                </span>
-                <span className="flex items-center gap-1">
-                  <Swords size={12} className="text-red" />
-                  {exerciseInfo.damagePerMinute}伤/分
-                </span>
-              </div>
-            </div>
-            <div className="bg-white/50 rounded-xl px-3 py-2 text-center">
-              <div className="text-[10px] text-text3">预计伤害</div>
-              <div className="font-bold text-red text-lg">
-                ~{Math.round(exerciseInfo.damagePerMinute * Math.max(1, Math.round(TARGET_REPS / 20 / 60)))}
-              </div>
-            </div>
-          </div>
-        </Card>
-      )}
+      {/* 完成后下一步引导卡片 */}
+      <AnimatePresence>
+        {showNextStep && isCompleted && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }}
+            transition={{ type: 'spring', stiffness: 200 }}
+          >
+            <Card className="bg-gradient-to-br from-purple/15 to-blue/15 border-purple/30">
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-green to-green-dark flex items-center justify-center">
+                    <CheckCircle2 size={18} className="text-white" />
+                  </div>
+                  <div className="flex-1">
+                    <div className="font-bold text-sm text-text">本组完成！已完成 {completedSets} 组</div>
+                    <div className="text-[10px] text-text3">{trainingFlow[selectedExercise].tip}</div>
+                  </div>
+                </div>
 
-      <Card className="flex flex-col gap-3">
-        <div className="flex items-center gap-2">
-          <Dumbbell className="text-blue" size={20} />
-          <h2 className="font-bold text-text">设备状态</h2>
-        </div>
-        <div className="space-y-2">
-          <div className="bg-bg2 rounded-xl p-3 flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-blue/20 flex items-center justify-center">
-              <Camera size={18} className="text-blue" />
-            </div>
-            <div className="flex-1">
-              <div className="font-bold text-sm text-text">
-                {isRunning ? '摄像头已开启' : '摄像头未连接'}
-              </div>
-              <div className="text-xs text-text3">
-                {cameraFacing === 'user' ? '前置摄像头' : '后置摄像头'}
-              </div>
-            </div>
-            <div className={`w-2.5 h-2.5 rounded-full ${isRunning ? 'bg-green animate-pulse' : 'bg-text3'}`} />
-          </div>
-          <div className="bg-bg2 rounded-xl p-3 flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-purple/20 flex items-center justify-center">
-              <Zap size={18} className="text-purple" />
-            </div>
-            <div className="flex-1">
-              <div className="font-bold text-sm text-text">
-                {poseStatus === 'running' ? 'AI识别运行中' : 'AI模型未启动'}
-              </div>
-              <div className="text-xs text-text3">
-                MediaPipe Pose
-              </div>
-            </div>
-            <div className={`w-2.5 h-2.5 rounded-full ${poseStatus === 'running' ? 'bg-green animate-pulse' : 'bg-text3'}`} />
-          </div>
-        </div>
-      </Card>
+                <div className="flex items-center gap-2 bg-bg2/60 rounded-lg p-2">
+                  <span className="text-2xl">{exercises.find(e => e.id === trainingFlow[selectedExercise].next)?.emoji}</span>
+                  <div className="flex-1">
+                    <div className="text-[10px] text-text3">推荐下一步</div>
+                    <div className="font-bold text-sm text-text">{trainingFlow[selectedExercise].label}</div>
+                  </div>
+                  <Button
+                    variant="purple"
+                    size="sm"
+                    icon={<Play size={14} />}
+                    onClick={goToNextExercise}
+                  >
+                    继续
+                  </Button>
+                </div>
 
-      <div className="space-y-2">
+                <div className="flex gap-1.5">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    fullWidth
+                    icon={<RotateCcw size={12} />}
+                    onClick={() => {
+                      resetSession()
+                      setTimeout(() => startDetection(), 100)
+                    }}
+                  >
+                    重做本组
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    fullWidth
+                    onClick={() => navigate(-1)}
+                  >
+                    结束训练
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <div className="space-y-1.5">
         {!isRunning ? (
           <Button
             variant="purple"
-            size="lg"
+            size="md"
             fullWidth
-            icon={isLoading ? undefined : <Play size={20} />}
+            icon={isLoading ? undefined : <Play size={16} />}
             loading={isLoading}
             onClick={startDetection}
             disabled={isCompleted}
@@ -809,19 +860,20 @@ export default function PoseDetectionPage() {
         ) : (
           <Button
             variant="primary"
-            size="lg"
+            size="md"
             fullWidth
-            icon={<Square size={20} />}
+            icon={<Square size={16} />}
             onClick={stopDetection}
           >
             停止检测
           </Button>
         )}
 
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-3 gap-1.5">
           <Button
             variant="secondary"
-            icon={<RotateCcw size={16} />}
+            size="sm"
+            icon={<RotateCcw size={12} />}
             onClick={toggleCamera}
             disabled={isLoading}
           >
@@ -829,7 +881,8 @@ export default function PoseDetectionPage() {
           </Button>
           <Button
             variant="secondary"
-            icon={<RefreshCw size={16} />}
+            size="sm"
+            icon={<RefreshCw size={12} />}
             onClick={resetSession}
             disabled={isRunning}
           >
@@ -837,7 +890,8 @@ export default function PoseDetectionPage() {
           </Button>
           <Button
             variant="secondary"
-            icon={<Clock size={16} />}
+            size="sm"
+            icon={<Clock size={12} />}
             onClick={() => {}}
             disabled
           >
@@ -845,12 +899,12 @@ export default function PoseDetectionPage() {
           </Button>
         </div>
 
-        {isCompleted && (
+        {isCompleted && !showNextStep && (
           <Button
             variant="purple"
-            size="lg"
+            size="md"
             fullWidth
-            icon={<Zap size={20} />}
+            icon={<Zap size={16} />}
             onClick={() => {
               resetSession()
               setTimeout(() => startDetection(), 100)

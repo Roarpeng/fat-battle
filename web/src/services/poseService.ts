@@ -77,6 +77,10 @@ export class PoseService {
   private boundOnResults: (results: any) => void
   private cameraFacing: 'user' | 'environment' = 'user'
   private userWeight: number = 70
+  private drawX: number = 0
+  private drawY: number = 0
+  private drawWidth: number = 0
+  private drawHeight: number = 0
 
   private squatState: ExerciseState & { kneeAngle: number; phase: 'standing' | 'squatting' } = {
     isActive: false,
@@ -240,6 +244,22 @@ export class PoseService {
   setCanvasElement(canvas: HTMLCanvasElement): void {
     this.canvasElement = canvas
     this.canvasCtx = canvas.getContext('2d')
+    this.resizeCanvas()
+  }
+
+  private resizeCanvas(): void {
+    if (!this.canvasElement) return
+    
+    const rect = this.canvasElement.getBoundingClientRect()
+    const dpr = window.devicePixelRatio || 1
+    
+    const newWidth = Math.round(rect.width * dpr)
+    const newHeight = Math.round(rect.height * dpr)
+    
+    if (this.canvasElement.width !== newWidth || this.canvasElement.height !== newHeight) {
+      this.canvasElement.width = newWidth
+      this.canvasElement.height = newHeight
+    }
   }
 
   setCameraFacing(facing: 'user' | 'environment'): void {
@@ -808,23 +828,58 @@ export class PoseService {
     }
 
     const ctx = this.canvasCtx
-    const width = this.canvasElement.width
-    const height = this.canvasElement.height
+    const canvasWidth = this.canvasElement.width
+    const canvasHeight = this.canvasElement.height
+    const dpr = window.devicePixelRatio || 1
 
     ctx.save()
-    ctx.clearRect(0, 0, width, height)
-    ctx.drawImage(results.image, 0, 0, width, height)
+    ctx.clearRect(0, 0, canvasWidth, canvasHeight)
+
+    if (this.cameraFacing === 'user') {
+      ctx.translate(canvasWidth, 0)
+      ctx.scale(-1, 1)
+    }
+
+    const image = results.image
+    const imageWidth = image.width || image.videoWidth || 640
+    const imageHeight = image.height || image.videoHeight || 480
+    const imageRatio = imageWidth / imageHeight
+    const canvasRatio = canvasWidth / canvasHeight
+
+    let drawWidth: number
+    let drawHeight: number
+    let drawX: number
+    let drawY: number
+
+    if (imageRatio > canvasRatio) {
+      drawWidth = canvasWidth
+      drawHeight = canvasWidth / imageRatio
+      drawX = 0
+      drawY = (canvasHeight - drawHeight) / 2
+    } else {
+      drawHeight = canvasHeight
+      drawWidth = canvasHeight * imageRatio
+      drawX = (canvasWidth - drawWidth) / 2
+      drawY = 0
+    }
+
+    ctx.drawImage(image, drawX, drawY, drawWidth, drawHeight)
+
+    this.drawX = drawX
+    this.drawY = drawY
+    this.drawWidth = drawWidth
+    this.drawHeight = drawHeight
 
     if (!results.poseLandmarks) {
       ctx.fillStyle = 'rgba(0, 0, 0, 0.5)'
-      ctx.fillRect(0, 0, width, height)
+      ctx.fillRect(drawX, drawY, drawWidth, drawHeight)
       ctx.fillStyle = '#ffffff'
-      ctx.font = 'bold 20px Arial'
+      ctx.font = `bold ${20 * dpr}px Arial`
       ctx.textAlign = 'center'
-      ctx.fillText('请将身体对准摄像头', width / 2, height / 2 - 10)
-      ctx.font = '14px Arial'
+      ctx.fillText('请将身体对准摄像头', canvasWidth / 2, canvasHeight / 2 - 10 * dpr)
+      ctx.font = `${14 * dpr}px Arial`
       ctx.fillStyle = 'rgba(255, 255, 255, 0.7)'
-      ctx.fillText('确保全身出现在画面中', width / 2, height / 2 + 20)
+      ctx.fillText('确保全身出现在画面中', canvasWidth / 2, canvasHeight / 2 + 20 * dpr)
       ctx.textAlign = 'left'
     }
 
@@ -840,8 +895,14 @@ export class PoseService {
     const width = this.canvasElement.width
     const height = this.canvasElement.height
     const landmarks = results.poseLandmarks
+    const dpr = window.devicePixelRatio || 1
 
     ctx.save()
+
+    if (this.cameraFacing === 'user') {
+      ctx.translate(width, 0)
+      ctx.scale(-1, 1)
+    }
 
     const shoulderMid = {
       x: (landmarks[LEFT_SHOULDER].x + landmarks[RIGHT_SHOULDER].x) / 2,
@@ -859,16 +920,19 @@ export class PoseService {
     const angleJointColor = '#FF6B6B'
     const spineColor = '#A78BFA'
 
+    const mapX = (x: number) => this.drawX + x * this.drawWidth
+    const mapY = (y: number) => this.drawY + y * this.drawHeight
+
     const drawLine = (p1: any, p2: any, color: string, w: number) => {
       if (!p1 || !p2 || p1.visibility < 0.5 || p2.visibility < 0.5) return
       ctx.shadowColor = color
-      ctx.shadowBlur = 8
+      ctx.shadowBlur = 8 * dpr
       ctx.strokeStyle = color
-      ctx.lineWidth = w
+      ctx.lineWidth = w * dpr
       ctx.lineCap = 'round'
       ctx.beginPath()
-      ctx.moveTo(p1.x * width, p1.y * height)
-      ctx.lineTo(p2.x * width, p2.y * height)
+      ctx.moveTo(mapX(p1.x), mapY(p1.y))
+      ctx.lineTo(mapX(p2.x), mapY(p2.y))
       ctx.stroke()
       ctx.shadowBlur = 0
     }
@@ -876,15 +940,15 @@ export class PoseService {
     const drawPoint = (p: any, color: string, r: number) => {
       if (!p || p.visibility < 0.5) return
       ctx.shadowColor = color
-      ctx.shadowBlur = 12
+      ctx.shadowBlur = 12 * dpr
       ctx.fillStyle = color
       ctx.beginPath()
-      ctx.arc(p.x * width, p.y * height, r, 0, 2 * Math.PI)
+      ctx.arc(mapX(p.x), mapY(p.y), r * dpr, 0, 2 * Math.PI)
       ctx.fill()
       ctx.shadowBlur = 0
       ctx.fillStyle = '#ffffff'
       ctx.beginPath()
-      ctx.arc(p.x * width, p.y * height, r * 0.35, 0, 2 * Math.PI)
+      ctx.arc(mapX(p.x), mapY(p.y), r * 0.35 * dpr, 0, 2 * Math.PI)
       ctx.fill()
     }
 
@@ -921,65 +985,56 @@ export class PoseService {
     drawPoint(landmarks[LEFT_ANKLE], jointColor, 6)
     drawPoint(landmarks[RIGHT_ANKLE], jointColor, 6)
 
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)'
+    ctx.restore()
+
+    ctx.save()
+    const padding = 10 * dpr
+    const boxWidth = 135 * dpr
+    const boxHeight = 50 * dpr
+    const boxX = width - boxWidth - padding
+    const boxY = padding
+
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)'
     ctx.beginPath()
-    ctx.roundRect(15, 15, 200, 85, 12)
+    ctx.roundRect(boxX, boxY, boxWidth, boxHeight, 8 * dpr)
     ctx.fill()
     ctx.fillStyle = '#ffffff'
-    ctx.font = 'bold 16px Arial'
+    ctx.font = `bold ${10 * dpr}px Arial`
 
     const exerciseNames: Record<ExerciseType, string> = {
       squat: '深蹲',
       pushup: '俯卧撑',
-      jumprope: '开合跳',
+      jumprope: '开合',
       highknee: '高抬腿',
-      plank: '平板支撑',
-      burpee: '波比跳',
-      lunge: '弓步蹲',
-      mountainclimber: '登山跑',
+      plank: '平板',
+      burpee: '波比',
+      lunge: '弓步',
+      mountainclimber: '登山',
     }
 
-    const countLabel = this.exerciseType === 'plank' ? '秒' : '次'
+    const countLabel = this.exerciseType === 'plank' ? 's' : ''
     ctx.fillStyle = '#66FF66'
-    ctx.fillText(`${exerciseNames[this.exerciseType]}: ${this.getCount()} ${countLabel}`, 25, 42)
+    ctx.fillText(`${exerciseNames[this.exerciseType]} ${this.getCount()}${countLabel}`, boxX + 8 * dpr, boxY + 16 * dpr)
 
     if (this.exerciseType === 'squat') {
       ctx.fillStyle = '#FFD700'
-      ctx.fillText(`膝盖角度: ${Math.round(this.squatState.kneeAngle)}°`, 25, 65)
+      ctx.fillText(`${Math.round(this.squatState.kneeAngle)}°`, boxX + 8 * dpr, boxY + 32 * dpr)
     } else if (this.exerciseType === 'pushup') {
       ctx.fillStyle = '#FFD700'
-      ctx.fillText(`手肘角度: ${Math.round(this.pushupState.elbowAngle)}°`, 25, 65)
+      ctx.fillText(`${Math.round(this.pushupState.elbowAngle)}°`, boxX + 8 * dpr, boxY + 32 * dpr)
     } else if (this.exerciseType === 'highknee') {
       ctx.fillStyle = '#FFD700'
-      ctx.fillText(`抬腿高度: ${Math.round(this.highKneeState.kneeHeight * 100)}%`, 25, 65)
+      ctx.fillText(`${Math.round(this.highKneeState.kneeHeight * 100)}%`, boxX + 8 * dpr, boxY + 32 * dpr)
     } else if (this.exerciseType === 'plank') {
       ctx.fillStyle = '#FFD700'
-      ctx.fillText(`坚持时间: ${this.plankState.count}秒`, 25, 65)
+      ctx.fillText(`${this.plankState.count}s`, boxX + 8 * dpr, boxY + 32 * dpr)
     } else if (this.exerciseType === 'lunge') {
       ctx.fillStyle = '#FFD700'
-      ctx.fillText(`膝盖角度: ${Math.round(this.lungeState.kneeAngle)}°`, 25, 65)
+      ctx.fillText(`${Math.round(this.lungeState.kneeAngle)}°`, boxX + 8 * dpr, boxY + 32 * dpr)
     } else if (this.exerciseType === 'burpee') {
       ctx.fillStyle = '#FFD700'
-      ctx.fillText(`下蹲深度: ${Math.round(this.burpeeState.squatDepth)}°`, 25, 65)
+      ctx.fillText(`${Math.round(this.burpeeState.squatDepth)}°`, boxX + 8 * dpr, boxY + 32 * dpr)
     }
-
-    const status = this.exerciseType === 'squat'
-      ? (this.squatState.phase === 'squatting' ? '下蹲中' : '站立')
-      : this.exerciseType === 'pushup'
-        ? (this.pushupState.phase === 'down' ? '下放中' : '撑起')
-        : this.exerciseType === 'jumprope'
-          ? (this.jumpState.phase === 'air' ? '跳跃中' : '落地')
-          : this.exerciseType === 'highknee'
-            ? (this.highKneeState.phase === 'up' ? '抬腿中' : '落下')
-            : this.exerciseType === 'plank'
-              ? (this.plankState.isPlanking ? '保持中' : '准备')
-              : this.exerciseType === 'burpee'
-                ? (this.burpeeState.phase === 'stand' ? '站立' : this.burpeeState.phase === 'squat' ? '下蹲' : this.burpeeState.phase === 'plank' ? '平板' : this.burpeeState.phase === 'pushup' ? '俯卧撑' : '跳跃')
-                : this.exerciseType === 'lunge'
-                  ? (this.lungeState.phase === 'down' ? '下蹲中' : '站立')
-                  : (this.mountainClimberState.isActive ? '交替中' : '准备')
-    ctx.fillStyle = '#88CCFF'
-    ctx.fillText(`状态: ${status}`, 25, 88)
 
     ctx.restore()
   }

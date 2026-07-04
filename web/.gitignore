@@ -33,6 +33,7 @@ pnpm-debug.log*
 .env.*.local
 
 # GraphFlow cache
+.graphflow-cache/
 graphflow-out/
 
 # TypeScript build info
