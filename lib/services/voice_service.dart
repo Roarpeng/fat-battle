@@ -93,7 +93,7 @@ class VoiceService {
   Future<void> foodAdded(String name) => speak('已记录${name}~');
   Future<void> dailySummary(int calIn, int calEx, int net) {
     final rating = net <= 0 ? '优秀' : net < 300 ? '不错' : '加油';
-    speak('今天主人摄入${calIn}卡路里，锻炼消耗${calEx}，净摄入${net}，表现${rating}~');
+    return speak('今天主人摄入${calIn}卡路里，锻炼消耗${calEx}，净摄入${net}，表现${rating}~');
   }
 
   Future<void> streak(int days) =>

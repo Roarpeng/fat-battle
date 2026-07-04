@@ -6,7 +6,8 @@ plugins {
 
 android {
     namespace = "com.fatbattle.fat_battle"
-    compileSdk = flutter.compileSdkVersion
+    // google_mlkit_pose_detection 需要 compileSdk >= 35
+    compileSdk = maxOf(flutter.compileSdkVersion, 35)
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
@@ -20,8 +21,9 @@ android {
         applicationId = "com.fatbattle.fat_battle"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
-        targetSdk = flutter.targetSdkVersion
+        // google_mlkit_pose_detection 要求 minSdk>=21, compileSdk>=35, targetSdk>=35
+        minSdk = maxOf(flutter.minSdkVersion, 21)
+        targetSdk = maxOf(flutter.targetSdkVersion, 35)
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }

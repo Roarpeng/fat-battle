@@ -38,6 +38,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
   int _cameraRepCount = 0;
   String _cameraFeedback = '准备开始';
   double _motionLevel = 0;
+  double _sensitivity = 15.0;
   DateTime? _cameraStartTime;
   
   @override
@@ -645,8 +646,10 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
         ? DateTime.now().difference(_cameraStartTime!)
         : Duration.zero;
     final elapsedMinutes = elapsed.inSeconds / 60.0;
+    final calPerMin = exercise?.calPerMin ?? 0;
+    final calPerRep = calPerMin / 30.0;
     final estimatedCal = exercise != null
-        ? (exercise.calPerMin * elapsedMinutes).round()
+        ? ((calPerMin * elapsedMinutes * 0.3) + (calPerRep * _cameraRepCount)).round()
         : 0;
     
     return Card(
@@ -771,6 +774,38 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
                 child: const Text('📷 启动摄像头'),
               )
             else if (_cameraReady && !_cameraDetecting) ...[
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        '检测灵敏度',
+                        style: TextStyle(color: AppColors.text2, fontSize: 12),
+                      ),
+                      Text(
+                        _sensitivity.toStringAsFixed(1),
+                        style: TextStyle(color: AppColors.text2, fontSize: 12),
+                      ),
+                    ],
+                  ),
+                  Slider(
+                    value: _sensitivity,
+                    min: 5.0,
+                    max: 50.0,
+                    divisions: 90,
+                    label: _sensitivity.toStringAsFixed(1),
+                    onChanged: (value) {
+                      setState(() {
+                        _sensitivity = value;
+                      });
+                      _cameraDetector.setSensitivity(value);
+                    },
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
               if (_selectedExercise == null)
                 Text(
                   '请先选择运动类型',
@@ -803,9 +838,12 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
   
   /// 运动强度指示器
   Widget _buildMotionIndicator() {
-    final maxLevel = 30.0;
+    final threshold = _cameraDetector.motionThreshold;
+    final maxLevel = threshold > 0 ? threshold : 30.0;
     final normalizedLevel = (_motionLevel / maxLevel).clamp(0.0, 1.0);
-    
+    final isAboveThreshold = _motionLevel > threshold;
+    final levelColor = isAboveThreshold ? AppColors.green : AppColors.text2;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -813,12 +851,12 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(
-              '运动强度',
+              '阈值: ${threshold.toStringAsFixed(1)}',
               style: TextStyle(color: AppColors.text2, fontSize: 12),
             ),
             Text(
               _motionLevel.toStringAsFixed(1),
-              style: TextStyle(color: AppColors.text2, fontSize: 12),
+              style: TextStyle(color: levelColor, fontSize: 12),
             ),
           ],
         ),
@@ -835,9 +873,9 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
             widthFactor: normalizedLevel,
             child: Container(
               decoration: BoxDecoration(
-                color: normalizedLevel > 0.7
+                color: isAboveThreshold
                     ? AppColors.green
-                    : normalizedLevel > 0.3
+                    : normalizedLevel > 0.5
                         ? AppColors.gold
                         : AppColors.red,
                 borderRadius: BorderRadius.circular(4),
@@ -918,7 +956,10 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
       return;
     }
     
-    final cal = GameAlgorithm.calcExerciseCal(exercise, durationMinutes);
+    final elapsedMinutes = elapsed.inSeconds / 60.0;
+    final calPerMin = exercise.calPerMin;
+    final calPerRep = calPerMin / 30.0;
+    final cal = ((calPerMin * elapsedMinutes * 0.3) + (calPerRep * _cameraRepCount)).round();
     final damageResult = GameAlgorithm.exerciseImpactOnMonster(
       cal,
       'camera',

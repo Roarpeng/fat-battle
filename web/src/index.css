@@ -1,0 +1,114 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg: #0f0f1a;
+  --color-bg2: #1a1a2e;
+  --color-bg3: #16213e;
+  --color-card: #1e2a4a;
+  --color-border: #2a3a5a;
+  --color-text: #e0e0e0;
+  --color-text2: #a0a0b0;
+  --color-text3: #6b7280;
+  --color-red: #ff6b6b;
+  --color-red-dark: #ee5a24;
+  --color-gold: #ffd93d;
+  --color-gold-dark: #f39c12;
+  --color-green: #2ecc71;
+  --color-green-dark: #27ae60;
+  --color-purple: #667eea;
+  --color-purple-dark: #5f27cd;
+  --color-blue: #4facfe;
+  --color-pink: #ff9ff3;
+  --color-orange: #ffa502;
+}
+
+@layer base {
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  html, body, #root {
+    height: 100%;
+    width: 100%;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+      'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+    background: var(--color-bg);
+    color: var(--color-text);
+    overflow-x: hidden;
+  }
+}
+
+/* 滚动条 */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text3);
+}
+
+/* 动画 */
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
+  20%, 40%, 60%, 80% { transform: translateX(5px); }
+}
+@keyframes glow {
+  0%, 100% { filter: brightness(1); }
+  50% { filter: brightness(1.5) drop-shadow(0 0 20px var(--color-red)); }
+}
+@keyframes floatUp {
+  0% { opacity: 1; transform: translateY(0); }
+  100% { opacity: 0; transform: translateY(-60px); }
+}
+@keyframes pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}
+@keyframes bounceIn {
+  0% { transform: scale(0.3); opacity: 0; }
+  50% { transform: scale(1.05); }
+  70% { transform: scale(0.9); }
+  100% { transform: scale(1); opacity: 1; }
+}
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes sparkle {
+  0%, 100% { opacity: 0; transform: scale(0); }
+  50% { opacity: 1; transform: scale(1); }
+}
+@keyframes coinFall {
+  0% { transform: translateY(-100vh) rotate(0deg); opacity: 1; }
+  100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
+}
+
+.animate-float { animation: float 3s ease-in-out infinite; }
+.animate-shake { animation: shake 0.5s ease-in-out; }
+.animate-glow { animation: glow 2s ease-in-out infinite; }
+.animate-pulse { animation: pulse 1.5s ease-in-out infinite; }
+.animate-bounceIn { animation: bounceIn 0.5s ease-out; }
+.animate-slideDown { animation: slideDown 0.3s ease-out; }
+.animate-fadeIn { animation: fadeIn 0.3s ease-out; }

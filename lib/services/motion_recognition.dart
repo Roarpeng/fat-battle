@@ -383,16 +383,33 @@ class CameraMotionDetector {
   
   double _motionThreshold = 15.0;
   final int _debounceMs = 800;
-  
+
+  // 自动校准
+  bool _isCalibrating = false;
+  final List<double> _calibrationSamples = [];
+
+  // 滑动窗口峰值检测
+  final List<double> _motionHistory = [];
+  final int _historySize = 20;
+  DateTime _lastPeakTime = DateTime.now();
+  DateTime _lastValleyTime = DateTime.now();
+  bool _hadPeak = false;
+
+  // 运动时长验证
+  final int _minRepMs = 300;
+  final int _maxRepMs = 5000;
+
   Function(int count, String exercise)? onRepDetected;
   Function(String feedback)? onFeedback;
   Function(double motionLevel)? onMotionUpdate;
-  
+
   CameraController? get controller => _controller;
   bool get isInitialized => _isInitialized;
   bool get isDetecting => _isDetecting;
   int get repCount => _repCount;
-  
+  bool get isCalibrating => _isCalibrating;
+  double get motionThreshold => _motionThreshold;
+
   Future<void> initialize() async {
     if (_isInitialized) return;
     
@@ -429,6 +446,8 @@ class CameraMotionDetector {
     _previousFrameLuminance = null;
     _lastRepTime = DateTime.now();
     _motionState = 'idle';
+    _motionHistory.clear();
+    _hadPeak = false;
     _isDetecting = true;
     
     _controller!.startImageStream(_processCameraImage);
@@ -457,7 +476,12 @@ class CameraMotionDetector {
     if (_previousFrameLuminance != null) {
       final motionLevel = _calculateMotionLevel(_previousFrameLuminance!, luminance);
       onMotionUpdate?.call(motionLevel);
-      _analyzeMotion(motionLevel);
+
+      if (_isCalibrating) {
+        _calibrationSamples.add(motionLevel);
+      } else {
+        _analyzeMotion(motionLevel);
+      }
     }
     
     _previousFrameLuminance = luminance;
@@ -469,23 +493,28 @@ class CameraMotionDetector {
       final bytes = plane.bytes;
       final width = image.width;
       final height = image.height;
-      
+
       final sampleSize = 8;
-      final sampleWidth = width ~/ sampleSize;
-      final sampleHeight = height ~/ sampleSize;
+      // 只采样中心 60% 区域
+      final startX = (width * 0.2).toInt();
+      final endX = (width * 0.8).toInt();
+      final startY = (height * 0.2).toInt();
+      final endY = (height * 0.8).toInt();
+
+      final sampleWidth = (endX - startX) ~/ sampleSize;
+      final sampleHeight = (endY - startY) ~/ sampleSize;
       final result = <int>[];
-      
+
       for (int y = 0; y < sampleHeight; y++) {
         for (int x = 0; x < sampleWidth; x++) {
-          final px = x * sampleSize;
-          final py = y * sampleSize;
+          final px = startX + x * sampleSize;
+          final py = startY + y * sampleSize;
           final index = py * plane.bytesPerRow + px;
           if (index < bytes.length) {
             result.add(bytes[index]);
           }
         }
       }
-      
       return result;
     } catch (e) {
       return null;
@@ -506,44 +535,77 @@ class CameraMotionDetector {
   void _analyzeMotion(double motionLevel) {
     final now = DateTime.now();
     final debounceOK = now.difference(_lastRepTime).inMilliseconds > _debounceMs;
-    
+
+    // 将 motionLevel 加入滑动窗口历史
+    _motionHistory.add(motionLevel);
+    if (_motionHistory.length > _historySize) {
+      _motionHistory.removeAt(0);
+    }
+
+    // 历史长度不足，返回
+    if (_motionHistory.length < _historySize) return;
+
+    // 滑动窗口中点
+    final midIndex = _historySize ~/ 2;
+    final midValue = _motionHistory[midIndex];
+
+    // 检测峰值：中间值大于两侧邻居且超过阈值
+    final isPeak = midValue > _motionHistory[midIndex - 1] &&
+        midValue > _motionHistory[midIndex + 1] &&
+        midValue > _motionThreshold;
+
+    // 检测谷值：中间值小于阈值 * 0.5
+    final isValley = midValue < _motionThreshold * 0.5;
+
+    // 时长验证
+    final timeSinceLast = now.difference(_lastRepTime).inMilliseconds;
+    final durationOK = timeSinceLast >= _minRepMs && timeSinceLast <= _maxRepMs;
+
     switch (_currentExercise) {
+      case 'running':
+      case 'walking':
+      case 'cycling':
+        // 每个峰值算1步（使用滑动窗口平滑后的值）
+        if (isPeak) {
+          if (durationOK && debounceOK) {
+            _repCount++;
+            _lastRepTime = now;
+            if (_repCount % 10 == 0) {
+              onRepDetected?.call(_repCount, _getExerciseName());
+              onFeedback?.call(_getFeedbackMessage());
+            }
+          } else {
+            // 超出范围，重置峰值状态但不计数
+            _lastRepTime = now;
+          }
+        }
+        break;
       case 'pushup':
       case 'squat':
       case 'jumping_jack':
       case 'hiit':
       case 'jumprope':
-        if (motionLevel > _motionThreshold && _motionState == 'idle' && debounceOK) {
-          _motionState = 'active';
-        } else if (motionLevel < _motionThreshold * 0.5 && _motionState == 'active') {
-          _motionState = 'idle';
-          _repCount++;
-          _lastRepTime = now;
-          onRepDetected?.call(_repCount, _getExerciseName());
-          onFeedback?.call(_getFeedbackMessage());
-        }
-        break;
-      case 'running':
-      case 'walking':
-      case 'cycling':
-        if (motionLevel > _motionThreshold * 0.7 && debounceOK) {
-          _repCount++;
-          _lastRepTime = now;
-          if (_repCount % 10 == 0) {
+      default:
+        // 完整周期：峰值 -> 谷值 = 1次计数
+        if (isPeak && !_hadPeak) {
+          _hadPeak = true;
+          _lastPeakTime = now;
+        } else if (isValley && _hadPeak) {
+          _hadPeak = false;
+          _lastValleyTime = now;
+          if (durationOK && debounceOK) {
+            _repCount++;
+            _lastRepTime = now;
             onRepDetected?.call(_repCount, _getExerciseName());
             onFeedback?.call(_getFeedbackMessage());
+          } else {
+            // 超出范围，重置峰值状态但不计数
+            _lastRepTime = now;
           }
         }
         break;
-      default:
-        if (motionLevel > _motionThreshold && debounceOK) {
-          _repCount++;
-          _lastRepTime = now;
-          onRepDetected?.call(_repCount, _getExerciseName());
-          onFeedback?.call(_getFeedbackMessage());
-        }
     }
-    
+
     if (motionLevel > _motionThreshold * 0.3 && motionLevel < _motionThreshold * 0.7) {
       onFeedback?.call('动作幅度再大一点！');
     }
@@ -582,7 +644,31 @@ class CameraMotionDetector {
   void setSensitivity(double threshold) {
     _motionThreshold = threshold.clamp(5.0, 50.0);
   }
-  
+
+  Future<double> calibrate() async {
+    _isCalibrating = true;
+    _calibrationSamples.clear();
+    onFeedback?.call('正在校准，请保持静止...');
+
+    // 采集 2 秒的数据（_processCameraImage 中会自动收集）
+    await Future.delayed(const Duration(seconds: 2));
+
+    _isCalibrating = false;
+
+    if (_calibrationSamples.isEmpty) {
+      onFeedback?.call('校准失败，使用默认阈值');
+      return _motionThreshold;
+    }
+
+    // 计算平均静息运动水平
+    final avgRest = _calibrationSamples.reduce((a, b) => a + b) / _calibrationSamples.length;
+    // 设置阈值为静息水平的 2.5 倍，但不低于 8.0
+    _motionThreshold = (avgRest * 2.5).clamp(8.0, 50.0);
+
+    onFeedback?.call('校准完成！阈值: ${_motionThreshold.toStringAsFixed(1)}');
+    return _motionThreshold;
+  }
+
   Future<void> dispose() async {
     await stopDetection();
     await _controller?.dispose();
