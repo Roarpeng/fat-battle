@@ -16,13 +16,25 @@ import {
   Heart,
   Code,
   RotateCcw,
+  Trophy,
+  ClipboardList,
+  Sparkles,
+  Utensils,
+  Dumbbell,
+  Bluetooth,
+  Trash2,
 } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import { useGameStore, Difficulty } from '../store/useGameStore'
 import Card from '../components/Card'
 import Button from '../components/Button'
 
 export default function SettingsPage() {
-  const { user, setUser, setDifficulty, resetGame, days } = useGameStore()
+  const navigate = useNavigate()
+  const {
+    user, setUser, setDifficulty, resetGame, days, playerLevel, achievements, dailyQuests,
+    customFoods, removeCustomFood, customExercises, removeCustomExercise,
+  } = useGameStore()
 
   const [editing, setEditing] = useState(false)
   const [editHeight, setEditHeight] = useState(user.height)
@@ -65,7 +77,7 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="min-h-full p-4 pb-6">
+    <div className="min-h-full p-4 pb-6 max-w-[480px] mx-auto">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -239,6 +251,138 @@ export default function SettingsPage() {
               </button>
             </div>
           </div>
+        </Card>
+
+        <Card className="mb-4">
+          <h2 className="font-bold text-lg mb-3 flex items-center gap-2">
+            <Sparkles className="text-purple" size={20} />
+            游戏中心
+          </h2>
+          <div className="space-y-2">
+            <button
+              onClick={() => navigate('/achievements')}
+              className="w-full flex items-center justify-between py-2.5 px-3 bg-bg2/60 rounded-xl hover:bg-bg2 transition-colors"
+            >
+              <span className="flex items-center gap-2 text-sm text-text">
+                <Trophy size={16} className="text-gold" />
+                成就殿堂
+              </span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] text-text3">{achievements.filter((a) => a.unlocked).length} 个</span>
+                <ChevronRight size={14} className="text-text3" />
+              </div>
+            </button>
+            <button
+              onClick={() => navigate('/quests')}
+              className="w-full flex items-center justify-between py-2.5 px-3 bg-bg2/60 rounded-xl hover:bg-bg2 transition-colors"
+            >
+              <span className="flex items-center gap-2 text-sm text-text">
+                <ClipboardList size={16} className="text-blue" />
+                每日任务
+              </span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] text-text3">{dailyQuests.filter((q) => q.completed).length}/{dailyQuests.length} 完成</span>
+                <ChevronRight size={14} className="text-text3" />
+              </div>
+            </button>
+            <button
+              onClick={() => navigate('/skills')}
+              className="w-full flex items-center justify-between py-2.5 px-3 bg-bg2/60 rounded-xl hover:bg-bg2 transition-colors"
+            >
+              <span className="flex items-center gap-2 text-sm text-text">
+                <Zap size={16} className="text-purple" />
+                技能系统
+              </span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] text-text3">Lv.{playerLevel.level}</span>
+                <ChevronRight size={14} className="text-text3" />
+              </div>
+            </button>
+          </div>
+        </Card>
+
+        {/* 自定义食物库 */}
+        <Card className="mb-4">
+          <h2 className="font-bold text-lg mb-3 flex items-center gap-2">
+            <Utensils className="text-red" size={20} />
+            我的食物库
+          </h2>
+          <div className="space-y-1.5">
+            {customFoods.length === 0 && (
+              <p className="text-text3 text-xs py-2">还没有自定义食物，在饮食页面可以添加~</p>
+            )}
+            {customFoods.map((food) => (
+              <div
+                key={food.id}
+                className="flex items-center justify-between py-2 px-3 bg-bg2/60 rounded-xl"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">{food.emoji}</span>
+                  <div>
+                    <div className="text-sm text-text font-bold">{food.name}</div>
+                    <div className="text-[10px] text-text3">{food.calories} kcal</div>
+                  </div>
+                </div>
+                <button
+                  onClick={() => removeCustomFood(food.id)}
+                  className="text-text3 hover:text-red transition-colors p-1"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            ))}
+          </div>
+        </Card>
+
+        {/* 自定义运动库 */}
+        <Card className="mb-4">
+          <h2 className="font-bold text-lg mb-3 flex items-center gap-2">
+            <Dumbbell className="text-green" size={20} />
+            我的运动库
+          </h2>
+          <div className="space-y-1.5">
+            {customExercises.length === 0 && (
+              <p className="text-text3 text-xs py-2">还没有自定义运动，在锻炼页面可以添加~</p>
+            )}
+            {customExercises.map((ex) => (
+              <div
+                key={ex.id}
+                className="flex items-center justify-between py-2 px-3 bg-bg2/60 rounded-xl"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">{ex.emoji}</span>
+                  <div>
+                    <div className="text-sm text-text font-bold">{ex.name}</div>
+                    <div className="text-[10px] text-text3">{ex.caloriesPerMinute} kcal/分 · {ex.damagePerMinute} 伤害/分</div>
+                  </div>
+                </div>
+                <button
+                  onClick={() => removeCustomExercise(ex.id)}
+                  className="text-text3 hover:text-red transition-colors p-1"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            ))}
+          </div>
+        </Card>
+
+        {/* 蓝牙设备 */}
+        <Card className="mb-4">
+          <h2 className="font-bold text-lg mb-3 flex items-center gap-2">
+            <Bluetooth className="text-blue" size={20} />
+            设备连接
+          </h2>
+          <button
+            onClick={() => navigate('/bluetooth')}
+            className="w-full flex items-center justify-between py-2.5 px-3 bg-bg2/60 rounded-xl hover:bg-bg2 transition-colors"
+          >
+            <span className="flex items-center gap-2 text-sm text-text">
+              <Bluetooth size={16} className="text-blue" />
+              蓝牙设备
+            </span>
+            <ChevronRight size={14} className="text-text3" />
+          </button>
         </Card>
 
         <Card className="mb-4">

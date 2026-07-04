@@ -25,6 +25,10 @@ export interface PoseServiceOptions {
   onCount?: (count: number) => void
   onStatusChange?: (status: PoseStatus) => void
   onError?: (error: Error) => void
+  onPauseChange?: (paused: boolean) => void
+  onPrepareProgress?: (progress: number) => void
+  onComboChange?: (combo: number, multiplier: number) => void
+  onStaminaChange?: (stamina: number) => void
   videoElement?: HTMLVideoElement
   canvasElement?: HTMLCanvasElement
   squatThresholdAngle?: number
@@ -32,6 +36,7 @@ export interface PoseServiceOptions {
   pushupThresholdAngle?: number
   minRepInterval?: number
   userWeight?: number
+  gender?: 'male' | 'female'
 }
 
 const MEDIAPIPE_POSE_URL = 'https://cdn.jsdelivr.net/npm/@mediapipe/pose'
@@ -69,6 +74,7 @@ export class PoseService {
   private videoElement: HTMLVideoElement | null = null
   private canvasElement: HTMLCanvasElement | null = null
   private canvasCtx: CanvasRenderingContext2D | null = null
+  private resizeObserver: ResizeObserver | null = null
   private onResultsCallback?: (results: PoseResults) => void
   private onCountCallback?: (count: number) => void
   private onStatusChangeCallback?: (status: PoseStatus) => void
@@ -77,6 +83,7 @@ export class PoseService {
   private boundOnResults: (results: any) => void
   private cameraFacing: 'user' | 'environment' = 'user'
   private userWeight: number = 70
+  private gender: 'male' | 'female' = 'male'
   private drawX: number = 0
   private drawY: number = 0
   private drawWidth: number = 0
@@ -148,6 +155,38 @@ export class PoseService {
   private startTime: number = 0
   private caloriesBurned: number = 0
 
+  // ========== 人体离开检测 & 暂停系统 ==========
+  private isPaused: boolean = false
+  private personLostFrames: number = 0
+  private readonly PERSON_LOST_THRESHOLD: number = 15 // 约 0.5s (30fps)
+  private personReturnedFrames: number = 0
+  private readonly PERSON_RETURN_THRESHOLD: number = 5 // 约 0.15s
+  private onPauseChangeCallback?: (paused: boolean) => void
+  private pausedTime: number = 0
+  private totalPausedDuration: number = 0
+
+  // ========== 准备姿势检测 ==========
+  private isPreparing: boolean = false
+  private prepareStartTime: number = 0
+  private readonly PREPARE_REQUIRED_MS: number = 2000 // 2秒准备时间
+  private prepareProgress: number = 0
+  private onPrepareProgressCallback?: (progress: number) => void
+
+  // ========== 连击机制 ==========
+  private comboCount: number = 0
+  private lastRepQuality: 'perfect' | 'good' | 'normal' = 'normal'
+  private lastRepTime: number = 0
+  private readonly COMBO_WINDOW_MS: number = 3000 // 3秒内连续动作算连击
+  private comboMultiplier: number = 1.0
+  private onComboChangeCallback?: (combo: number, multiplier: number) => void
+
+  // ========== 体力值系统 ==========
+  private stamina: number = 100
+  private readonly MAX_STAMINA: number = 100
+  private readonly STAMINA_COST_PER_REP: number = 8
+  private readonly STAMINA_RECOVERY_RATE: number = 0.8 // 每帧恢复
+  private onStaminaChangeCallback?: (stamina: number) => void
+
   constructor(options: PoseServiceOptions = {}) {
     this.exerciseType = options.exerciseType || 'squat'
     this.videoElement = options.videoElement || null
@@ -165,11 +204,16 @@ export class PoseService {
     this.onCountCallback = options.onCount
     this.onStatusChangeCallback = options.onStatusChange
     this.onErrorCallback = options.onError
+    this.onPauseChangeCallback = options.onPauseChange
+    this.onPrepareProgressCallback = options.onPrepareProgress
+    this.onComboChangeCallback = options.onComboChange
+    this.onStaminaChangeCallback = options.onStaminaChange
     this.squatThresholdAngle = options.squatThresholdAngle ?? DEFAULT_SQUAT_THRESHOLD
     this.standThresholdAngle = options.standThresholdAngle ?? DEFAULT_STAND_THRESHOLD
     this.pushupThresholdAngle = options.pushupThresholdAngle ?? DEFAULT_PUSHUP_THRESHOLD
     this.minRepInterval = options.minRepInterval ?? DEFAULT_MIN_REP_INTERVAL
     this.userWeight = options.userWeight ?? 70
+    this.gender = options.gender ?? 'male'
     this.boundOnResults = this.onResults.bind(this)
   }
 
@@ -202,6 +246,10 @@ export class PoseService {
 
   setUserWeight(weight: number): void {
     this.userWeight = weight
+  }
+
+  setGender(gender: 'male' | 'female'): void {
+    this.gender = gender
   }
 
   getCaloriesBurned(): number {
@@ -237,14 +285,49 @@ export class PoseService {
     this.onErrorCallback = callback
   }
 
+  // ========== 游戏化系统 getter/setter ==========
+  isGamePaused(): boolean { return this.isPaused }
+  getComboCount(): number { return this.comboCount }
+  getComboMultiplier(): number { return this.comboMultiplier }
+  getStamina(): number { return Math.round(this.stamina) }
+  isInPreparing(): boolean { return this.isPreparing }
+  getPrepareProgress(): number { return this.prepareProgress }
+
+  setOnPauseChange(callback: (paused: boolean) => void): void {
+    this.onPauseChangeCallback = callback
+  }
+  setOnPrepareProgress(callback: (progress: number) => void): void {
+    this.onPrepareProgressCallback = callback
+  }
+  setOnComboChange(callback: (combo: number, multiplier: number) => void): void {
+    this.onComboChangeCallback = callback
+  }
+  setOnStaminaChange(callback: (stamina: number) => void): void {
+    this.onStaminaChangeCallback = callback
+  }
+
   setVideoElement(video: HTMLVideoElement): void {
     this.videoElement = video
   }
 
   setCanvasElement(canvas: HTMLCanvasElement): void {
+    // 清理旧的 ResizeObserver
+    if (this.resizeObserver) {
+      this.resizeObserver.disconnect()
+      this.resizeObserver = null
+    }
+
     this.canvasElement = canvas
     this.canvasCtx = canvas.getContext('2d')
     this.resizeCanvas()
+
+    // 监听 canvas 容器尺寸变化，自动调整内部分辨率
+    if (typeof ResizeObserver !== 'undefined') {
+      this.resizeObserver = new ResizeObserver(() => {
+        this.resizeCanvas()
+      })
+      this.resizeObserver.observe(canvas)
+    }
   }
 
   private resizeCanvas(): void {
@@ -386,7 +469,7 @@ export class PoseService {
       if (window.Camera) {
         this.camera = new window.Camera(this.videoElement, {
           onFrame: async () => {
-            if (this.pose && this.status === 'running') {
+            if (this.pose && (this.status === 'running' || this.isPreparing)) {
               await this.pose.send({ image: this.videoElement })
             }
           },
@@ -398,7 +481,10 @@ export class PoseService {
         this.startFrameLoop()
       }
 
-      this.startTime = Date.now()
+      // 进入准备姿势检测阶段（站好2秒后才正式计时）
+      this.isPreparing = true
+      this.prepareStartTime = Date.now()
+      this.prepareProgress = 0
       this.setStatus('running')
       return true
     } catch (err) {
@@ -423,7 +509,7 @@ export class PoseService {
 
   private startFrameLoop(): void {
     const loop = async () => {
-      if (this.status !== 'running') return
+      if (this.status !== 'running' && !this.isPreparing) return
       if (this.pose && this.videoElement && this.videoElement.readyState >= 2) {
         try {
           await this.pose.send({ image: this.videoElement })
@@ -482,6 +568,34 @@ export class PoseService {
     })
   }
 
+  // ========== 通用计数成功处理（连击 + 体力值）==========
+  private handleRepSuccess(): boolean {
+    // 体力值检查
+    if (this.stamina < this.STAMINA_COST_PER_REP) {
+      // 体力不足，不计数
+      return false
+    }
+
+    // 消耗体力
+    this.stamina -= this.STAMINA_COST_PER_REP
+    this.onStaminaChangeCallback?.(Math.round(this.stamina))
+
+    // 连击逻辑
+    const now = Date.now()
+    if (now - this.lastRepTime <= this.COMBO_WINDOW_MS) {
+      this.comboCount++
+    } else {
+      this.comboCount = 1
+    }
+    this.lastRepTime = now
+
+    // 连击倍率：每5连击 +0.2，上限2.0
+    this.comboMultiplier = Math.min(2.0, 1.0 + Math.floor(this.comboCount / 5) * 0.2)
+    this.onComboChangeCallback?.(this.comboCount, this.comboMultiplier)
+
+    return true
+  }
+
   private detectSquat(landmarks: PoseLandmark[]): void {
     const requiredIndices = [LEFT_HIP, LEFT_KNEE, LEFT_ANKLE, RIGHT_HIP, RIGHT_KNEE, RIGHT_ANKLE]
     if (!this.checkVisibility(landmarks, requiredIndices)) return
@@ -504,10 +618,12 @@ export class PoseService {
     ) {
       this.squatState.phase = 'standing'
       this.squatState.isActive = false
-      this.squatState.count += 1
-      this.squatState.lastRepTime = now
-      this.caloriesBurned = this.calculateCalories('squat', this.squatState.count)
-      this.onCountCallback?.(this.squatState.count)
+      if (this.handleRepSuccess()) {
+        this.squatState.count += 1
+        this.squatState.lastRepTime = now
+        this.caloriesBurned = this.calculateCalories('squat', this.squatState.count)
+        this.onCountCallback?.(this.squatState.count)
+      }
     }
   }
 
@@ -533,10 +649,12 @@ export class PoseService {
     ) {
       this.pushupState.phase = 'up'
       this.pushupState.isActive = false
-      this.pushupState.count += 1
-      this.pushupState.lastRepTime = now
-      this.caloriesBurned = this.calculateCalories('pushup', this.pushupState.count)
-      this.onCountCallback?.(this.pushupState.count)
+      if (this.handleRepSuccess()) {
+        this.pushupState.count += 1
+        this.pushupState.lastRepTime = now
+        this.caloriesBurned = this.calculateCalories('pushup', this.pushupState.count)
+        this.onCountCallback?.(this.pushupState.count)
+      }
     }
   }
 
@@ -556,10 +674,12 @@ export class PoseService {
       } else if (this.jumpState.phase === 'air' && hipDiff < -0.03) {
         this.jumpState.phase = 'ground'
         this.jumpState.isActive = false
-        this.jumpState.count += 1
-        this.jumpState.lastRepTime = now
-        this.caloriesBurned = this.calculateCalories('jumprope', this.jumpState.count)
-        this.onCountCallback?.(this.jumpState.count)
+        if (this.handleRepSuccess()) {
+          this.jumpState.count += 1
+          this.jumpState.lastRepTime = now
+          this.caloriesBurned = this.calculateCalories('jumprope', this.jumpState.count)
+          this.onCountCallback?.(this.jumpState.count)
+        }
       }
     }
 
@@ -586,10 +706,12 @@ export class PoseService {
     } else if (this.highKneeState.phase === 'up' && kneeHeightRatio < 0.05) {
       this.highKneeState.phase = 'down'
       this.highKneeState.isActive = false
-      this.highKneeState.count += 1
-      this.highKneeState.lastRepTime = now
-      this.caloriesBurned = this.calculateCalories('highknee', this.highKneeState.count)
-      this.onCountCallback?.(this.highKneeState.count)
+      if (this.handleRepSuccess()) {
+        this.highKneeState.count += 1
+        this.highKneeState.lastRepTime = now
+        this.caloriesBurned = this.calculateCalories('highknee', this.highKneeState.count)
+        this.onCountCallback?.(this.highKneeState.count)
+      }
     }
   }
 
@@ -616,10 +738,12 @@ export class PoseService {
       } else {
         const currentHold = Math.floor((now - this.plankState.startTime) / 1000)
         if (currentHold > this.plankState.count) {
-          this.plankState.count = currentHold
-          this.plankState.holdTime = currentHold
-          this.caloriesBurned = this.calculateCalories('plank', this.plankState.count / 60)
-          this.onCountCallback?.(this.plankState.count)
+          if (this.handleRepSuccess()) {
+            this.plankState.count = currentHold
+            this.plankState.holdTime = currentHold
+            this.caloriesBurned = this.calculateCalories('plank', this.plankState.count / 60)
+            this.onCountCallback?.(this.plankState.count)
+          }
         }
       }
     } else {
@@ -662,10 +786,12 @@ export class PoseService {
     } else if (this.burpeeState.phase === 'jump' && isStanding && now - this.burpeeState.lastRepTime > this.minRepInterval * 1.5) {
       this.burpeeState.phase = 'stand'
       this.burpeeState.isActive = false
-      this.burpeeState.count += 1
-      this.burpeeState.lastRepTime = now
-      this.caloriesBurned = this.calculateCalories('burpee', this.burpeeState.count)
-      this.onCountCallback?.(this.burpeeState.count)
+      if (this.handleRepSuccess()) {
+        this.burpeeState.count += 1
+        this.burpeeState.lastRepTime = now
+        this.caloriesBurned = this.calculateCalories('burpee', this.burpeeState.count)
+        this.onCountCallback?.(this.burpeeState.count)
+      }
     }
 
     this.burpeeState.squatDepth = Math.max(0, 180 - avgKneeAngle)
@@ -699,10 +825,12 @@ export class PoseService {
     } else if (this.lungeState.phase === 'down' && isStandingUp && now - this.lungeState.lastRepTime > this.minRepInterval) {
       this.lungeState.phase = 'up'
       this.lungeState.isActive = false
-      this.lungeState.count += 1
-      this.lungeState.lastRepTime = now
-      this.caloriesBurned = this.calculateCalories('lunge', this.lungeState.count)
-      this.onCountCallback?.(this.lungeState.count)
+      if (this.handleRepSuccess()) {
+        this.lungeState.count += 1
+        this.lungeState.lastRepTime = now
+        this.caloriesBurned = this.calculateCalories('lunge', this.lungeState.count)
+        this.onCountCallback?.(this.lungeState.count)
+      }
     }
   }
 
@@ -735,10 +863,12 @@ export class PoseService {
       this.mountainClimberState.phase = 'left'
       this.mountainClimberState.lastSwitchTime = now
       this.mountainClimberState.isActive = true
-      this.mountainClimberState.count += 1
-      this.mountainClimberState.lastRepTime = now
-      this.caloriesBurned = this.calculateCalories('mountainclimber', this.mountainClimberState.count)
-      this.onCountCallback?.(this.mountainClimberState.count)
+      if (this.handleRepSuccess()) {
+        this.mountainClimberState.count += 1
+        this.mountainClimberState.lastRepTime = now
+        this.caloriesBurned = this.calculateCalories('mountainclimber', this.mountainClimberState.count)
+        this.onCountCallback?.(this.mountainClimberState.count)
+      }
     }
   }
 
@@ -775,7 +905,61 @@ export class PoseService {
   private onResults(results: any): void {
     this.drawBackground(results)
 
-    if (!results.poseLandmarks) {
+    const hasPerson = !!results.poseLandmarks && results.poseLandmarks.length > 0
+
+    // ========== 人体离开检测 & 暂停系统 ==========
+    if (!hasPerson) {
+      this.personLostFrames++
+      this.personReturnedFrames = Math.max(0, this.personReturnedFrames - 1)
+    } else {
+      this.personReturnedFrames++
+      this.personLostFrames = Math.max(0, this.personLostFrames - 1)
+    }
+
+    // 人体离开超过阈值 → 触发暂停
+    if (!this.isPaused && this.personLostFrames >= this.PERSON_LOST_THRESHOLD) {
+      this.isPaused = true
+      this.pausedTime = Date.now()
+      this.onPauseChangeCallback?.(true)
+    }
+
+    // 人体返回超过阈值 → 自动恢复
+    if (this.isPaused && this.personReturnedFrames >= this.PERSON_RETURN_THRESHOLD) {
+      this.isPaused = false
+      this.totalPausedDuration += Date.now() - this.pausedTime
+      this.pausedTime = 0
+      this.onPauseChangeCallback?.(false)
+    }
+
+    // 暂停中：绘制暂停提示，停止一切检测
+    if (this.isPaused) {
+      this.drawPauseOverlay()
+      return
+    }
+
+    // 准备姿势检测阶段
+    if (this.isPreparing) {
+      if (hasPerson) {
+        const elapsed = Date.now() - this.prepareStartTime
+        this.prepareProgress = Math.min(1, elapsed / this.PREPARE_REQUIRED_MS)
+        this.onPrepareProgressCallback?.(this.prepareProgress)
+        if (elapsed >= this.PREPARE_REQUIRED_MS) {
+          this.isPreparing = false
+          this.prepareProgress = 1
+          this.startTime = Date.now()
+          this.onPrepareProgressCallback?.(1)
+        }
+      } else {
+        // 准备中人体离开，重置
+        this.prepareStartTime = Date.now()
+        this.prepareProgress = 0
+        this.onPrepareProgressCallback?.(0)
+      }
+      this.drawCharacter(results)
+      return
+    }
+
+    if (!hasPerson) {
       return
     }
 
@@ -789,6 +973,19 @@ export class PoseService {
     const poseResults: PoseResults = {
       landmarks,
       timestamp: Date.now(),
+    }
+
+    // ========== 体力值恢复（每帧） ==========
+    if (this.stamina < this.MAX_STAMINA) {
+      this.stamina = Math.min(this.MAX_STAMINA, this.stamina + this.STAMINA_RECOVERY_RATE)
+      this.onStaminaChangeCallback?.(Math.round(this.stamina))
+    }
+
+    // ========== 连击过期检查 ==========
+    if (this.comboCount > 0 && Date.now() - this.lastRepTime > this.COMBO_WINDOW_MS) {
+      this.comboCount = 0
+      this.comboMultiplier = 1.0
+      this.onComboChangeCallback?.(0, 1.0)
     }
 
     switch (this.exerciseType) {
@@ -818,12 +1015,12 @@ export class PoseService {
         break
     }
 
-    this.drawLandmarks(results)
+    this.drawCharacter(results)
     this.onResultsCallback?.(poseResults)
   }
 
   private drawBackground(results: any): void {
-    if (!this.canvasElement || !this.canvasCtx || !results.image) {
+    if (!this.canvasElement || !this.canvasCtx) {
       return
     }
 
@@ -835,207 +1032,421 @@ export class PoseService {
     ctx.save()
     ctx.clearRect(0, 0, canvasWidth, canvasHeight)
 
+    // 镜像翻转（前置摄像头）
     if (this.cameraFacing === 'user') {
       ctx.translate(canvasWidth, 0)
       ctx.scale(-1, 1)
     }
 
-    const image = results.image
-    const imageWidth = image.width || image.videoWidth || 640
-    const imageHeight = image.height || image.videoHeight || 480
-    const imageRatio = imageWidth / imageHeight
-    const canvasRatio = canvasWidth / canvasHeight
+    // 纯渐变背景，不绘制真人视频帧
+    const gradient = ctx.createLinearGradient(0, 0, 0, canvasHeight)
+    gradient.addColorStop(0, '#1a1a2e')
+    gradient.addColorStop(0.5, '#16213e')
+    gradient.addColorStop(1, '#0f3460')
+    ctx.fillStyle = gradient
+    ctx.fillRect(0, 0, canvasWidth, canvasHeight)
 
-    let drawWidth: number
-    let drawHeight: number
-    let drawX: number
-    let drawY: number
-
-    if (imageRatio > canvasRatio) {
-      drawWidth = canvasWidth
-      drawHeight = canvasWidth / imageRatio
-      drawX = 0
-      drawY = (canvasHeight - drawHeight) / 2
-    } else {
-      drawHeight = canvasHeight
-      drawWidth = canvasHeight * imageRatio
-      drawX = (canvasWidth - drawWidth) / 2
-      drawY = 0
+    // 绘制装饰性网格地面
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)'
+    ctx.lineWidth = 1
+    const gridSpacing = 40 * dpr
+    for (let y = canvasHeight * 0.65; y < canvasHeight; y += gridSpacing) {
+      ctx.beginPath()
+      ctx.moveTo(0, y)
+      ctx.lineTo(canvasWidth, y)
+      ctx.stroke()
+    }
+    for (let x = 0; x < canvasWidth; x += gridSpacing) {
+      ctx.beginPath()
+      ctx.moveTo(x, canvasHeight * 0.65)
+      ctx.lineTo(x, canvasHeight)
+      ctx.stroke()
     }
 
-    ctx.drawImage(image, drawX, drawY, drawWidth, drawHeight)
-
-    this.drawX = drawX
-    this.drawY = drawY
-    this.drawWidth = drawWidth
-    this.drawHeight = drawHeight
+    // landmark 坐标映射到整个 canvas（不再依赖视频尺寸）
+    this.drawX = 0
+    this.drawY = 0
+    this.drawWidth = canvasWidth
+    this.drawHeight = canvasHeight
 
     if (!results.poseLandmarks) {
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.5)'
-      ctx.fillRect(drawX, drawY, drawWidth, drawHeight)
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.3)'
+      ctx.fillRect(0, 0, canvasWidth, canvasHeight)
       ctx.fillStyle = '#ffffff'
-      ctx.font = `bold ${20 * dpr}px Arial`
+      ctx.font = `bold ${14 * dpr}px Arial`
       ctx.textAlign = 'center'
-      ctx.fillText('请将身体对准摄像头', canvasWidth / 2, canvasHeight / 2 - 10 * dpr)
-      ctx.font = `${14 * dpr}px Arial`
+      ctx.textBaseline = 'middle'
+      ctx.fillText('请将身体对准摄像头', Math.round(canvasWidth / 2), Math.round(canvasHeight / 2 - 8 * dpr))
+      ctx.font = `${11 * dpr}px Arial`
       ctx.fillStyle = 'rgba(255, 255, 255, 0.7)'
-      ctx.fillText('确保全身出现在画面中', canvasWidth / 2, canvasHeight / 2 + 20 * dpr)
+      ctx.fillText('确保全身出现在画面中', Math.round(canvasWidth / 2), Math.round(canvasHeight / 2 + 14 * dpr))
       ctx.textAlign = 'left'
+      ctx.textBaseline = 'alphabetic'
     }
 
     ctx.restore()
   }
 
-  private drawLandmarks(results: any): void {
+  private drawCharacter(results: any): void {
     if (!this.canvasElement || !this.canvasCtx || !results.poseLandmarks) {
       return
     }
 
     const ctx = this.canvasCtx
-    const width = this.canvasElement.width
-    const height = this.canvasElement.height
+    const canvasWidth = this.canvasElement.width
     const landmarks = results.poseLandmarks
     const dpr = window.devicePixelRatio || 1
 
     ctx.save()
 
     if (this.cameraFacing === 'user') {
-      ctx.translate(width, 0)
+      ctx.translate(canvasWidth, 0)
       ctx.scale(-1, 1)
     }
-
-    const shoulderMid = {
-      x: (landmarks[LEFT_SHOULDER].x + landmarks[RIGHT_SHOULDER].x) / 2,
-      y: (landmarks[LEFT_SHOULDER].y + landmarks[RIGHT_SHOULDER].y) / 2,
-      visibility: Math.min(landmarks[LEFT_SHOULDER].visibility, landmarks[RIGHT_SHOULDER].visibility),
-    }
-    const hipMid = {
-      x: (landmarks[LEFT_HIP].x + landmarks[RIGHT_HIP].x) / 2,
-      y: (landmarks[LEFT_HIP].y + landmarks[RIGHT_HIP].y) / 2,
-      visibility: Math.min(landmarks[LEFT_HIP].visibility, landmarks[RIGHT_HIP].visibility),
-    }
-
-    const boneColor = '#4ADE80'
-    const jointColor = '#FFD700'
-    const angleJointColor = '#FF6B6B'
-    const spineColor = '#A78BFA'
 
     const mapX = (x: number) => this.drawX + x * this.drawWidth
     const mapY = (y: number) => this.drawY + y * this.drawHeight
 
-    const drawLine = (p1: any, p2: any, color: string, w: number) => {
-      if (!p1 || !p2 || p1.visibility < 0.5 || p2.visibility < 0.5) return
-      ctx.shadowColor = color
-      ctx.shadowBlur = 8 * dpr
+    const isValid = (p: any) => p && p.visibility >= 0.5
+
+    // ========== 色彩方案 ==========
+    const isMale = this.gender === 'male'
+    const colors = isMale
+      ? {
+          hair: '#2C3E50',
+          hairHighlight: '#34495E',
+          skin: '#FDD9B5',
+          skinShadow: '#E8C39E',
+          outfit: '#E74C3C',
+          outfitDark: '#C0392B',
+          pants: '#2C3E50',
+          pantsDark: '#1a252f',
+          shoe: '#1a1a1a',
+          eye: '#2C3E50',
+        }
+      : {
+          hair: '#FF6B9D',
+          hairHighlight: '#FF8FB1',
+          skin: '#FDD9B5',
+          skinShadow: '#E8C39E',
+          outfit: '#9B59B6',
+          outfitDark: '#7D3C98',
+          pants: '#E8A0BF',
+          pantsDark: '#D4869F',
+          shoe: '#6C3483',
+          eye: '#9B59B6',
+        }
+
+    // ========== 计算身体比例 ==========
+    const nose = landmarks[NOSE]
+    const lShoulder = landmarks[LEFT_SHOULDER]
+    const rShoulder = landmarks[RIGHT_SHOULDER]
+    const lElbow = landmarks[LEFT_ELBOW]
+    const rElbow = landmarks[RIGHT_ELBOW]
+    const lWrist = landmarks[LEFT_WRIST]
+    const rWrist = landmarks[RIGHT_WRIST]
+    const lHip = landmarks[LEFT_HIP]
+    const rHip = landmarks[RIGHT_HIP]
+    const lKnee = landmarks[LEFT_KNEE]
+    const rKnee = landmarks[RIGHT_KNEE]
+    const lAnkle = landmarks[LEFT_ANKLE]
+    const rAnkle = landmarks[RIGHT_ANKLE]
+
+    const shoulderMid = {
+      x: (lShoulder.x + rShoulder.x) / 2,
+      y: (lShoulder.y + rShoulder.y) / 2,
+    }
+    const hipMid = {
+      x: (lHip.x + rHip.x) / 2,
+      y: (lHip.y + rHip.y) / 2,
+    }
+
+    // 肩宽决定整体比例
+    const shoulderWidth = Math.abs(mapX(lShoulder.x) - mapX(rShoulder.x))
+    const headR = Math.max(12 * dpr, shoulderWidth * 0.28)
+    const limbWidth = Math.max(4 * dpr, shoulderWidth * 0.14)
+    const torsoWidth = shoulderWidth * 0.9
+
+    // ========== 辅助绘制函数 ==========
+    const drawLimb = (p1: any, p2: any, color: string, w: number) => {
+      if (!isValid(p1) || !isValid(p2)) return
       ctx.strokeStyle = color
-      ctx.lineWidth = w * dpr
+      ctx.lineWidth = w
       ctx.lineCap = 'round'
+      ctx.lineJoin = 'round'
       ctx.beginPath()
       ctx.moveTo(mapX(p1.x), mapY(p1.y))
       ctx.lineTo(mapX(p2.x), mapY(p2.y))
       ctx.stroke()
-      ctx.shadowBlur = 0
     }
 
-    const drawPoint = (p: any, color: string, r: number) => {
-      if (!p || p.visibility < 0.5) return
-      ctx.shadowColor = color
-      ctx.shadowBlur = 12 * dpr
+    const drawJoint = (p: any, r: number, color: string) => {
+      if (!isValid(p)) return
       ctx.fillStyle = color
       ctx.beginPath()
-      ctx.arc(mapX(p.x), mapY(p.y), r * dpr, 0, 2 * Math.PI)
+      ctx.arc(mapX(p.x), mapY(p.y), r, 0, 2 * Math.PI)
       ctx.fill()
-      ctx.shadowBlur = 0
+    }
+
+    // ========== 绘制腿部（先画腿，在身体后面） ==========
+    if (isValid(lHip) && isValid(lKnee)) {
+      drawLimb(lHip, lKnee, colors.pants, limbWidth * 1.1)
+    }
+    if (isValid(lKnee) && isValid(lAnkle)) {
+      drawLimb(lKnee, lAnkle, colors.pantsDark, limbWidth * 1.0)
+    }
+    if (isValid(rHip) && isValid(rKnee)) {
+      drawLimb(rHip, rKnee, colors.pants, limbWidth * 1.1)
+    }
+    if (isValid(rKnee) && isValid(rAnkle)) {
+      drawLimb(rKnee, rAnkle, colors.pantsDark, limbWidth * 1.0)
+    }
+
+    // 鞋子
+    const drawShoe = (ankle: any) => {
+      if (!isValid(ankle)) return
+      ctx.fillStyle = colors.shoe
+      ctx.beginPath()
+      ctx.ellipse(mapX(ankle.x), mapY(ankle.y) + limbWidth * 0.3, limbWidth * 0.8, limbWidth * 0.5, 0, 0, 2 * Math.PI)
+      ctx.fill()
+    }
+    drawShoe(lAnkle)
+    drawShoe(rAnkle)
+
+    // ========== 绘制躯干 ==========
+    if (isValid(lShoulder) && isValid(rShoulder) && isValid(lHip) && isValid(rHip)) {
+      ctx.fillStyle = colors.outfit
+      ctx.beginPath()
+      // 从左肩到右肩到右髋到左髋的躯干形状
+      const sx = mapX(lShoulder.x)
+      const sy = mapY(lShoulder.y)
+      const ex = mapX(rShoulder.x)
+      const ey = mapY(rShoulder.y)
+      const lhx = mapX(lHip.x)
+      const lhy = mapY(lHip.y)
+      const rhx = mapX(rHip.x)
+      const rhy = mapY(rHip.y)
+
+      ctx.moveTo(sx, sy)
+      ctx.lineTo(ex, ey)
+      // 右腰收窄
+      const waistOffset = torsoWidth * 0.1
+      ctx.lineTo(rhx - waistOffset * 0.3, rhy - limbWidth * 0.2)
+      ctx.lineTo(rhx, rhy)
+      ctx.lineTo(lhx, lhy)
+      ctx.lineTo(lhx + waistOffset * 0.3, lhy - limbWidth * 0.2)
+      ctx.closePath()
+      ctx.fill()
+
+      // 衣服高光线
+      ctx.strokeStyle = colors.outfitDark
+      ctx.lineWidth = 1.5 * dpr
+      ctx.beginPath()
+      ctx.moveTo(mapX(shoulderMid.x), mapY(shoulderMid.y))
+      ctx.lineTo(mapX(hipMid.x), mapY(hipMid.y))
+      ctx.stroke()
+    }
+
+    // ========== 绘制手臂 ==========
+    if (isValid(lShoulder) && isValid(lElbow)) {
+      drawLimb(lShoulder, lElbow, colors.outfit, limbWidth)
+    }
+    if (isValid(lElbow) && isValid(lWrist)) {
+      drawLimb(lElbow, lWrist, colors.skin, limbWidth * 0.85)
+    }
+    if (isValid(rShoulder) && isValid(rElbow)) {
+      drawLimb(rShoulder, rElbow, colors.outfit, limbWidth)
+    }
+    if (isValid(rElbow) && isValid(rWrist)) {
+      drawLimb(rElbow, rWrist, colors.skin, limbWidth * 0.85)
+    }
+
+    // 手掌
+    const drawHand = (wrist: any) => {
+      if (!isValid(wrist)) return
+      ctx.fillStyle = colors.skin
+      ctx.beginPath()
+      ctx.arc(mapX(wrist.x), mapY(wrist.y), limbWidth * 0.55, 0, 2 * Math.PI)
+      ctx.fill()
+    }
+    drawHand(lWrist)
+    drawHand(rWrist)
+
+    // 关节圆点（装饰）
+    drawJoint(lElbow, limbWidth * 0.45, colors.outfitDark)
+    drawJoint(rElbow, limbWidth * 0.45, colors.outfitDark)
+    drawJoint(lKnee, limbWidth * 0.5, colors.pantsDark)
+    drawJoint(rKnee, limbWidth * 0.5, colors.pantsDark)
+
+    // ========== 绘制头部 ==========
+    if (isValid(nose)) {
+      const hx = mapX(nose.x)
+      const hy = mapY(nose.y)
+
+      // 头发后景（女性更长）
+      if (!isMale) {
+        ctx.fillStyle = colors.hair
+        ctx.beginPath()
+        ctx.ellipse(hx, hy + headR * 0.3, headR * 1.25, headR * 1.6, 0, 0, 2 * Math.PI)
+        ctx.fill()
+      }
+
+      // 脸部圆形
+      ctx.fillStyle = colors.skin
+      ctx.beginPath()
+      ctx.arc(hx, hy, headR, 0, 2 * Math.PI)
+      ctx.fill()
+
+      // 脸部阴影（下巴区域）
+      ctx.fillStyle = colors.skinShadow
+      ctx.beginPath()
+      ctx.arc(hx, hy + headR * 0.3, headR * 0.85, 0.1 * Math.PI, 0.9 * Math.PI)
+      ctx.fill()
+
+      // 头发前景
+      ctx.fillStyle = colors.hair
+      if (isMale) {
+        // 男性：短发，带尖刺
+        ctx.beginPath()
+        ctx.arc(hx, hy - headR * 0.15, headR * 1.05, Math.PI * 1.1, Math.PI * 1.9, false)
+        ctx.lineTo(hx + headR * 0.8, hy - headR * 0.3)
+        ctx.lineTo(hx + headR * 0.5, hy - headR * 0.7)
+        ctx.lineTo(hx + headR * 0.2, hy - headR * 0.4)
+        ctx.lineTo(hx, hy - headR * 0.8)
+        ctx.lineTo(hx - headR * 0.2, hy - headR * 0.4)
+        ctx.lineTo(hx - headR * 0.5, hy - headR * 0.7)
+        ctx.lineTo(hx - headR * 0.8, hy - headR * 0.3)
+        ctx.closePath()
+        ctx.fill()
+      } else {
+        // 女性：刘海 + 两侧长发
+        ctx.beginPath()
+        ctx.arc(hx, hy - headR * 0.1, headR * 1.1, Math.PI, 2 * Math.PI, false)
+        ctx.lineTo(hx + headR * 1.1, hy + headR * 0.2)
+        // 刘海
+        ctx.lineTo(hx + headR * 0.6, hy - headR * 0.1)
+        ctx.lineTo(hx + headR * 0.3, hy + headR * 0.2)
+        ctx.lineTo(hx, hy - headR * 0.2)
+        ctx.lineTo(hx - headR * 0.3, hy + headR * 0.2)
+        ctx.lineTo(hx - headR * 0.6, hy - headR * 0.1)
+        ctx.lineTo(hx - headR * 1.1, hy + headR * 0.2)
+        ctx.closePath()
+        ctx.fill()
+      }
+
+      // 头发高光
+      ctx.fillStyle = colors.hairHighlight
+      if (isMale) {
+        ctx.beginPath()
+        ctx.ellipse(hx - headR * 0.2, hy - headR * 0.5, headR * 0.25, headR * 0.15, -0.3, 0, 2 * Math.PI)
+        ctx.fill()
+      } else {
+        ctx.beginPath()
+        ctx.ellipse(hx - headR * 0.3, hy - headR * 0.3, headR * 0.3, headR * 0.12, -0.2, 0, 2 * Math.PI)
+        ctx.fill()
+      }
+
+      // 眼睛
+      const eyeY = hy + headR * 0.05
+      const eyeOffsetX = headR * 0.35
+      const eyeR = headR * 0.13
+      // 眼白
       ctx.fillStyle = '#ffffff'
       ctx.beginPath()
-      ctx.arc(mapX(p.x), mapY(p.y), r * 0.35 * dpr, 0, 2 * Math.PI)
+      ctx.arc(hx - eyeOffsetX, eyeY, eyeR, 0, 2 * Math.PI)
       ctx.fill()
+      ctx.beginPath()
+      ctx.arc(hx + eyeOffsetX, eyeY, eyeR, 0, 2 * Math.PI)
+      ctx.fill()
+      // 瞳孔
+      ctx.fillStyle = colors.eye
+      ctx.beginPath()
+      ctx.arc(hx - eyeOffsetX, eyeY, eyeR * 0.6, 0, 2 * Math.PI)
+      ctx.fill()
+      ctx.beginPath()
+      ctx.arc(hx + eyeOffsetX, eyeY, eyeR * 0.6, 0, 2 * Math.PI)
+      ctx.fill()
+      // 高光点
+      ctx.fillStyle = '#ffffff'
+      ctx.beginPath()
+      ctx.arc(hx - eyeOffsetX + eyeR * 0.2, eyeY - eyeR * 0.2, eyeR * 0.25, 0, 2 * Math.PI)
+      ctx.fill()
+      ctx.beginPath()
+      ctx.arc(hx + eyeOffsetX + eyeR * 0.2, eyeY - eyeR * 0.2, eyeR * 0.25, 0, 2 * Math.PI)
+      ctx.fill()
+
+      // 嘴巴（小弧线）
+      ctx.strokeStyle = '#C0392B'
+      ctx.lineWidth = Math.max(1, 1.5 * dpr)
+      ctx.lineCap = 'round'
+      ctx.beginPath()
+      ctx.arc(hx, hy + headR * 0.4, headR * 0.15, 0.15 * Math.PI, 0.85 * Math.PI)
+      ctx.stroke()
+
+      // 腮红（女性）
+      if (!isMale) {
+        ctx.fillStyle = 'rgba(255, 105, 157, 0.3)'
+        ctx.beginPath()
+        ctx.arc(hx - headR * 0.5, hy + headR * 0.25, headR * 0.15, 0, 2 * Math.PI)
+        ctx.fill()
+        ctx.beginPath()
+        ctx.arc(hx + headR * 0.5, hy + headR * 0.25, headR * 0.15, 0, 2 * Math.PI)
+        ctx.fill()
+      }
     }
-
-    drawLine(shoulderMid, hipMid, spineColor, 4)
-    drawLine(landmarks[LEFT_SHOULDER], landmarks[RIGHT_SHOULDER], spineColor, 3)
-    drawLine(landmarks[LEFT_HIP], landmarks[RIGHT_HIP], spineColor, 3)
-
-    drawLine(landmarks[LEFT_SHOULDER], landmarks[LEFT_ELBOW], boneColor, 4)
-    drawLine(landmarks[LEFT_ELBOW], landmarks[LEFT_WRIST], boneColor, 4)
-    drawLine(landmarks[RIGHT_SHOULDER], landmarks[RIGHT_ELBOW], boneColor, 4)
-    drawLine(landmarks[RIGHT_ELBOW], landmarks[RIGHT_WRIST], boneColor, 4)
-
-    drawLine(landmarks[LEFT_HIP], landmarks[LEFT_KNEE], boneColor, 5)
-    drawLine(landmarks[LEFT_KNEE], landmarks[LEFT_ANKLE], boneColor, 5)
-    drawLine(landmarks[RIGHT_HIP], landmarks[RIGHT_KNEE], boneColor, 5)
-    drawLine(landmarks[RIGHT_KNEE], landmarks[RIGHT_ANKLE], boneColor, 5)
-
-    drawPoint(landmarks[NOSE], jointColor, 8)
-    drawPoint(shoulderMid, spineColor, 5)
-    drawPoint(hipMid, spineColor, 5)
-
-    drawPoint(landmarks[LEFT_SHOULDER], jointColor, 6)
-    drawPoint(landmarks[RIGHT_SHOULDER], jointColor, 6)
-    drawPoint(landmarks[LEFT_HIP], jointColor, 6)
-    drawPoint(landmarks[RIGHT_HIP], jointColor, 6)
-
-    drawPoint(landmarks[LEFT_ELBOW], angleJointColor, 7)
-    drawPoint(landmarks[RIGHT_ELBOW], angleJointColor, 7)
-    drawPoint(landmarks[LEFT_WRIST], jointColor, 5)
-    drawPoint(landmarks[RIGHT_WRIST], jointColor, 5)
-
-    drawPoint(landmarks[LEFT_KNEE], angleJointColor, 8)
-    drawPoint(landmarks[RIGHT_KNEE], angleJointColor, 8)
-    drawPoint(landmarks[LEFT_ANKLE], jointColor, 6)
-    drawPoint(landmarks[RIGHT_ANKLE], jointColor, 6)
 
     ctx.restore()
+  }
+
+  private drawPauseOverlay(): void {
+    if (!this.canvasElement || !this.canvasCtx) return
+    const ctx = this.canvasCtx
+    const w = this.canvasElement.width
+    const h = this.canvasElement.height
+    const dpr = window.devicePixelRatio || 1
 
     ctx.save()
-    const padding = 10 * dpr
-    const boxWidth = 135 * dpr
-    const boxHeight = 50 * dpr
-    const boxX = width - boxWidth - padding
-    const boxY = padding
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.7)'
+    ctx.fillRect(0, 0, w, h)
 
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)'
-    ctx.beginPath()
-    ctx.roundRect(boxX, boxY, boxWidth, boxHeight, 8 * dpr)
-    ctx.fill()
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+
+    // 暂停图标 ⏸
     ctx.fillStyle = '#ffffff'
+    ctx.font = `bold ${20 * dpr}px Arial`
+    ctx.fillText('⏸ 游戏暂停', w / 2, h / 2 - 20 * dpr)
+
+    ctx.font = `${11 * dpr}px Arial`
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.7)'
+    ctx.fillText('请回到摄像头范围内继续', w / 2, h / 2 + 8 * dpr)
+
+    // 倒计时进度环
+    const ringR = 28 * dpr
+    const ringX = w / 2
+    const ringY = h / 2 + 50 * dpr
+    const progress = Math.min(1, this.personReturnedFrames / this.PERSON_RETURN_THRESHOLD)
+
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)'
+    ctx.lineWidth = 3 * dpr
+    ctx.beginPath()
+    ctx.arc(ringX, ringY, ringR, 0, 2 * Math.PI)
+    ctx.stroke()
+
+    if (progress > 0) {
+      ctx.strokeStyle = '#4ADE80'
+      ctx.lineWidth = 3 * dpr
+      ctx.beginPath()
+      ctx.arc(ringX, ringY, ringR, -Math.PI / 2, -Math.PI / 2 + 2 * Math.PI * progress)
+      ctx.stroke()
+    }
+
     ctx.font = `bold ${10 * dpr}px Arial`
+    ctx.fillStyle = '#ffffff'
+    ctx.fillText('等待返回...', ringX, ringY)
 
-    const exerciseNames: Record<ExerciseType, string> = {
-      squat: '深蹲',
-      pushup: '俯卧撑',
-      jumprope: '开合',
-      highknee: '高抬腿',
-      plank: '平板',
-      burpee: '波比',
-      lunge: '弓步',
-      mountainclimber: '登山',
-    }
-
-    const countLabel = this.exerciseType === 'plank' ? 's' : ''
-    ctx.fillStyle = '#66FF66'
-    ctx.fillText(`${exerciseNames[this.exerciseType]} ${this.getCount()}${countLabel}`, boxX + 8 * dpr, boxY + 16 * dpr)
-
-    if (this.exerciseType === 'squat') {
-      ctx.fillStyle = '#FFD700'
-      ctx.fillText(`${Math.round(this.squatState.kneeAngle)}°`, boxX + 8 * dpr, boxY + 32 * dpr)
-    } else if (this.exerciseType === 'pushup') {
-      ctx.fillStyle = '#FFD700'
-      ctx.fillText(`${Math.round(this.pushupState.elbowAngle)}°`, boxX + 8 * dpr, boxY + 32 * dpr)
-    } else if (this.exerciseType === 'highknee') {
-      ctx.fillStyle = '#FFD700'
-      ctx.fillText(`${Math.round(this.highKneeState.kneeHeight * 100)}%`, boxX + 8 * dpr, boxY + 32 * dpr)
-    } else if (this.exerciseType === 'plank') {
-      ctx.fillStyle = '#FFD700'
-      ctx.fillText(`${this.plankState.count}s`, boxX + 8 * dpr, boxY + 32 * dpr)
-    } else if (this.exerciseType === 'lunge') {
-      ctx.fillStyle = '#FFD700'
-      ctx.fillText(`${Math.round(this.lungeState.kneeAngle)}°`, boxX + 8 * dpr, boxY + 32 * dpr)
-    } else if (this.exerciseType === 'burpee') {
-      ctx.fillStyle = '#FFD700'
-      ctx.fillText(`${Math.round(this.burpeeState.squatDepth)}°`, boxX + 8 * dpr, boxY + 32 * dpr)
-    }
-
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'alphabetic'
     ctx.restore()
   }
 
@@ -1044,6 +1455,10 @@ export class PoseService {
     if (this.pose) {
       this.pose.close?.()
       this.pose = null
+    }
+    if (this.resizeObserver) {
+      this.resizeObserver.disconnect()
+      this.resizeObserver = null
     }
     this.onResultsCallback = undefined
     this.onCountCallback = undefined

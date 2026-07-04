@@ -9,6 +9,9 @@ import StatsPage from './pages/StatsPage'
 import SettingsPage from './pages/SettingsPage'
 import PoseDetectionPage from './pages/PoseDetectionPage'
 import BluetoothPage from './pages/BluetoothPage'
+import AchievementsPage from './pages/AchievementsPage'
+import DailyQuestsPage from './pages/DailyQuestsPage'
+import SkillsPage from './pages/SkillsPage'
 import MainLayout from './components/MainLayout'
 
 export default function App() {
@@ -22,12 +25,17 @@ export default function App() {
       <Route path="/setup" element={hasProfile ? <SetupPage /> : <Navigate to="/welcome" replace />} />
       <Route path="/pose" element={<PoseDetectionPage />} />
       <Route path="/bluetooth" element={<BluetoothPage />} />
+      <Route path="/achievements" element={<AchievementsPage />} />
+      <Route path="/quests" element={<DailyQuestsPage />} />
+      <Route path="/skills" element={<SkillsPage />} />
+      {/* 独立页面（不在 MainLayout 导航下） */}
+      <Route path="/food" element={<FoodPage />} />
+      <Route path="/exercise" element={<ExercisePage />} />
+      <Route path="/settings" element={<SettingsPage />} />
+      {/* MainLayout 只包含首页 + 统计 */}
       <Route path="/" element={hasProfile ? <MainLayout /> : <Navigate to="/welcome" replace />}>
         <Route index element={<BattlePage />} />
-        <Route path="food" element={<FoodPage />} />
-        <Route path="exercise" element={<ExercisePage />} />
         <Route path="stats" element={<StatsPage />} />
-        <Route path="settings" element={<SettingsPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

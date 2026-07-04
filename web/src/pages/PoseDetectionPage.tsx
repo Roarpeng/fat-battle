@@ -18,14 +18,24 @@ import {
   Dumbbell,
   Coins,
   Sparkles,
+  Heart,
+  Star,
+  Trophy,
+  Plus,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import Card from '../components/Card'
 import Button from '../components/Button'
 import DamageNumber from '../components/DamageNumber'
-import { useGameStore } from '../store/useGameStore'
+import { useGameStore, ACHIEVEMENTS_DEF } from '../store/useGameStore'
 import { getExerciseById } from '../data/exercises'
 import { PoseService, createPoseService, type ExerciseType, type PoseStatus } from '../services/poseService'
+import {
+  useXpDrops, XpDropOverlay,
+  useAchievementPopup, AchievementPopupOverlay,
+  useQuestPopup, QuestCompleteOverlay,
+  useLevelUpPopup, LevelUpOverlay,
+} from '../components/GameFeedback'
 
 const exercises: { id: ExerciseType; name: string; emoji: string; description: string }[] = [
   { id: 'squat', name: '深蹲', emoji: '🦵', description: '双脚与肩同宽，下蹲至大腿平行地面' },
@@ -39,6 +49,27 @@ const exercises: { id: ExerciseType; name: string; emoji: string; description: s
 ]
 
 const SET_REPS = 5
+
+// 每个动作每次 rep 的伤害值（基础值）
+const EXERCISE_DAMAGE: Record<ExerciseType, number> = {
+  squat: 3,
+  pushup: 4,
+  highknee: 2,
+  jumprope: 2,
+  plank: 5,
+  burpee: 8,
+  lunge: 4,
+  mountainclimber: 3,
+}
+
+interface PlanItem {
+  type: ExerciseType
+  name: string
+  emoji: string
+  targetReps: number
+  damage: number
+  completed: boolean
+}
 
 // 训练计划：每个动作完成后推荐的下一步动作
 const trainingFlow: Record<ExerciseType, { next: ExerciseType; label: string; tip: string }> = {
@@ -81,9 +112,79 @@ export default function PoseDetectionPage() {
   const [showNextStep, setShowNextStep] = useState(false)
   const [completedSets, setCompletedSets] = useState(0)
 
-  const { attackMonster, addExerciseRecord, user, coins, streak, days, monster } = useGameStore()
+  // ========== 游戏化 HUD 状态 ==========
+  const [isPaused, setIsPaused] = useState(false)
+  const [prepareProgress, setPrepareProgress] = useState(0)
+  const [comboCount, setComboCount] = useState(0)
+  const [comboMultiplier, setComboMultiplier] = useState(1.0)
+  const [stamina, setStamina] = useState(100)
+  const [isBossEnraged, setIsBossEnraged] = useState(false)
+  const [showComboPopup, setShowComboPopup] = useState(false)
+
+  // ========== 自动锻炼计划 ==========
+  const [exercisePlan, setExercisePlan] = useState<PlanItem[]>([])
+  const [currentPlanIndex, setCurrentPlanIndex] = useState(0)
+  const [showAddMore, setShowAddMore] = useState(false)
+  const [planAllDone, setPlanAllDone] = useState(false)
+
+  const {
+    attackMonster, addExerciseRecord, user, coins, streak, days, monster,
+    addXp, checkAchievements, updateQuestProgress, generateDailyQuests, dailyQuests, playerLevel,
+  } = useGameStore()
+
+  // ========== 游戏化即时反馈系统 ==========
+  const { drops, spawnXp } = useXpDrops()
+  const { unlocks, showUnlock } = useAchievementPopup()
+  const { completes, showQuestComplete } = useQuestPopup()
+  const { levelUps, showLevelUp } = useLevelUpPopup()
 
   const exerciseInfo = getExerciseById(selectedExercise)
+
+  // 当前计划项的目标次数
+  const currentTargetReps = exercisePlan[currentPlanIndex]?.targetReps ?? SET_REPS
+
+  // ========== 自动生成锻炼计划 ==========
+  const generatePlan = useCallback((targetHp: number) => {
+    const pool: ExerciseType[] = ['squat', 'pushup', 'highknee', 'plank', 'burpee', 'lunge', 'mountainclimber', 'jumprope']
+    // 随机选 2-3 个动作
+    const shuffled = [...pool].sort(() => Math.random() - 0.5)
+    const numExercises = targetHp > 150 ? 3 : targetHp > 80 ? 2 : 2
+    const selected = shuffled.slice(0, numExercises)
+
+    // 难度系数
+    const diffMult = user.difficulty === 'easy' ? 0.8 : user.difficulty === 'hard' ? 1.2 : 1.0
+    const adjustedHp = Math.ceil(targetHp / diffMult)
+
+    // 均分伤害
+    const perExerciseDamage = Math.ceil(adjustedHp / selected.length)
+    const plan: PlanItem[] = selected.map((type, i) => {
+      const exInfo = exercises.find((e) => e.id === type)!
+      const dmgPerRep = EXERCISE_DAMAGE[type]
+      const isLast = i === selected.length - 1
+      const targetDmg = isLast ? adjustedHp - perExerciseDamage * (selected.length - 1) : perExerciseDamage
+      const reps = Math.max(5, Math.ceil(targetDmg / dmgPerRep))
+      return {
+        type,
+        name: exInfo.name,
+        emoji: exInfo.emoji,
+        targetReps: reps,
+        damage: reps * dmgPerRep * diffMult,
+        completed: false,
+      }
+    })
+
+    setExercisePlan(plan)
+    setCurrentPlanIndex(0)
+    setPlanAllDone(false)
+    setSelectedExercise(plan[0].type)
+  }, [user.difficulty])
+
+  // 页面加载时生成计划
+  useEffect(() => {
+    if (exercisePlan.length === 0 && monster.hp > 0) {
+      generatePlan(monster.hp)
+    }
+  }, [exercisePlan.length, monster.hp, generatePlan])
 
   const cleanup = useCallback(() => {
     if (timerIntervalRef.current) {
@@ -112,6 +213,11 @@ export default function PoseDetectionPage() {
       cleanup()
     }
   }, [cleanup])
+
+  // Boss 狂暴模式：HP < 30% 时画面红闪
+  useEffect(() => {
+    setIsBossEnraged(monster.hp < 30 && monster.hp > 0)
+  }, [monster.hp])
 
   const startTimer = useCallback(() => {
     if (timerIntervalRef.current) {
@@ -248,12 +354,76 @@ export default function PoseDetectionPage() {
 
     attackMonster(damage)
 
+    // ========== 游戏化即时反馈系统 ==========
+
+    // 1. 完成奖励 XP
+    const completionXp = 20 + finalCount * 2
+    const xpResult = addXp(completionXp)
+    spawnXp(completionXp, undefined, undefined, '完成奖励!')
+
+    // 2. 伤害奖励 XP
+    const damageXp = Math.floor(damage / 5)
+    if (damageXp > 0) {
+      addXp(damageXp)
+      spawnXp(damageXp, undefined, undefined, '伤害XP!')
+    }
+
+    // 3. 更新任务进度（记录之前已完成的任务）
+    const beforeCompletedIds = new Set(dailyQuests.filter((q) => q.completed).map((q) => q.id))
+    updateQuestProgress('exercise_count', 1)
+    updateQuestProgress('attack_damage', damage)
+    if (comboCount >= 3) {
+      updateQuestProgress('combo_count', 1)
+    }
+
+    // 检查新完成的任务并弹出奖励
+    const updatedQuests = useGameStore.getState().dailyQuests
+    updatedQuests.forEach((q) => {
+      if (q.completed && !beforeCompletedIds.has(q.id)) {
+        showQuestComplete({ title: q.title, rewardCoins: q.rewardCoins, rewardXp: q.rewardXp })
+        const questXpResult = addXp(q.rewardXp)
+        spawnXp(q.rewardXp, undefined, undefined, `${q.title}!`)
+        if (questXpResult.leveledUp && questXpResult.newLevel) {
+          showLevelUp(questXpResult.newLevel)
+        }
+      }
+    })
+
+    // 4. 检查成就
+    const newAchievements = checkAchievements()
+    newAchievements.forEach((ach) => {
+      const def = ACHIEVEMENTS_DEF.find((a) => a.id === ach.id)
+      if (def) {
+        showUnlock({
+          id: ach.id,
+          name: def.name,
+          description: def.description,
+          icon: def.icon,
+          rarity: def.rarity,
+          reward: def.reward,
+        })
+        spawnXp(def.reward, undefined, undefined, '成就!')
+      }
+    })
+
+    // 5. 检查升级
+    if (xpResult.leveledUp && xpResult.newLevel) {
+      showLevelUp(xpResult.newLevel)
+    }
+
     setDamageValue(damage)
     setShowDamage(true)
     setTimeout(() => setShowDamage(false), 1500)
-    // 延迟显示下一步引导
-    setTimeout(() => setShowNextStep(true), 1800)
-  }, [selectedExercise, user, addExerciseRecord, attackMonster, stopTimer])
+
+    // 标记当前计划项为已完成
+    setExercisePlan((prev) => {
+      const updated = [...prev]
+      if (updated[currentPlanIndex]) {
+        updated[currentPlanIndex] = { ...updated[currentPlanIndex], completed: true }
+      }
+      return updated
+    })
+  }, [selectedExercise, user, addExerciseRecord, attackMonster, stopTimer, addXp, checkAchievements, updateQuestProgress, dailyQuests, comboCount, spawnXp, showUnlock, showQuestComplete, showLevelUp, currentPlanIndex])
 
   const startMockDetection = useCallback(() => {
     if (mockIntervalRef.current) {
@@ -303,7 +473,7 @@ export default function PoseDetectionPage() {
           setCount(mockCount)
           setCurrentPhase('站立')
           setCaloriesBurned(Math.round((5.0 * user.weight * (mockCount / 20)) / 200 * 10) / 10)
-          if (mockCount >= SET_REPS) {
+          if (mockCount >= currentTargetReps) {
             elapsedTimeRef.current = Math.floor(mockTime)
             setElapsedTime(Math.floor(mockTime))
             handleComplete(mockCount)
@@ -318,7 +488,7 @@ export default function PoseDetectionPage() {
         drawMockSkeleton(ctx, canvas.width, canvas.height, mockAngle, squatting)
       }
     }, 50)
-  }, [drawMockSkeleton, handleComplete, user.weight])
+  }, [drawMockSkeleton, handleComplete, user.weight, currentTargetReps])
 
   const startDetection = useCallback(async () => {
     if (isRunning || isLoading) return
@@ -345,10 +515,21 @@ export default function PoseDetectionPage() {
         videoElement: videoRef.current || undefined,
         canvasElement: canvasRef.current || undefined,
         userWeight: user.weight,
+        gender: user.gender,
         onCount: (newCount: number) => {
           if (isCompletingRef.current) return
           setCount(newCount)
-          if (newCount >= SET_REPS) {
+
+          // 每次 rep 成功即时反馈
+          const xpResult = addXp(2)
+          spawnXp(2)
+          updateQuestProgress('exercise_reps', 1)
+
+          if (xpResult.leveledUp && xpResult.newLevel) {
+            showLevelUp(xpResult.newLevel)
+          }
+
+          if (newCount >= currentTargetReps) {
             handleComplete(newCount)
           }
         },
@@ -358,6 +539,24 @@ export default function PoseDetectionPage() {
         onError: (err: Error) => {
           console.error('Pose error:', err)
           setErrorMsg(err.message)
+        },
+        // 游戏化系统回调
+        onPauseChange: (paused: boolean) => {
+          setIsPaused(paused)
+        },
+        onPrepareProgress: (progress: number) => {
+          setPrepareProgress(progress)
+        },
+        onComboChange: (combo: number, multiplier: number) => {
+          setComboCount(combo)
+          setComboMultiplier(multiplier)
+          if (combo > 1) {
+            setShowComboPopup(true)
+            setTimeout(() => setShowComboPopup(false), 800)
+          }
+        },
+        onStaminaChange: (staminaVal: number) => {
+          setStamina(staminaVal)
         },
       })
 
@@ -373,6 +572,9 @@ export default function PoseDetectionPage() {
       if (!started) {
         throw new Error('姿态检测启动失败')
       }
+
+      // 生成每日任务（如果今天还没生成）
+      generateDailyQuests()
 
       setIsRunning(true)
       setUseMock(false)
@@ -399,7 +601,7 @@ export default function PoseDetectionPage() {
     } finally {
       setIsLoading(false)
     }
-  }, [cameraFacing, selectedExercise, startMockDetection, handleComplete, startTimer, user.weight, isRunning, isLoading])
+  }, [cameraFacing, selectedExercise, startMockDetection, handleComplete, startTimer, user.weight, user.gender, isRunning, isLoading, currentTargetReps])
 
   const stopDetection = useCallback(async () => {
     stopTimer()
@@ -471,13 +673,39 @@ export default function PoseDetectionPage() {
     setTimeout(() => startDetection(), 200)
   }, [selectedExercise, resetSession, startDetection])
 
+  // ========== 自动轮换：完成一组后自动切换到下一个锻炼动作 ==========
+  useEffect(() => {
+    if (!isCompleted || planAllDone) return
+
+    const nextIndex = currentPlanIndex + 1
+    if (nextIndex < exercisePlan.length) {
+      // 自动切换到下一个动作
+      const timer = setTimeout(() => {
+        const nextItem = exercisePlan[nextIndex]
+        setCurrentPlanIndex(nextIndex)
+        setSelectedExercise(nextItem.type)
+        resetSession()
+        if (poseServiceRef.current) {
+          poseServiceRef.current.setExerciseType(nextItem.type)
+        }
+        setTimeout(() => startDetection(), 300)
+      }, 2000)
+      return () => clearTimeout(timer)
+    } else {
+      // 全部完成
+      setPlanAllDone(true)
+      const timer = setTimeout(() => setShowNextStep(true), 1800)
+      return () => clearTimeout(timer)
+    }
+  }, [isCompleted, planAllDone, currentPlanIndex, exercisePlan, resetSession, startDetection])
+
   const formatTime = (seconds: number): string => {
     const mins = Math.floor(seconds / 60)
     const secs = seconds % 60
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
   }
 
-  const progress = (count / SET_REPS) * 100
+  const progress = (count / currentTargetReps) * 100
 
   const getAngleDisplay = () => {
     if (selectedExercise === 'squat') {
@@ -494,7 +722,7 @@ export default function PoseDetectionPage() {
   const angleDisplay = getAngleDisplay()
 
   return (
-    <div className="min-h-screen flex flex-col px-3 py-3 gap-3 bg-bg">
+    <div className="flex flex-col px-3 py-2 gap-2 bg-bg max-w-[480px] mx-auto" style={{ height: 'calc(100vh - 56px)' }}>
       <AnimatePresence>
         {showDamage && (
           <DamageNumber value={damageValue} type="damage" />
@@ -527,6 +755,10 @@ export default function PoseDetectionPage() {
             </div>
           )}
           <div className="flex items-center gap-1 px-2 py-1 bg-card border border-border rounded-full">
+            <Star className="w-3.5 h-3.5 text-purple fill-purple" />
+            <span className="font-bold text-xs text-purple">Lv.{playerLevel.level}</span>
+          </div>
+          <div className="flex items-center gap-1 px-2 py-1 bg-card border border-border rounded-full">
             <Coins className="w-3.5 h-3.5 text-gold" />
             <span className="font-bold text-xs text-gold">{coins}</span>
           </div>
@@ -547,39 +779,145 @@ export default function PoseDetectionPage() {
         </p>
       </motion.div>
 
-      <Card className="p-1.5 bg-gradient-to-r from-purple/5 to-blue/5">
-        <div className="grid grid-cols-4 gap-1.5">
-          {exercises.map((ex) => (
-            <button
-              key={ex.id}
-              onClick={() => changeExercise(ex.id)}
-              disabled={isRunning}
-              className={`flex flex-col items-center justify-center gap-0.5 py-2 px-1.5 rounded-lg font-bold text-xs transition-all duration-200 ${
-                selectedExercise === ex.id
-                  ? 'bg-gradient-to-br from-purple to-blue text-white shadow-md shadow-purple/20 scale-105'
-                  : 'text-text2 hover:text-text hover:bg-white/50'
-              } ${isRunning ? 'opacity-50 cursor-not-allowed scale-100' : ''}`}
+      {/* ========== 锻炼计划进度条 ========== */}
+      <Card className="p-2 bg-gradient-to-r from-purple/5 to-blue/5">
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+          {exercisePlan.map((item, idx) => (
+            <div
+              key={idx}
+              className={`flex-shrink-0 flex flex-col items-center gap-0.5 px-2.5 py-1.5 rounded-lg border-2 transition-all ${
+                idx === currentPlanIndex
+                  ? 'border-purple bg-purple/15 scale-105'
+                  : item.completed
+                    ? 'border-green/50 bg-green/10 opacity-60'
+                    : 'border-border bg-card/50 opacity-50'
+              }`}
             >
-              <span className="text-xl">{ex.emoji}</span>
-              <span className="text-[10px]">{ex.name}</span>
-            </button>
+              <span className="text-lg">{item.completed ? '✅' : item.emoji}</span>
+              <span className={`text-[9px] font-bold ${idx === currentPlanIndex ? 'text-purple' : 'text-text2'}`}>
+                {item.name}
+              </span>
+              <span className="text-[8px] text-text3">{item.targetReps}次</span>
+            </div>
           ))}
+          {/* 加量按钮 */}
+          <button
+            onClick={() => setShowAddMore(true)}
+            disabled={isRunning}
+            className="flex-shrink-0 flex flex-col items-center justify-center gap-0.5 px-2.5 py-1.5 rounded-lg border-2 border-dashed border-border bg-card/30 hover:border-purple hover:bg-purple/5 transition-all disabled:opacity-40"
+          >
+            <Plus size={16} className="text-text2" />
+            <span className="text-[9px] font-bold text-text2">加量</span>
+          </button>
         </div>
       </Card>
 
-      <Card className="p-0 overflow-hidden shadow-lg shadow-purple/10 max-w-full">
-        <div className="relative w-full mx-auto bg-gradient-to-br from-bg2 to-bg rounded-xl overflow-hidden" style={{ aspectRatio: '3 / 2', maxWidth: '100%' }}>
+      <Card className="p-0 overflow-hidden shadow-lg shadow-purple/10 max-w-full flex-[2] min-h-0">
+        <div className="relative w-full mx-auto bg-gradient-to-br from-bg2 to-bg rounded-xl overflow-hidden h-full" style={{ minHeight: 0 }}>
+          {/* video 仅作为 MediaPipe 数据源，不直接显示，画面统一由 canvas 绘制 */}
           <video
             ref={videoRef}
-            className="absolute inset-0 w-full h-full object-cover"
+            className="absolute inset-0 w-full h-full opacity-0"
             playsInline
             muted
           />
           <canvas
             ref={canvasRef}
             className="absolute inset-0 w-full h-full pointer-events-none"
-            style={{ imageRendering: 'crisp-edges' }}
           />
+
+          {/* ========== 游戏化 HUD：左侧能量条 ========== */}
+          {isRunning && (
+            <div className="absolute left-1.5 top-1.5 bottom-8 w-10 flex flex-col gap-1.5 z-10">
+              {/* 怪物 HP 条 */}
+              <div className="flex-1 bg-black/40 backdrop-blur-sm rounded-lg border border-white/10 p-1 flex flex-col items-center gap-1">
+                <Swords className="w-3 h-3 text-red" />
+                <div className="flex-1 w-2 bg-bg2/80 rounded-full overflow-hidden relative">
+                  <motion.div
+                    className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-red to-orange rounded-full"
+                    initial={{ height: '100%' }}
+                    animate={{ height: `${Math.max(5, monster.hp)}%` }}
+                    transition={{ duration: 0.5 }}
+                  />
+                </div>
+                <span className="text-[8px] font-bold text-red">{monster.hp}</span>
+              </div>
+              {/* 动作进度条 */}
+              <div className="flex-1 bg-black/40 backdrop-blur-sm rounded-lg border border-white/10 p-1 flex flex-col items-center gap-1">
+                <Zap className="w-3 h-3 text-gold" />
+                <div className="flex-1 w-2 bg-bg2/80 rounded-full overflow-hidden relative">
+                  <motion.div
+                    className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-purple to-blue rounded-full"
+                    initial={{ height: 0 }}
+                    animate={{ height: `${Math.min(100, progress)}%` }}
+                    transition={{ duration: 0.3 }}
+                  />
+                </div>
+                <span className="text-[8px] font-bold text-gold">{count}</span>
+              </div>
+              {/* 体力条 */}
+              <div className="h-12 bg-black/40 backdrop-blur-sm rounded-lg border border-white/10 p-1 flex flex-col items-center gap-1">
+                <Heart className="w-3 h-3 text-pink" />
+                <div className="flex-1 w-2 bg-bg2/80 rounded-full overflow-hidden relative">
+                  <motion.div
+                    className={`absolute bottom-0 left-0 right-0 rounded-full ${
+                      stamina < 20 ? 'bg-red' : stamina < 50 ? 'bg-orange' : 'bg-gradient-to-t from-green to-teal'
+                    }`}
+                    animate={{ height: `${stamina}%` }}
+                    transition={{ duration: 0.2 }}
+                  />
+                </div>
+                <span className={`text-[8px] font-bold ${stamina < 20 ? 'text-red' : 'text-green'}`}>{stamina}</span>
+              </div>
+            </div>
+          )}
+
+          {/* ========== 游戏化 HUD：右侧引导面板 ========== */}
+          {isRunning && (
+            <div className="absolute right-1.5 top-1.5 bottom-8 w-20 z-10">
+              <div className="bg-black/40 backdrop-blur-sm rounded-lg border border-white/10 p-2 flex flex-col gap-1.5 h-full">
+                {/* 动作图标 + 名称 */}
+                <div className="flex items-center gap-1.5">
+                  <span className="text-lg">{exerciseInfo?.emoji}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[10px] font-bold text-white truncate">{exerciseInfo?.name}</div>
+                    <div className="text-[8px] text-white/60">{exerciseInfo?.caloriesPerMinute}卡/分</div>
+                  </div>
+                </div>
+                {/* 当前阶段 */}
+                <div className={`text-center py-1 rounded-md text-[10px] font-bold ${
+                  currentPhase === '待机'
+                    ? 'bg-bg2/60 text-text3'
+                    : currentPhase === '站立' || currentPhase === '上撑' || currentPhase === '地面'
+                      ? 'bg-green/20 text-green'
+                      : 'bg-gold/20 text-gold animate-pulse'
+                }`}>
+                  {currentPhase}
+                </div>
+                {/* 动作要点提示 */}
+                <div className="flex-1 bg-bg2/40 rounded-md p-1.5 overflow-hidden">
+                  <div className="text-[8px] text-white/50 mb-0.5 flex items-center gap-0.5">
+                    <Target size={8} />
+                    动作要领
+                  </div>
+                  <p className="text-[9px] text-white/80 leading-tight">
+                    {exerciseInfo?.description}
+                  </p>
+                </div>
+                {/* 实时数据 */}
+                <div className="grid grid-cols-2 gap-1">
+                  <div className="bg-bg2/40 rounded-md p-1 text-center">
+                    <div className="text-[8px] text-white/50">{angleDisplay.label}</div>
+                    <div className="text-[10px] font-bold text-green">{angleDisplay.value}{angleDisplay.unit}</div>
+                  </div>
+                  <div className="bg-bg2/40 rounded-md p-1 text-center">
+                    <div className="text-[8px] text-white/50">卡路里</div>
+                    <div className="text-[10px] font-bold text-orange">{caloriesBurned}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {!isRunning && poseStatus === 'idle' && !useMock && (
             <div className="absolute inset-0 flex flex-col items-center justify-center bg-bg2/80">
@@ -620,10 +958,57 @@ export default function PoseDetectionPage() {
             </div>
           )}
 
-          {/* 动作进度图标网格 - 游戏化引导 */}
+          {/* ========== 准备姿势确认UI ========== */}
+          {isRunning && prepareProgress < 1 && prepareProgress > 0 && (
+            <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/50 backdrop-blur-sm">
+              <div className="relative w-20 h-20 mb-3">
+                <svg className="w-full h-full -rotate-90" viewBox="0 0 36 36">
+                  <path className="text-white/10" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" strokeWidth="3" />
+                  <path className="text-green" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" strokeWidth="3" strokeDasharray={`${prepareProgress * 100}, 100`} />
+                </svg>
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <span className="text-white text-lg font-bold">{Math.ceil((1 - prepareProgress) * 2)}</span>
+                </div>
+              </div>
+              <p className="text-white font-bold text-sm">准备姿势确认中...</p>
+              <p className="text-white/60 text-[10px] mt-1">请保持全身在画面中</p>
+            </div>
+          )}
+
+          {/* ========== 连击弹窗 ========== */}
+          {showComboPopup && comboCount > 1 && (
+            <motion.div
+              initial={{ scale: 0.5, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.5, opacity: 0, y: -20 }}
+              className="absolute top-1/4 left-1/2 -translate-x-1/2 z-20 pointer-events-none"
+            >
+              <div className="bg-gradient-to-r from-orange to-red rounded-lg px-3 py-1.5 shadow-lg shadow-orange/30 border border-white/20">
+                <div className="text-white text-xs font-bold text-center">
+                  🔥 {comboCount} 连击！
+                </div>
+                {comboMultiplier > 1 && (
+                  <div className="text-yellow text-[10px] text-center font-bold">
+                    x{comboMultiplier.toFixed(1)} 伤害加成
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          )}
+
+          {/* ========== Boss狂暴模式红闪 ========== */}
+          {isBossEnraged && (
+            <motion.div
+              animate={{ opacity: [0.3, 0.6, 0.3] }}
+              transition={{ duration: 1.5, repeat: Infinity }}
+              className="absolute inset-0 z-10 pointer-events-none border-4 border-red/50 rounded-xl"
+            />
+          )}
+
+          {/* ========== 动作进度图标网格 - 游戏化引导 */}
           {isRunning && (
             <div className="absolute bottom-1.5 left-1.5 right-1.5 flex justify-center gap-1">
-              {Array.from({ length: SET_REPS }).map((_, i) => {
+              {Array.from({ length: Math.min(currentTargetReps, 10) }).map((_, i) => {
                 const isDone = i < count
                 const isCurrent = i === count
                 return (
@@ -666,7 +1051,7 @@ export default function PoseDetectionPage() {
               </motion.div>
               <h3 className="text-lg font-bold text-white mb-0.5">挑战完成！</h3>
               <p className="text-white/80 mb-2 text-[10px]">
-                你完成了 {SET_REPS} 次{exercises.find(e => e.id === selectedExercise)?.name}
+                你完成了 {currentTargetReps} 次{exercises.find(e => e.id === selectedExercise)?.name}
               </p>
               <div className="grid grid-cols-3 gap-1.5 px-3 w-full max-w-xs">
                 <div className="bg-white/10 rounded-md px-1.5 py-1 text-center">
@@ -684,138 +1069,74 @@ export default function PoseDetectionPage() {
               </div>
             </motion.div>
           )}
+
+          {/* ========== 游戏化即时反馈 Overlay ========== */}
+          <XpDropOverlay drops={drops} />
+          <AchievementPopupOverlay unlocks={unlocks} />
+          <QuestCompleteOverlay completes={completes} />
+          <LevelUpOverlay levelUps={levelUps} />
         </div>
       </Card>
 
-      <Card className="flex flex-col gap-2">
-        <div className="flex items-center justify-between">
-          <h2 className="font-bold text-sm text-text flex items-center gap-1.5">
-            <Activity className="w-4 h-4 text-purple" />
-            战斗数据
-          </h2>
-          <div className="flex items-center gap-1 px-2 py-0.5 bg-gold/10 rounded-full">
-            <Target size={10} className="text-gold" />
-            <span className="text-[10px] text-gold font-bold">{count}/{SET_REPS}</span>
+      {/* ========== 底部紧凑控制面板 ========== */}
+      <div className="flex-1 flex flex-col gap-1.5 min-h-0 overflow-y-auto">
+        {/* 紧凑数据条 */}
+        <div className="grid grid-cols-4 gap-1">
+          <div className="bg-card rounded-lg p-1.5 text-center border border-border">
+            <Zap className="w-3 h-3 text-purple mx-auto mb-0.5" />
+            <div className="text-sm font-bold text-text">{count}</div>
+            <div className="text-[8px] text-text3">计数</div>
+          </div>
+          <div className="bg-card rounded-lg p-1.5 text-center border border-border">
+            <Clock className="w-3 h-3 text-blue mx-auto mb-0.5" />
+            <div className="text-sm font-bold text-text">{formatTime(elapsedTime)}</div>
+            <div className="text-[8px] text-text3">时长</div>
+          </div>
+          <div className="bg-card rounded-lg p-1.5 text-center border border-border">
+            <Flame className="w-3 h-3 text-orange mx-auto mb-0.5" />
+            <div className="text-sm font-bold text-orange">{caloriesBurned}</div>
+            <div className="text-[8px] text-text3">卡路里</div>
+          </div>
+          <div className="bg-card rounded-lg p-1.5 text-center border border-border">
+            <Target className="w-3 h-3 text-green mx-auto mb-0.5" />
+            <div className="text-sm font-bold text-green">{angleDisplay.value}</div>
+            <div className="text-[8px] text-text3">{angleDisplay.label}</div>
           </div>
         </div>
 
-        <div className="grid grid-cols-4 gap-1.5">
-          <div className="bg-bg2 rounded-lg p-2 text-center">
-            <div className="flex items-center justify-center gap-1 mb-0.5">
-              <Zap className="w-3 h-3 text-purple" />
-              <span className="text-[9px] text-text3">计数</span>
-            </div>
-            <div className="text-base font-bold text-text">{count}</div>
-          </div>
-          <div className="bg-bg2 rounded-lg p-2 text-center">
-            <div className="flex items-center justify-center gap-1 mb-0.5">
-              <Clock className="w-3 h-3 text-blue" />
-              <span className="text-[9px] text-text3">时长</span>
-            </div>
-            <div className="text-base font-bold text-text">{formatTime(elapsedTime)}</div>
-          </div>
-          <div className="bg-bg2 rounded-lg p-2 text-center">
-            <div className="flex items-center justify-center gap-1 mb-0.5">
-              <Flame className="w-3 h-3 text-orange" />
-              <span className="text-[9px] text-text3">卡路里</span>
-            </div>
-            <div className="text-base font-bold text-orange">{caloriesBurned}</div>
-          </div>
-          <div className="bg-bg2 rounded-lg p-2 text-center">
-            <div className="flex items-center justify-center gap-1 mb-0.5">
-              <Target className="w-3 h-3 text-green" />
-              <span className="text-[9px] text-text3">{angleDisplay.label}</span>
-            </div>
-            <div className="text-base font-bold text-green">{angleDisplay.value}</div>
-          </div>
-        </div>
-
-        <div>
-          <div className="flex justify-between text-[10px] text-text3 mb-1">
-            <span className="flex items-center gap-1">
-              <Sparkles size={10} className="text-gold" />
-              击败进度
-            </span>
-          </div>
-          <div className="h-2 bg-bg2 rounded-full overflow-hidden border border-border">
-            <motion.div
-              className="h-full bg-gradient-to-r from-purple via-blue to-green rounded-full"
-              initial={{ width: 0 }}
-              animate={{ width: `${Math.min(100, progress)}%` }}
-              transition={{ duration: 0.3 }}
-            />
-          </div>
-        </div>
-      </Card>
-
-      <Card className="flex items-center gap-2">
-        <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-xl ${
-          isRunning
-            ? currentPhase === '下蹲中' || currentPhase === '下放中' || currentPhase === '跳跃中' || currentPhase === '抬腿中'
-              ? 'bg-gradient-to-br from-gold to-orange animate-pulse'
-              : 'bg-gradient-to-br from-green to-green-dark'
-            : 'bg-bg2'
-        }`}>
-          {exerciseInfo?.emoji || '🏋️'}
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="font-bold text-sm">
-            {isRunning ? currentPhase : '准备就绪'}
-          </div>
-          <div className="text-[10px] text-text3">
-            {isRunning
-              ? count > 0
-                ? `已完成 ${count} 个，继续加油！`
-                : '请按照标准动作开始运动'
-              : '点击开始按钮开启检测'
-            }
-          </div>
-        </div>
-        {isRunning && (
-          <div className="flex flex-col items-center gap-0.5">
-            <div className="w-2 h-2 rounded-full bg-green animate-pulse" />
-            <span className="text-[9px] text-text3">检测中</span>
-          </div>
-        )}
-      </Card>
-
-      {/* 完成后下一步引导卡片 */}
-      <AnimatePresence>
-        {showNextStep && isCompleted && (
+        {/* 进度条 */}
+        <div className="h-1.5 bg-bg2 rounded-full overflow-hidden border border-border">
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 20 }}
-            transition={{ type: 'spring', stiffness: 200 }}
-          >
-            <Card className="bg-gradient-to-br from-purple/15 to-blue/15 border-purple/30">
-              <div className="flex flex-col gap-2">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-green to-green-dark flex items-center justify-center">
-                    <CheckCircle2 size={18} className="text-white" />
+            className="h-full bg-gradient-to-r from-purple via-blue to-green rounded-full"
+            initial={{ width: 0 }}
+            animate={{ width: `${Math.min(100, progress)}%` }}
+            transition={{ duration: 0.3 }}
+          />
+        </div>
+
+        {/* 完成后下一步引导 */}
+        <AnimatePresence>
+          {showNextStep && isCompleted && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 10 }}
+              transition={{ type: 'spring', stiffness: 200 }}
+            >
+              <Card className="bg-gradient-to-br from-purple/15 to-blue/15 border-purple/30 p-2">
+                <div className="flex items-center gap-2 mb-1.5">
+                  <div className="w-7 h-7 rounded-full bg-gradient-to-br from-green to-green-dark flex items-center justify-center">
+                    <CheckCircle2 size={16} className="text-white" />
                   </div>
                   <div className="flex-1">
-                    <div className="font-bold text-sm text-text">本组完成！已完成 {completedSets} 组</div>
-                    <div className="text-[10px] text-text3">{trainingFlow[selectedExercise].tip}</div>
+                    <div className="font-bold text-xs text-text">
+                      {planAllDone ? '🎉 全部完成！脂肪怪已被击败！' : `本组完成！已完成 ${completedSets} 组`}
+                    </div>
+                    <div className="text-[9px] text-text3">
+                      {planAllDone ? '今天的锻炼目标已达成' : trainingFlow[selectedExercise].tip}
+                    </div>
                   </div>
                 </div>
-
-                <div className="flex items-center gap-2 bg-bg2/60 rounded-lg p-2">
-                  <span className="text-2xl">{exercises.find(e => e.id === trainingFlow[selectedExercise].next)?.emoji}</span>
-                  <div className="flex-1">
-                    <div className="text-[10px] text-text3">推荐下一步</div>
-                    <div className="font-bold text-sm text-text">{trainingFlow[selectedExercise].label}</div>
-                  </div>
-                  <Button
-                    variant="purple"
-                    size="sm"
-                    icon={<Play size={14} />}
-                    onClick={goToNextExercise}
-                  >
-                    继续
-                  </Button>
-                </div>
-
                 <div className="flex gap-1.5">
                   <Button
                     variant="secondary"
@@ -838,82 +1159,118 @@ export default function PoseDetectionPage() {
                     结束训练
                   </Button>
                 </div>
-              </div>
-            </Card>
-          </motion.div>
-        )}
-      </AnimatePresence>
+              </Card>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-      <div className="space-y-1.5">
-        {!isRunning ? (
-          <Button
-            variant="purple"
-            size="md"
-            fullWidth
-            icon={isLoading ? undefined : <Play size={16} />}
-            loading={isLoading}
-            onClick={startDetection}
-            disabled={isCompleted}
-          >
-            {isCompleted ? '已完成挑战' : isLoading ? '加载中...' : '开始挑战'}
-          </Button>
-        ) : (
-          <Button
-            variant="primary"
-            size="md"
-            fullWidth
-            icon={<Square size={16} />}
-            onClick={stopDetection}
-          >
-            停止检测
-          </Button>
-        )}
+        {/* 主控制按钮 */}
+        <div className="mt-auto space-y-1.5">
+          {!isRunning ? (
+            <Button
+              variant="purple"
+              size="md"
+              fullWidth
+              icon={isLoading ? undefined : <Play size={16} />}
+              loading={isLoading}
+              onClick={startDetection}
+              disabled={isCompleted}
+            >
+              {isCompleted ? '已完成挑战' : isLoading ? '加载中...' : `开始 ${exerciseInfo?.name || '挑战'} · ${currentTargetReps}次`}
+            </Button>
+          ) : (
+            <Button
+              variant="primary"
+              size="md"
+              fullWidth
+              icon={<Square size={16} />}
+              onClick={stopDetection}
+            >
+              停止检测
+            </Button>
+          )}
 
-        <div className="grid grid-cols-3 gap-1.5">
-          <Button
-            variant="secondary"
-            size="sm"
-            icon={<RotateCcw size={12} />}
-            onClick={toggleCamera}
-            disabled={isLoading}
-          >
-            切换镜头
-          </Button>
-          <Button
-            variant="secondary"
-            size="sm"
-            icon={<RefreshCw size={12} />}
-            onClick={resetSession}
-            disabled={isRunning}
-          >
-            重置
-          </Button>
-          <Button
-            variant="secondary"
-            size="sm"
-            icon={<Clock size={12} />}
-            onClick={() => {}}
-            disabled
-          >
-            倒计时
-          </Button>
+          <div className="grid grid-cols-2 gap-1.5">
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={<RotateCcw size={12} />}
+              onClick={toggleCamera}
+              disabled={isLoading}
+            >
+              切换镜头
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={<RefreshCw size={12} />}
+              onClick={resetSession}
+              disabled={isRunning}
+            >
+              重置
+            </Button>
+          </div>
+
+          {isCompleted && !showNextStep && (
+            <Button
+              variant="purple"
+              size="md"
+              fullWidth
+              icon={<Zap size={16} />}
+              onClick={() => {
+                resetSession()
+                setTimeout(() => startDetection(), 100)
+              }}
+            >
+              再来一组
+            </Button>
+          )}
         </div>
-
-        {isCompleted && !showNextStep && (
-          <Button
-            variant="purple"
-            size="md"
-            fullWidth
-            icon={<Zap size={16} />}
-            onClick={() => {
-              resetSession()
-              setTimeout(() => startDetection(), 100)
-            }}
-          >
-            再来一组
-          </Button>
-        )}
       </div>
+
+      {/* ========== 加量弹窗 ========== */}
+      {showAddMore && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShowAddMore(false)}>
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="bg-bg2 rounded-2xl p-4 max-w-[340px] w-[85%] border border-border"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-sm font-bold text-text mb-3 flex items-center gap-1.5">
+              <Plus size={16} className="text-purple" />
+              加量训练
+            </h3>
+            <p className="text-[10px] text-text3 mb-3">选择额外动作加入锻炼计划</p>
+            <div className="grid grid-cols-4 gap-2 max-h-[240px] overflow-y-auto">
+              {exercises.map((ex) => (
+                <button
+                  key={ex.id}
+                  onClick={() => {
+                    setExercisePlan((prev) => [...prev, {
+                      type: ex.id,
+                      name: ex.name,
+                      emoji: ex.emoji,
+                      targetReps: 5,
+                      damage: 5 * EXERCISE_DAMAGE[ex.id],
+                      completed: false,
+                    }])
+                    setShowAddMore(false)
+                  }}
+                  className="flex flex-col items-center gap-1 p-2 rounded-lg border-2 border-border hover:border-purple hover:bg-purple/5 transition-all"
+                >
+                  <span className="text-xl">{ex.emoji}</span>
+                  <span className="text-[9px] font-bold text-text2">{ex.name}</span>
+                  <span className="text-[8px] text-text3">+5次</span>
+                </button>
+              ))}
+            </div>
+            <Button variant="secondary" size="sm" fullWidth className="mt-3" onClick={() => setShowAddMore(false)}>
+              取消
+            </Button>
+          </motion.div>
+        </div>
+      )}
     </div>
   )
 }

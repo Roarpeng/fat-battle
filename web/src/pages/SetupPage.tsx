@@ -193,6 +193,7 @@ export default function SetupPage() {
       targetWeight: tw,
       bmi: bmi,
       role: form.role,
+      gender: form.gender,
     })
     setDifficulty(form.difficulty)
 

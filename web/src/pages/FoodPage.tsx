@@ -1,58 +1,48 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Search, Plus, Trash2, Utensils, Coffee, Pizza, Cookie, X, Target, Flame, Camera, ScanLine } from 'lucide-react'
+import { ArrowLeft, Camera, ScanLine, Plus, X, Trash2 } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import { foods } from '../data/foods'
 import { useGameStore } from '../store/useGameStore'
-import Card from '../components/Card'
-import HpBar from '../components/HpBar'
+import MiniMonsterCard from '../components/MiniMonsterCard'
 import FoodRecognitionModal from '../components/FoodRecognitionModal'
 
-type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snack'
-
-const mealTabs: { type: MealType; label: string; icon: typeof Utensils }[] = [
-  { type: 'breakfast', label: '早餐', icon: Coffee },
-  { type: 'lunch', label: '午餐', icon: Utensils },
-  { type: 'dinner', label: '晚餐', icon: Pizza },
-  { type: 'snack', label: '零食', icon: Cookie },
-]
-
-const dailyTarget = 2000
-
 export default function FoodPage() {
-  const { daily, dietRecords, addDietRecord, removeDietRecord, user } = useGameStore()
-  const [activeMeal, setActiveMeal] = useState<MealType>('breakfast')
-  const [searchQuery, setSearchQuery] = useState('')
-  const [healAnimations, setHealAnimations] = useState<Array<{ id: string; value: number }>>([])
-  const [showCustomFood, setShowCustomFood] = useState(false)
-  const [customFood, setCustomFood] = useState({ name: '', calories: '', servingSize: '' })
+  const navigate = useNavigate()
+  const { monster, dietRecords, addDietRecord, removeDietRecord, user, customFoods, addCustomFood, removeCustomFood } = useGameStore()
   const [showRecognition, setShowRecognition] = useState(false)
+  const [showCustomForm, setShowCustomForm] = useState(false)
+  const [customName, setCustomName] = useState('')
+  const [customCalories, setCustomCalories] = useState('')
+  const [healAnimations, setHealAnimations] = useState<Array<{ id: string; value: number }>>([])
 
-  const quickFoods = useMemo(() => {
-    return foods.slice(0, 12)
-  }, [])
-
-  const filteredFoods = useMemo(() => {
-    if (!searchQuery.trim()) return []
-    const query = searchQuery.toLowerCase()
-    return foods.filter(
-      (f) =>
-        f.name.toLowerCase().includes(query) ||
-        f.id.toLowerCase().includes(query)
-    )
-  }, [searchQuery])
-
-  const todayRecords = useMemo(() => {
-    const today = new Date().toDateString()
-    return dietRecords.filter((r) => new Date(r.time).toDateString() === today)
+  // 统计最常吃的食物（Top 8）
+  const frequentFoods = useMemo(() => {
+    const counts = new Map<string, { food: typeof foods[0]; count: number }>()
+    // 先加入所有默认食物，count=0
+    foods.forEach((f) => counts.set(f.id, { food: f, count: 0 }))
+    // 统计历史记录
+    dietRecords.forEach((record) => {
+      const matched = foods.find((f) => f.name === record.name)
+      if (matched) {
+        const entry = counts.get(matched.id)
+        if (entry) entry.count++
+      }
+    })
+    // 按频率排序，取前8
+    return Array.from(counts.values())
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 8)
+      .map((e) => e.food)
   }, [dietRecords])
 
-  const addHealAnimation = (value: number) => {
+  const addHealAnimation = useCallback((value: number) => {
     const id = Date.now().toString() + Math.random().toString(36).slice(2, 8)
     setHealAnimations((prev) => [...prev, { id, value }])
     setTimeout(() => {
-      setHealAnimations((prev) => prev.filter((a) => a.id !== id))
-    }, 1000)
-  }
+      setHealAnimations((prev) => prev.filter((h) => h.id !== id))
+    }, 800)
+  }, [])
 
   const handleAddFood = (food: typeof foods[0]) => {
     addDietRecord({
@@ -60,375 +50,225 @@ export default function FoodPage() {
       calories: food.calories,
       time: Date.now(),
     })
-    addHealAnimation(food.hpRestore)
+    // 显示卡路里增加提示（不是直接加怪物血量）
+    addHealAnimation(food.calories)
+    setTimeout(() => navigate('/'), 600)
   }
 
   const handleAddCustomFood = () => {
-    if (!customFood.name || !customFood.calories) return
-    const calories = parseInt(customFood.calories)
+    if (!customName || !customCalories) return
+    const calories = parseInt(customCalories)
     if (isNaN(calories) || calories <= 0) return
 
+    // 添加到自定义食物库
+    const newFood = {
+      id: `custom-${Date.now()}`,
+      name: customName,
+      calories,
+      protein: 0,
+      carbs: 0,
+      fat: 0,
+      servingSize: '自定义',
+      emoji: '🍽️',
+      category: 'snack' as const,
+      hpRestore: Math.floor(calories * 0.05),
+    }
+    addCustomFood(newFood)
+
+    // 添加到饮食记录
     addDietRecord({
-      name: customFood.name,
+      name: customName,
       calories,
       time: Date.now(),
     })
-    addHealAnimation(Math.floor(calories * 0.05))
-    setCustomFood({ name: '', calories: '', servingSize: '' })
-    setShowCustomFood(false)
+    addHealAnimation(calories)
+    setCustomName('')
+    setCustomCalories('')
+    setShowCustomForm(false)
+    setTimeout(() => navigate('/'), 600)
   }
 
   const handleRecognizedItems = (items: Array<{ name: string; cal: number; actualCal?: number; portion?: string }>) => {
-    items.forEach(item => {
+    items.forEach((item) => {
       const cal = item.actualCal || item.cal
       addDietRecord({
         name: item.name,
         calories: cal,
         time: Date.now(),
       })
-      addHealAnimation(Math.floor(cal * 0.05))
+      addHealAnimation(cal)
     })
+    setTimeout(() => navigate('/'), 600)
   }
 
-  const targetCalories = 1800 + (user.weight - 60) * 20
-  const intakePercent = Math.min(100, (daily.intake / targetCalories) * 100)
+  const playerMaxHp = 100 + (user.weight - user.targetWeight) * 2
+  const playerCurrentHp = Math.max(0, playerMaxHp - monster.hp * 0.5)
+
+  // 今日已记录的食物
+  const todayRecords = dietRecords.slice(-5)
 
   return (
-    <div className="min-h-full flex flex-col px-4 py-4 gap-4 pb-24">
-      <AnimatePresence>
-        {showCustomFood && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm"
-            onClick={() => setShowCustomFood(false)}
-          >
-            <motion.div
-              initial={{ y: '100%' }}
-              animate={{ y: 0 }}
-              exit={{ y: '100%' }}
-              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-              onClick={(e) => e.stopPropagation()}
-              className="w-full max-w-[480px] bg-card border-t border-border rounded-t-3xl p-6"
-            >
-              <div className="flex items-center justify-between mb-6">
-                <h3 className="text-xl font-bold">添加自定义食物</h3>
-                <button
-                  onClick={() => setShowCustomFood(false)}
-                  className="p-2 -mr-2 text-text3 hover:text-text transition-colors"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
-              <div className="space-y-4">
-                <div>
-                  <label className="text-sm text-text2 mb-1.5 block">食物名称</label>
-                  <input
-                    type="text"
-                    value={customFood.name}
-                    onChange={(e) => setCustomFood({ ...customFood, name: e.target.value })}
-                    placeholder="例如：妈妈做的红烧肉"
-                    className="w-full px-4 py-3 bg-bg2 border border-border rounded-xl text-text placeholder-text3 focus:outline-none focus:border-purple transition-colors"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-sm text-text2 mb-1.5 block">热量 (kcal)</label>
-                  <input
-                    type="number"
-                    value={customFood.calories}
-                    onChange={(e) => setCustomFood({ ...customFood, calories: e.target.value })}
-                    placeholder="例如：500"
-                    className="w-full px-4 py-3 bg-bg2 border border-border rounded-xl text-text placeholder-text3 focus:outline-none focus:border-purple transition-colors"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-sm text-text2 mb-1.5 block">分量 (可选)</label>
-                  <input
-                    type="text"
-                    value={customFood.servingSize}
-                    onChange={(e) => setCustomFood({ ...customFood, servingSize: e.target.value })}
-                    placeholder="例如：1碗"
-                    className="w-full px-4 py-3 bg-bg2 border border-border rounded-xl text-text placeholder-text3 focus:outline-none focus:border-purple transition-colors"
-                  />
-                </div>
-
-                <motion.button
-                  whileTap={{ scale: 0.97 }}
-                  onClick={handleAddCustomFood}
-                  className="w-full py-4 bg-gradient-to-r from-purple to-purple-dark text-white font-bold rounded-xl shadow-lg shadow-purple/30"
-                >
-                  添加食物
-                </motion.button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      <motion.div
-        initial={{ opacity: 0, y: -10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3 }}
-      >
-        <Card className="flex flex-col gap-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Target className="w-5 h-5 text-gold" />
-              <span className="font-bold">今日摄入</span>
-            </div>
-            <span className="text-sm text-text3">
-              目标: {Math.round(targetCalories)} kcal
-            </span>
-          </div>
-
-          <div className="relative">
-            <HpBar
-              current={daily.intake}
-              max={targetCalories}
-              color="gold"
-              size="lg"
-              showText={false}
-            />
-            <div className="absolute inset-0 flex items-center justify-center">
-              <span className="text-sm font-bold text-white drop-shadow-md">
-                {Math.round(daily.intake)} kcal
-              </span>
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between text-xs text-text3">
-            <span>还可以吃 {Math.max(0, Math.round(targetCalories - daily.intake))} kcal</span>
-            <span>{Math.round(intakePercent)}%</span>
-          </div>
-        </Card>
-      </motion.div>
-
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3, delay: 0.1 }}
-        className="flex gap-2"
-      >
-        {mealTabs.map((tab) => (
-          <button
-            key={tab.type}
-            onClick={() => setActiveMeal(tab.type)}
-            className={`flex-1 flex flex-col items-center gap-1 py-3 px-2 rounded-xl transition-all duration-200 ${
-              activeMeal === tab.type
-                ? 'bg-purple/20 border border-purple/50 text-purple'
-                : 'bg-card border border-border text-text3 hover:text-text2'
-            }`}
-          >
-            <tab.icon className="w-5 h-5" />
-            <span className="text-xs font-medium">{tab.label}</span>
-          </button>
-        ))}
-      </motion.div>
-
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3, delay: 0.2 }}
-        className="flex gap-2"
-      >
+    <div className="min-h-full flex flex-col px-4 py-3 gap-3 max-w-[480px] mx-auto">
+      {/* 顶部返回 + 标题 */}
+      <div className="flex items-center justify-between shrink-0">
         <button
-          onClick={() => setShowRecognition(true)}
-          className="flex-1 flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-purple to-purple-dark text-white rounded-xl font-medium shadow-lg shadow-purple/30"
+          onClick={() => navigate('/')}
+          className="w-9 h-9 flex items-center justify-center bg-card border border-border rounded-full hover:bg-bg2 transition-colors"
         >
-          <Camera className="w-5 h-5" />
-          拍照识别
+          <ArrowLeft size={18} className="text-text" />
         </button>
-        <button
-          onClick={() => setShowRecognition(true)}
-          className="flex-1 flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-blue to-purple text-white rounded-xl font-medium shadow-lg shadow-blue/30"
-        >
-          <ScanLine className="w-5 h-5" />
-          扫码添加
-        </button>
-      </motion.div>
+        <h1 className="text-lg font-bold text-text">记录饮食</h1>
+        <div className="w-9" />
+      </div>
 
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3, delay: 0.25 }}
-        className="relative"
-      >
-        <div className="relative">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-text3" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="搜索食物..."
-            className="w-full pl-12 pr-4 py-3.5 bg-card border border-border rounded-2xl text-text placeholder-text3 focus:outline-none focus:border-purple transition-colors"
-          />
-          {searchQuery && (
-            <button
-              onClick={() => setSearchQuery('')}
-              className="absolute right-4 top-1/2 -translate-y-1/2 text-text3 hover:text-text transition-colors"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          )}
-        </div>
-
-        <AnimatePresence>
-          {searchQuery && filteredFoods.length > 0 && (
-            <motion.div
-              initial={{ opacity: 0, y: -10, height: 0 }}
-              animate={{ opacity: 1, y: 0, height: 'auto' }}
-              exit={{ opacity: 0, y: -10, height: 0 }}
-              className="absolute top-full left-0 right-0 mt-2 bg-card border border-border rounded-2xl overflow-hidden z-40 max-h-80 overflow-y-auto"
-            >
-              {filteredFoods.map((food, index) => (
-                <motion.button
-                  key={food.id}
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: index * 0.03 }}
-                  onClick={() => {
-                    handleAddFood(food)
-                    setSearchQuery('')
-                  }}
-                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-bg2 transition-colors border-b border-border/50 last:border-0 text-left"
-                >
-                  <span className="text-2xl">{food.emoji}</span>
-                  <div className="flex-1 min-w-0">
-                    <div className="font-medium text-text truncate">{food.name}</div>
-                    <div className="text-xs text-text3">{food.servingSize}</div>
-                  </div>
-                  <div className="text-right">
-                    <div className="font-bold text-red">{food.calories}</div>
-                    <div className="text-xs text-text3">kcal</div>
-                  </div>
-                </motion.button>
-              ))}
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </motion.div>
-
-      {!searchQuery && (
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3, delay: 0.3 }}
-        >
-          <h3 className="font-bold text-text mb-3 flex items-center gap-2">
-            <Flame className="w-4 h-4 text-orange" />
-            快捷添加
-          </h3>
-          <div className="grid grid-cols-4 gap-2">
-            {quickFoods.map((food, index) => (
-              <motion.button
-                key={food.id}
-                initial={{ opacity: 0, scale: 0.8 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ delay: 0.3 + index * 0.03 }}
-                whileTap={{ scale: 0.9 }}
-                onClick={() => handleAddFood(food)}
-                className="relative flex flex-col items-center gap-1 p-3 bg-card border border-border rounded-xl hover:border-purple/50 hover:bg-purple/5 transition-all"
-              >
-                <span className="text-3xl">{food.emoji}</span>
-                <span className="text-xs text-text2 truncate w-full text-center">{food.name}</span>
-                <span className="text-xs text-red font-medium">{food.calories}</span>
-              </motion.button>
-            ))}
-          </div>
-        </motion.div>
-      )}
-
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3, delay: 0.4 }}
-        className="flex-1"
-      >
-        <h3 className="font-bold text-text mb-3">今日记录</h3>
-
-        {todayRecords.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-12 text-text3">
-            <div className="text-5xl mb-3 opacity-50">🍽️</div>
-            <p>还没有记录哦</p>
-            <p className="text-sm">点击上方食物开始记录</p>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            <AnimatePresence>
-              {todayRecords.map((record, index) => (
-                <motion.div
-                  key={record.id}
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: 20, height: 0 }}
-                  transition={{ delay: index * 0.03 }}
-                  className="flex items-center gap-3 p-3 bg-card border border-border rounded-xl"
-                >
-                  <div className="text-2xl">🍴</div>
-                  <div className="flex-1 min-w-0">
-                    <div className="font-medium text-text truncate">{record.name}</div>
-                    <div className="text-xs text-text3">
-                      {new Date(record.time).toLocaleTimeString('zh-CN', {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
-                    </div>
-                  </div>
-                  <div className="text-right mr-2">
-                    <div className="font-bold text-red">{record.calories}</div>
-                    <div className="text-xs text-text3">kcal</div>
-                  </div>
-                  <button
-                    onClick={() => removeDietRecord(record.id)}
-                    className="p-2 text-text3 hover:text-red transition-colors"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </motion.div>
-              ))}
-            </AnimatePresence>
-          </div>
-        )}
-      </motion.div>
-
-      <div className="fixed bottom-20 left-1/2 -translate-x-1/2 w-full max-w-[480px] px-4 pb-4 pointer-events-none">
-        <div className="relative pointer-events-auto">
+      {/* ========== 上 2/5：怪物区域 ========== */}
+      <div className="shrink-0">
+        <MiniMonsterCard
+          emoji={monster.emoji}
+          name={monster.name}
+          level={monster.level}
+          currentHp={monster.hp}
+          maxHp={monster.maxHp}
+        />
+        {/* 治疗飘字 */}
+        <div className="relative h-0">
           <AnimatePresence>
             {healAnimations.map((anim) => (
               <motion.div
                 key={anim.id}
-                initial={{ opacity: 1, y: 0, scale: 0.5 }}
-                animate={{ opacity: 0, y: -40, scale: 1.2 }}
+                initial={{ opacity: 1, y: 0 }}
+                animate={{ opacity: 0, y: -40 }}
                 exit={{ opacity: 0 }}
-                transition={{ duration: 1, ease: 'easeOut' }}
-                className="absolute left-1/2 -translate-x-1/2 -top-4 font-extrabold text-xl text-green drop-shadow-lg pointer-events-none z-50"
-                style={{ textShadow: '0 0 10px rgba(46,204,113,0.8)' }}
+                transition={{ duration: 0.8 }}
+                className="absolute left-1/2 -translate-x-1/2 text-green font-bold text-lg pointer-events-none"
               >
-                +{anim.value} HP
+                +{anim.value} kcal
               </motion.div>
             ))}
           </AnimatePresence>
-
-          <motion.button
-            whileTap={{ scale: 0.97 }}
-            onClick={() => setShowCustomFood(true)}
-            className="w-full py-4 bg-gradient-to-r from-purple to-purple-dark text-white font-bold rounded-2xl shadow-lg shadow-purple/30 flex items-center justify-center gap-2"
-          >
-            <Plus className="w-5 h-5" />
-            添加自定义食物
-          </motion.button>
         </div>
       </div>
 
+      {/* ========== 中 1/5：拍照识别入口 ========== */}
+      <motion.button
+        whileHover={{ scale: 1.02 }}
+        whileTap={{ scale: 0.98 }}
+        onClick={() => setShowRecognition(true)}
+        className="shrink-0 flex items-center justify-center gap-3 py-4 bg-gradient-to-r from-purple/15 to-blue/15 border-2 border-purple/30 rounded-2xl hover:border-purple/60 transition-colors"
+      >
+        <div className="w-10 h-10 rounded-full bg-purple/20 flex items-center justify-center">
+          <Camera size={20} className="text-purple" />
+        </div>
+        <div className="text-left">
+          <div className="font-bold text-sm text-text">拍照识别食物</div>
+          <div className="text-[10px] text-text3">AI 自动识别卡路里</div>
+        </div>
+        <ScanLine size={18} className="text-purple ml-2" />
+      </motion.button>
+
+      {/* ========== 下 2/5：经常吃的食物 ========== */}
+      <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+        <div className="flex items-center justify-between mb-2 shrink-0">
+          <h2 className="text-sm font-bold text-text">经常吃的食物</h2>
+          <button
+            onClick={() => setShowCustomForm(!showCustomForm)}
+            className="flex items-center gap-1 text-[10px] text-purple font-bold px-2 py-1 bg-purple/10 rounded-full hover:bg-purple/20 transition-colors"
+          >
+            {showCustomForm ? <X size={10} /> : <Plus size={10} />}
+            {showCustomForm ? '取消' : '自定义'}
+          </button>
+        </div>
+
+        {/* 自定义食物表单 */}
+        <AnimatePresence>
+          {showCustomForm && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              className="overflow-hidden shrink-0"
+            >
+              <div className="bg-card border border-border rounded-xl p-3 mb-2 flex gap-2">
+                <input
+                  type="text"
+                  placeholder="食物名称"
+                  value={customName}
+                  onChange={(e) => setCustomName(e.target.value)}
+                  className="flex-1 min-w-0 px-3 py-2 bg-bg2 border border-border rounded-lg text-sm text-text placeholder-text3 focus:outline-none focus:border-purple"
+                />
+                <input
+                  type="number"
+                  placeholder="卡路里"
+                  value={customCalories}
+                  onChange={(e) => setCustomCalories(e.target.value)}
+                  className="w-24 px-3 py-2 bg-bg2 border border-border rounded-lg text-sm text-text placeholder-text3 focus:outline-none focus:border-purple"
+                />
+                <button
+                  onClick={handleAddCustomFood}
+                  disabled={!customName || !customCalories}
+                  className="px-3 py-2 bg-purple text-white rounded-lg text-sm font-bold disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  添加
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* 食物网格 */}
+        <div className="flex-1 overflow-y-auto -mx-1 px-1 scrollbar-hide">
+          <div className="grid grid-cols-2 gap-2">
+            {frequentFoods.map((food) => (
+              <motion.button
+                key={food.id}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => handleAddFood(food)}
+                className="flex items-center gap-2 p-2.5 bg-card border border-border rounded-xl hover:border-purple/40 hover:bg-bg2 transition-all text-left"
+              >
+                <span className="text-xl shrink-0">{food.emoji}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs font-bold text-text truncate">{food.name}</div>
+                  <div className="text-[10px] text-text3">{food.calories} kcal</div>
+                </div>
+                <Plus size={14} className="text-purple shrink-0" />
+              </motion.button>
+            ))}
+          </div>
+
+          {/* 今日已记录 */}
+          {todayRecords.length > 0 && (
+            <div className="mt-3">
+              <h3 className="text-[10px] text-text3 mb-1.5">今日已记录</h3>
+              <div className="space-y-1.5">
+                {todayRecords.map((record) => (
+                  <div
+                    key={record.id}
+                    className="flex items-center justify-between px-3 py-2 bg-bg2/60 rounded-lg"
+                  >
+                    <span className="text-xs text-text">{record.name}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-text3">{record.calories} kcal</span>
+                      <button
+                        onClick={() => removeDietRecord(record.id)}
+                        className="text-text3 hover:text-red transition-colors"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* 食物识别弹窗 */}
       <FoodRecognitionModal
         open={showRecognition}
         onClose={() => setShowRecognition(false)}
         onConfirm={handleRecognizedItems}
-        mealType={activeMeal}
+        mealType="snack"
       />
     </div>
   )
