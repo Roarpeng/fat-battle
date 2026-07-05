@@ -6,6 +6,7 @@ interface HpBarProps {
   showText?: boolean
   size?: 'sm' | 'md' | 'lg'
   color?: 'red' | 'green' | 'gold' | 'purple'
+  overeatFactor?: number
 }
 
 export default function HpBar({
@@ -14,6 +15,7 @@ export default function HpBar({
   showText = true,
   size = 'md',
   color = 'red',
+  overeatFactor = 0,
 }: HpBarProps) {
   const percentage = Math.max(0, Math.min(100, (current / max) * 100))
 
@@ -23,19 +25,13 @@ export default function HpBar({
     lg: 'h-7',
   }
 
-  const colorMap = {
-    red: 'from-red to-red-dark',
-    green: 'from-green to-green-dark',
-    gold: 'from-gold to-gold-dark',
-    purple: 'from-purple to-purple-dark',
-  }
-
-  const glowMap = {
-    red: 'shadow-[0_0_10px_rgba(255,107,107,0.5)]',
-    green: 'shadow-[0_0_10px_rgba(46,204,113,0.5)]',
-    gold: 'shadow-[0_0_10px_rgba(255,217,61,0.5)]',
-    purple: 'shadow-[0_0_10px_rgba(102,126,234,0.5)]',
-  }
+  const clampedFactor = Math.min(1, Math.max(0, overeatFactor))
+  
+  const red = 255
+  const green = Math.round(107 + clampedFactor * (215 - 107))
+  const blue = Math.round(107 - clampedFactor * 50)
+  
+  const glowIntensity = 0.5 + clampedFactor * 0.3
 
   return (
     <div className="w-full">
@@ -43,7 +39,11 @@ export default function HpBar({
         className={`relative w-full ${heightMap[size]} bg-bg2 rounded-full overflow-hidden border border-border`}
       >
         <motion.div
-          className={`absolute top-0 left-0 h-full bg-gradient-to-r ${colorMap[color]} ${glowMap[color]} rounded-full`}
+          className="absolute top-0 left-0 h-full rounded-full"
+          style={{
+            background: `linear-gradient(to right, rgb(${red}, ${green}, ${blue}), rgb(${red - 30}, ${green - 20}, ${blue}))`,
+            boxShadow: `0 0 10px rgba(${red}, ${green}, ${blue}, ${glowIntensity})`,
+          }}
           initial={{ width: 0 }}
           animate={{ width: `${percentage}%` }}
           transition={{ duration: 0.5, ease: 'easeOut' }}

@@ -29,7 +29,7 @@ import Button from '../components/Button'
 import DamageNumber from '../components/DamageNumber'
 import { useGameStore, ACHIEVEMENTS_DEF } from '../store/useGameStore'
 import { getExerciseById } from '../data/exercises'
-import { PoseService, createPoseService, type ExerciseType, type PoseStatus } from '../services/poseService'
+import { PoseService, createPoseService, type ExerciseType, type PoseStatus, type AvatarMode, type CartoonColor } from '../services/poseService'
 import {
   useXpDrops, XpDropOverlay,
   useAchievementPopup, AchievementPopupOverlay,
@@ -111,6 +111,12 @@ export default function PoseDetectionPage() {
   const [currentPhase, setCurrentPhase] = useState<string>('待机')
   const [showNextStep, setShowNextStep] = useState(false)
   const [completedSets, setCompletedSets] = useState(0)
+  const [avatarMode, setAvatarMode] = useState<AvatarMode>('cartoon')
+  const [cartoonColor, setCartoonColor] = useState<CartoonColor>('blue')
+  const [showAvatarSelector, setShowAvatarSelector] = useState(false)
+  const [capturedPhotos, setCapturedPhotos] = useState<string[]>([])
+  const [showPhotoPreview, setShowPhotoPreview] = useState(false)
+  const [currentPhoto, setCurrentPhoto] = useState('')
 
   // ========== 游戏化 HUD 状态 ==========
   const [isPaused, setIsPaused] = useState(false)
@@ -130,6 +136,7 @@ export default function PoseDetectionPage() {
   const {
     attackMonster, addExerciseRecord, user, coins, streak, days, monster,
     addXp, checkAchievements, updateQuestProgress, generateDailyQuests, dailyQuests, playerLevel,
+    setPendingAttack,
   } = useGameStore()
 
   // ========== 游戏化即时反馈系统 ==========
@@ -352,7 +359,24 @@ export default function PoseDetectionPage() {
       reps: finalCount,
     })
 
-    attackMonster(damage)
+    let attackType: 'missile' | 'knife' | 'bomb' | 'fireball' | 'lightning'
+    if (calories >= 300) {
+      attackType = 'bomb'
+    } else if (calories >= 150) {
+      attackType = 'fireball'
+    } else if (calories >= 80) {
+      attackType = 'lightning'
+    } else if (calories >= 40) {
+      attackType = 'knife'
+    } else {
+      attackType = 'missile'
+    }
+
+    setPendingAttack({
+      damage,
+      attackType,
+      isOvereat: false,
+    })
 
     // ========== 游戏化即时反馈系统 ==========
 
@@ -423,7 +447,7 @@ export default function PoseDetectionPage() {
       }
       return updated
     })
-  }, [selectedExercise, user, addExerciseRecord, attackMonster, stopTimer, addXp, checkAchievements, updateQuestProgress, dailyQuests, comboCount, spawnXp, showUnlock, showQuestComplete, showLevelUp, currentPlanIndex])
+  }, [selectedExercise, user, addExerciseRecord, stopTimer, addXp, checkAchievements, updateQuestProgress, dailyQuests, comboCount, spawnXp, showUnlock, showQuestComplete, showLevelUp, currentPlanIndex, setPendingAttack])
 
   const startMockDetection = useCallback(() => {
     if (mockIntervalRef.current) {
@@ -516,6 +540,13 @@ export default function PoseDetectionPage() {
         canvasElement: canvasRef.current || undefined,
         userWeight: user.weight,
         gender: user.gender,
+        avatarMode,
+        cartoonColor,
+        onPhotoCapture: (photoData) => {
+          setCapturedPhotos(prev => [...prev, photoData])
+          setCurrentPhoto(photoData)
+          setShowPhotoPreview(true)
+        },
         onCount: (newCount: number) => {
           if (isCompletingRef.current) return
           setCount(newCount)
@@ -762,6 +793,12 @@ export default function PoseDetectionPage() {
             <Coins className="w-3.5 h-3.5 text-gold" />
             <span className="font-bold text-xs text-gold">{coins}</span>
           </div>
+          <button
+            onClick={() => setShowAvatarSelector(true)}
+            className="w-8 h-8 flex items-center justify-center bg-card border border-border rounded-full hover:bg-bg2 transition-colors"
+          >
+            <span className="text-lg">{avatarMode === 'real' ? '👤' : (cartoonColor === 'blue' ? '🦸' : '🦹')}</span>
+          </button>
         </div>
       </motion.div>
 
@@ -1190,7 +1227,7 @@ export default function PoseDetectionPage() {
             </Button>
           )}
 
-          <div className="grid grid-cols-2 gap-1.5">
+          <div className="grid grid-cols-3 gap-1.5">
             <Button
               variant="secondary"
               size="sm"
@@ -1199,6 +1236,22 @@ export default function PoseDetectionPage() {
               disabled={isLoading}
             >
               切换镜头
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={<Camera size={12} />}
+              onClick={() => {
+                const photo = poseServiceRef.current?.capturePhoto()
+                if (photo) {
+                  setCapturedPhotos(prev => [...prev, photo])
+                  setCurrentPhoto(photo)
+                  setShowPhotoPreview(true)
+                }
+              }}
+              disabled={!isRunning}
+            >
+              拍照
             </Button>
             <Button
               variant="secondary"
@@ -1268,6 +1321,150 @@ export default function PoseDetectionPage() {
             <Button variant="secondary" size="sm" fullWidth className="mt-3" onClick={() => setShowAddMore(false)}>
               取消
             </Button>
+          </motion.div>
+        </div>
+      )}
+
+      {showAvatarSelector && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShowAvatarSelector(false)}>
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="bg-bg2 rounded-2xl p-4 max-w-[340px] w-[85%] border border-border"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-sm font-bold text-text mb-3 flex items-center gap-1.5">
+              <Sparkles size={16} className="text-purple" />
+              选择形象
+            </h3>
+            <p className="text-[10px] text-text3 mb-3">选择你在游戏中的形象</p>
+            
+            <div className="grid grid-cols-2 gap-2 mb-3">
+              <button
+                onClick={() => {
+                  setAvatarMode('real')
+                  setShowAvatarSelector(false)
+                  if (poseServiceRef.current) {
+                    poseServiceRef.current.setAvatarMode('real')
+                  }
+                }}
+                className={`flex flex-col items-center gap-2 p-3 rounded-xl border-2 transition-all ${
+                  avatarMode === 'real' ? 'border-purple bg-purple/15' : 'border-border hover:border-purple/50'
+                }`}
+              >
+                <span className="text-3xl">👤</span>
+                <span className="text-xs font-bold text-text">真人模式</span>
+                <span className="text-[8px] text-text3">显示摄像头画面</span>
+              </button>
+              <button
+                onClick={() => {
+                  setAvatarMode('cartoon')
+                  setShowAvatarSelector(false)
+                  if (poseServiceRef.current) {
+                    poseServiceRef.current.setAvatarMode('cartoon')
+                  }
+                }}
+                className={`flex flex-col items-center gap-2 p-3 rounded-xl border-2 transition-all ${
+                  avatarMode === 'cartoon' ? 'border-purple bg-purple/15' : 'border-border hover:border-purple/50'
+                }`}
+              >
+                <span className="text-3xl">{cartoonColor === 'blue' ? '🦸' : '🦹'}</span>
+                <span className="text-xs font-bold text-text">卡通模式</span>
+                <span className="text-[8px] text-text3">火柴人形象</span>
+              </button>
+            </div>
+
+            {avatarMode === 'cartoon' && (
+              <div className="mb-3">
+                <p className="text-[10px] text-text3 mb-2">选择颜色</p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      setCartoonColor('blue')
+                      if (poseServiceRef.current) {
+                        poseServiceRef.current.setCartoonColor('blue')
+                      }
+                    }}
+                    className={`w-10 h-10 rounded-full border-2 transition-all ${
+                      cartoonColor === 'blue' ? 'border-white scale-110' : 'border-transparent'
+                    }`}
+                    style={{ background: 'linear-gradient(135deg, #3498DB, #87CEEB)' }}
+                  />
+                  <button
+                    onClick={() => {
+                      setCartoonColor('pink')
+                      if (poseServiceRef.current) {
+                        poseServiceRef.current.setCartoonColor('pink')
+                      }
+                    }}
+                    className={`w-10 h-10 rounded-full border-2 transition-all ${
+                      cartoonColor === 'pink' ? 'border-white scale-110' : 'border-transparent'
+                    }`}
+                    style={{ background: 'linear-gradient(135deg, #FF69B4, #FFC0CB)' }}
+                  />
+                </div>
+              </div>
+            )}
+
+            <Button variant="secondary" size="sm" fullWidth onClick={() => setShowAvatarSelector(false)}>
+              确定
+            </Button>
+          </motion.div>
+        </div>
+      )}
+
+      {showPhotoPreview && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setShowPhotoPreview(false)}>
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="bg-bg2 rounded-2xl p-4 max-w-[340px] w-[85%] border border-border"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-sm font-bold text-text mb-3 flex items-center gap-1.5">
+              <Camera size={16} className="text-purple" />
+              照片预览
+            </h3>
+            
+            <div className="relative bg-black rounded-xl overflow-hidden mb-3 aspect-video">
+              <img src={currentPhoto} alt="Captured" className="w-full h-full object-contain" />
+              <div className="absolute top-2 right-2 bg-black/60 backdrop-blur-sm rounded-full px-2 py-1">
+                <span className="text-[10px] text-white font-bold">标准动作!</span>
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+              <Button variant="secondary" size="sm" fullWidth onClick={() => setShowPhotoPreview(false)}>
+                关闭
+              </Button>
+              <Button variant="purple" size="sm" fullWidth onClick={() => {
+                const link = document.createElement('a')
+                link.download = `fat-battle-${Date.now()}.png`
+                link.href = currentPhoto
+                link.click()
+              }}>
+                保存
+              </Button>
+            </div>
+
+            {capturedPhotos.length > 0 && (
+              <div className="mt-3">
+                <p className="text-[10px] text-text3 mb-2">已捕获照片 ({capturedPhotos.length})</p>
+                <div className="flex gap-2 overflow-x-auto pb-2">
+                  {capturedPhotos.map((photo, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => setCurrentPhoto(photo)}
+                      className={`w-12 h-12 rounded-lg overflow-hidden border-2 flex-shrink-0 transition-all ${
+                        currentPhoto === photo ? 'border-purple' : 'border-border'
+                      }`}
+                    >
+                      <img src={photo} alt={`Photo ${idx + 1}`} className="w-full h-full object-cover" />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </motion.div>
         </div>
       )}
