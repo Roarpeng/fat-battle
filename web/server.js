@@ -63,9 +63,12 @@ const server = http.createServer((req, res) => {
     }
 
     const contentType = getContentType(filePath)
-    res.writeHead(200, { 
+    const cacheControl = urlPath.includes('/assets/') ? 'public, max-age=31536000, immutable' : 'no-cache'
+
+    res.writeHead(200, {
       'Content-Type': contentType,
-      'Cache-Control': urlPath.includes('/assets/') ? 'public, max-age=31536000, immutable' : 'no-cache'
+      'Cache-Control': cacheControl,
+      'Content-Length': stats.size
     })
 
     const stream = fs.createReadStream(filePath)
