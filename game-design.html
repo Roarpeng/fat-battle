@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>减肥大作战 - 游戏化架构设计</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  :root {
+    --bg: #0f172a;
+    --card: #1e293b;
+    --card-border: #334155;
+    --text: #e2e8f0;
+    --text-dim: #94a3b8;
+    --accent-cyan: #06b6d4;
+    --accent-green: #22c55e;
+    --accent-orange: #f97316;
+    --accent-pink: #ec4899;
+    --accent-purple: #a855f7;
+    --accent-yellow: #eab308;
+    --accent-red: #ef4444;
+  }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif;
+    line-height: 1.7;
+  }
+  .container { max-width: 1200px; margin: 0 auto; padding: 0 24px; }
+  header {
+    text-align: center;
+    padding: 60px 20px 40px;
+    background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+    border-bottom: 2px solid var(--accent-cyan);
+    position: relative;
+    overflow: hidden;
+  }
+  header::before {
+    content: "";
+    position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+    background: radial-gradient(circle at 20% 50%, rgba(6,182,212,0.08) 0%, transparent 50%),
+                radial-gradient(circle at 80% 50%, rgba(236,72,153,0.08) 0%, transparent 50%);
+    pointer-events: none;
+  }
+  h1 {
+    font-size: 3rem;
+    font-weight: 800;
+    background: linear-gradient(90deg, var(--accent-cyan), var(--accent-pink), var(--accent-yellow));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    position: relative;
+    letter-spacing: 2px;
+    text-shadow: 0 0 40px rgba(6,182,212,0.3);
+  }
+  .subtitle {
+    font-size: 1.2rem;
+    color: var(--text-dim);
+    margin-top: 12px;
+    position: relative;
+  }
+  .badge {
+    display: inline-block;
+    padding: 6px 16px;
+    border-radius: 20px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    margin-top: 16px;
+    border: 1px solid var(--accent-green);
+    color: var(--accent-green);
+    background: rgba(34,197,94,0.1);
+  }
+  section { padding: 50px 0; }
+  h2 {
+    font-size: 1.9rem;
+    margin-bottom: 24px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  h2 .icon {
+    width: 40px; height: 40px;
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.3rem;
+    background: var(--card);
+    border: 1px solid var(--card-border);
+  }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--card-border);
+    border-radius: 16px;
+    padding: 28px;
+    margin-bottom: 20px;
+    transition: transform 0.2s, box-shadow 0.2s;
+    position: relative;
+    overflow: hidden;
+  }
+  .card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 10px 40px rgba(0,0,0,0.4);
+  }
+  .card::before {
+    content: "";
+    position: absolute; top: 0; left: 0; width: 100%; height: 3px;
+  }
+  .card.cyan::before { background: linear-gradient(90deg, var(--accent-cyan), transparent); }
+  .card.green::before { background: linear-gradient(90deg, var(--accent-green), transparent); }
+  .card.orange::before { background: linear-gradient(90deg, var(--accent-orange), transparent); }
+  .card.pink::before { background: linear-gradient(90deg, var(--accent-pink), transparent); }
+  .card.purple::before { background: linear-gradient(90deg, var(--accent-purple), transparent); }
+  .card.yellow::before { background: linear-gradient(90deg, var(--accent-yellow), transparent); }
+  .card.red::before { background: linear-gradient(90deg, var(--accent-red), transparent); }
+  .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px; }
+  .grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; }
+  .grid-4 { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+  .tag {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    margin-right: 6px;
+    margin-bottom: 6px;
+  }
+  .tag-cyan { background: rgba(6,182,212,0.15); color: var(--accent-cyan); border: 1px solid rgba(6,182,212,0.3); }
+  .tag-green { background: rgba(34,197,94,0.15); color: var(--accent-green); border: 1px solid rgba(34,197,94,0.3); }
+  .tag-orange { background: rgba(249,115,22,0.15); color: var(--accent-orange); border: 1px solid rgba(249,115,22,0.3); }
+  .tag-pink { background: rgba(236,72,153,0.15); color: var(--accent-pink); border: 1px solid rgba(236,72,153,0.3); }
+  .tag-purple { background: rgba(168,85,247,0.15); color: var(--accent-purple); border: 1px solid rgba(168,85,247,0.3); }
+  .tag-yellow { background: rgba(234,179,8,0.15); color: var(--accent-yellow); border: 1px solid rgba(234,179,8,0.3); }
+  .tag-red { background: rgba(239,68,68,0.15); color: var(--accent-red); border: 1px solid rgba(239,68,68,0.3); }
+
+  .world-story {
+    font-size: 1.15rem;
+    line-height: 2;
+    padding: 32px;
+    background: linear-gradient(135deg, rgba(6,182,212,0.05), rgba(236,72,153,0.05));
+    border-left: 4px solid var(--accent-cyan);
+    border-radius: 0 16px 16px 0;
+  }
+  .world-story strong { color: var(--accent-cyan); }
+  .world-story em { color: var(--accent-pink); font-style: normal; font-weight: 600; }
+
+  .stat-row { display: flex; gap: 20px; flex-wrap: wrap; margin-top: 16px; }
+  .stat-box {
+    flex: 1; min-width: 140px;
+    background: rgba(15,23,42,0.6);
+    border-radius: 12px;
+    padding: 16px;
+    text-align: center;
+    border: 1px solid var(--card-border);
+  }
+  .stat-box .num {
+    font-size: 2rem; font-weight: 800;
+    background: linear-gradient(180deg, var(--accent-cyan), var(--accent-green));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+  }
+  .stat-box .label { font-size: 0.85rem; color: var(--text-dim); margin-top: 4px; }
+
+  .flow-container { background: var(--card); border-radius: 16px; padding: 32px; border: 1px solid var(--card-border); }
+  .flow-legend { display: flex; gap: 20px; flex-wrap: wrap; margin-top: 16px; justify-content: center; }
+  .flow-legend-item { display: flex; align-items: center; gap: 8px; font-size: 0.9rem; }
+  .flow-legend-dot { width: 14px; height: 14px; border-radius: 4px; }
+
+  .psychology-list { list-style: none; }
+  .psychology-list li {
+    padding: 16px 20px;
+    margin-bottom: 12px;
+    background: var(--card);
+    border-radius: 12px;
+    border: 1px solid var(--card-border);
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+  }
+  .psychology-list .psy-icon {
+    width: 44px; height: 44px;
+    border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.4rem;
+    flex-shrink: 0;
+  }
+  .psychology-list .psy-title { font-weight: 700; font-size: 1.05rem; margin-bottom: 4px; }
+  .psychology-list .psy-desc { color: var(--text-dim); font-size: 0.95rem; }
+
+  .relation-box { background: var(--card); border-radius: 16px; padding: 32px; border: 1px solid var(--card-border); overflow-x: auto; }
+
+  footer {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--text-dim);
+    font-size: 0.9rem;
+    border-top: 1px solid var(--card-border);
+    margin-top: 20px;
+  }
+  .level-bar {
+    height: 8px;
+    border-radius: 4px;
+    background: rgba(255,255,255,0.08);
+    overflow: hidden;
+    margin-top: 10px;
+  }
+  .level-fill {
+    height: 100%;
+    border-radius: 4px;
+    background: linear-gradient(90deg, var(--accent-cyan), var(--accent-green));
+    width: 65%;
+  }
+  .system-card h3 {
+    font-size: 1.15rem;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .system-card p { color: var(--text-dim); font-size: 0.95rem; }
+  .reward-box {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 12px;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    margin-top: 8px;
+    margin-right: 6px;
+  }
+
+  @media (max-width: 768px) {
+    h1 { font-size: 2rem; }
+    .container { padding: 0 16px; }
+    section { padding: 32px 0; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="container">
+    <h1>减肥大作战</h1>
+    <p class="subtitle">游戏化架构设计文档 —— 让每一次流汗都变成一场冒险</p>
+    <span class="badge">v1.0 设计稿</span>
+  </div>
+</header>
+
+<div class="container">
+
+  <!-- 1. 游戏世界观 -->
+  <section>
+    <h2><span class="icon" style="color:var(--accent-cyan);">&#127756;</span>游戏世界观</h2>
+    <div class="card cyan">
+      <div class="world-story">
+        <p>在遥远的宇宙深处，<strong>脂肪星球</strong>的统治者"暴食大帝"觊觎地球已久。他派遣了无数<strong>卡路里怪兽</strong>入侵人类世界，它们潜伏在奶茶、炸鸡和夜宵之中，悄悄吞噬人类的健康与活力。</p>
+        <p style="margin-top:12px;">但是，希望从未熄灭！<em>你</em>，被选中成为<strong>健身勇士</strong>，拥有将运动转化为攻击力的神秘能力。每一次深蹲，都是一记重拳；每一次跑步，都是一场追击。</p>
+        <p style="margin-top:12px;">你的使命：带领人类抵抗军，<strong>击败卡路里怪兽，夺回健康的身体！</strong></p>
+      </div>
+      <div class="stat-row">
+        <div class="stat-box">
+          <div class="num">7</div>
+          <div class="label">怪兽种类</div>
+        </div>
+        <div class="stat-box">
+          <div class="num">∞</div>
+          <div class="label">关卡数量</div>
+        </div>
+        <div class="stat-box">
+          <div class="num">30</div>
+          <div class="label">玩家等级上限</div>
+        </div>
+        <div class="stat-box">
+          <div class="num">100+</div>
+          <div class="label">成就徽章</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 2. 核心循环 -->
+  <section>
+    <h2><span class="icon" style="color:var(--accent-green);">&#9851;</span>核心循环</h2>
+    <div class="flow-container">
+      <p style="color:var(--text-dim);margin-bottom:20px;">每一天，玩家都在"吃"与"动"的博弈中与怪兽战斗。以下是核心游戏循环的完整流程：</p>
+      <svg viewBox="0 0 900 380" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:900px;display:block;margin:0 auto;">
+        <defs>
+          <marker id="arr-red" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+            <path d="M0,0 L0,6 L9,3 z" fill="#ef4444"/>
+          </marker>
+          <marker id="arr-green" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+            <path d="M0,0 L0,6 L9,3 z" fill="#22c55e"/>
+          </marker>
+          <marker id="arr-cyan" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+            <path d="M0,0 L0,6 L9,3 z" fill="#06b6d4"/>
+          </marker>
+          <marker id="arr-yellow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+            <path d="M0,0 L0,6 L9,3 z" fill="#eab308"/>
+          </marker>
+          <filter id="glow-cyan" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur stdDeviation="3" result="blur"/>
+            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+        </defs>
+
+        <!-- 顶部标题 -->
+        <text x="450" y="28" text-anchor="middle" fill="#e2e8f0" font-size="16" font-weight="700">一天的游戏循环</text>
+
+        <!-- 玩家 -->
+        <rect x="380" y="50" width="140" height="50" rx="12" fill="#1e293b" stroke="#06b6d4" stroke-width="2"/>
+        <text x="450" y="80" text-anchor="middle" fill="#06b6d4" font-size="15" font-weight="700">玩家（健身勇士）</text>
+
+        <!-- 进食分支 -->
+        <rect x="80" y="140" width="160" height="50" rx="10" fill="#1e293b" stroke="#ef4444" stroke-width="2"/>
+        <text x="160" y="170" text-anchor="middle" fill="#ef4444" font-size="14" font-weight="700">吃（摄入食物）</text>
+
+        <line x1="380" y1="100" x2="200" y2="140" stroke="#ef4444" stroke-width="2" marker-end="url(#arr-red)"/>
+        <text x="260" y="120" fill="#ef4444" font-size="11">记录食物</text>
+
+        <!-- 护盾 -->
+        <rect x="80" y="230" width="160" height="50" rx="10" fill="#1e293b" stroke="#f97316" stroke-width="2"/>
+        <text x="160" y="255" text-anchor="middle" fill="#f97316" font-size="13" font-weight="700">怪兽获得护盾</text>
+        <text x="160" y="270" text-anchor="middle" fill="#94a3b8" font-size="11">（过量卡路里）</text>
+
+        <line x1="160" y1="190" x2="160" y2="230" stroke="#f97316" stroke-width="2" marker-end="url(#arr-orange)"/>
+        <text x="175" y="215" fill="#f97316" font-size="11">热量转化</text>
+
+        <!-- 运动分支 -->
+        <rect x="660" y="140" width="160" height="50" rx="10" fill="#1e293b" stroke="#22c55e" stroke-width="2"/>
+        <text x="740" y="170" text-anchor="middle" fill="#22c55e" font-size="14" font-weight="700">运动（消耗热量）</text>
+
+        <line x1="520" y1="100" x2="700" y2="140" stroke="#22c55e" stroke-width="2" marker-end="url(#arr-green)"/>
+        <text x="630" y="120" fill="#22c55e" font-size="11">记录运动</text>
+
+        <!-- 攻击 -->
+        <rect x="660" y="230" width="160" height="50" rx="10" fill="#1e293b" stroke="#a855f7" stroke-width="2"/>
+        <text x="740" y="255" text-anchor="middle" fill="#a855f7" font-size="13" font-weight="700">攻击怪兽</text>
+        <text x="740" y="270" text-anchor="middle" fill="#94a3b8" font-size="11">（消耗护盾/造成伤害）</text>
+
+        <line x1="740" y1="190" x2="740" y2="230" stroke="#a855f7" stroke-width="2" marker-end="url(#arr-purple)"/>
+        <text x="755" y="215" fill="#a855f7" font-size="11">热量换算</text>
+
+        <!-- 怪兽 -->
+        <rect x="360" y="300" width="180" height="50" rx="10" fill="#1e293b" stroke="#ec4899" stroke-width="2"/>
+        <text x="450" y="325" text-anchor="middle" fill="#ec4899" font-size="14" font-weight="700">卡路里怪兽</text>
+        <text x="450" y="340" text-anchor="middle" fill="#94a3b8" font-size="11">HP: 根据当日目标生成</text>
+
+        <line x1="240" y1="280" x2="360" y2="315" stroke="#f97316" stroke-width="2" marker-end="url(#arr-orange)"/>
+        <line x1="660" y1="280" x2="540" y2="315" stroke="#a855f7" stroke-width="2" marker-end="url(#arr-purple)"/>
+
+        <!-- 每日结算 -->
+        <rect x="360" y="140" width="180" height="50" rx="10" fill="#1e293b" stroke="#eab308" stroke-width="2" filter="url(#glow-cyan)"/>
+        <text x="450" y="170" text-anchor="middle" fill="#eab308" font-size="14" font-weight="700">每日结算</text>
+
+        <line x1="450" y1="100" x2="450" y2="140" stroke="#eab308" stroke-width="2" marker-end="url(#arr-yellow)"/>
+        <text x="465" y="125" fill="#eab308" font-size="11">夜晚触发</text>
+
+        <line x1="450" y1="190" x2="450" y2="300" stroke="#94a3b8" stroke-width="2" stroke-dasharray="6,4" marker-end="url(#arr-cyan)"/>
+        <text x="470" y="250" fill="#94a3b8" font-size="11">判定胜负</text>
+      </svg>
+      <div class="flow-legend">
+        <div class="flow-legend-item"><div class="flow-legend-dot" style="background:#ef4444;"></div>惩罚路径</div>
+        <div class="flow-legend-item"><div class="flow-legend-dot" style="background:#22c55e;"></div>奖励路径</div>
+        <div class="flow-legend-item"><div class="flow-legend-dot" style="background:#eab308;"></div>结算机制</div>
+        <div class="flow-legend-item"><div class="flow-legend-dot" style="background:#ec4899;"></div>核心敌人</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3. 即时反馈系统 -->
+  <section>
+    <h2><span class="icon" style="color:var(--accent-orange);">&#9889;</span>即时反馈系统</h2>
+    <p style="color:var(--text-dim);margin-bottom:20px;">每一个健康的举动，都会在游戏世界中获得即时、可视、爽快的反馈。以下是七大反馈子系统：</p>
+
+    <div class="grid-2">
+      <!-- XP & 等级 -->
+      <div class="card cyan system-card">
+        <h3><span style="font-size:1.3rem;">&#127942;</span>经验值 (XP) & 玩家等级</h3>
+        <p>每次完成运动或记录食物，都会获得 XP。积累足够 XP 后升级，解锁新技能和更高属性上限。</p>
+        <div style="margin-top:12px;">
+          <span class="tag tag-cyan">+50 XP</span><span class="tag tag-cyan">深蹲一次</span>
+          <span class="tag tag-green">+120 XP</span><span class="tag tag-green">跑步30分钟</span>
+          <span class="tag tag-orange">+30 XP</span><span class="tag tag-orange">记录早餐</span>
+        </div>
+        <div style="margin-top:14px;">
+          <div style="display:flex;justify-content:space-between;font-size:0.85rem;color:var(--text-dim);">
+            <span>当前等级: Lv.12</span><span>6500 / 10000 XP</span>
+          </div>
+          <div class="level-bar"><div class="level-fill"></div></div>
+        </div>
+      </div>
+
+      <!-- 成就徽章 -->
+      <div class="card yellow system-card">
+        <h3><span style="font-size:1.3rem;">&#127941;</span>成就徽章</h3>
+        <p>达成特定里程碑后解锁徽章，展示在个人主页。徽章分为铜、银、金、传说四个稀有度。</p>
+        <div style="margin-top:12px;">
+          <span class="tag tag-yellow">首次深蹲</span>
+          <span class="tag tag-orange">连续7天打卡</span>
+          <span class="tag tag-red">击败10只怪兽</span>
+          <span class="tag tag-purple">月瘦5斤</span>
+          <span class="tag tag-green">拒绝奶茶30天</span>
+          <span class="tag tag-cyan">凌晨6点锻炼</span>
+        </div>
+      </div>
+
+      <!-- 每日任务 -->
+      <div class="card green system-card">
+        <h3><span style="font-size:1.3rem;">&#128221;</span>每日任务</h3>
+        <p>系统每天生成 3-5 个个性化任务，完成后获得额外 XP 和金币奖励。任务难度随等级动态调整。</p>
+        <div style="margin-top:12px;">
+          <span class="tag tag-green">今天做3组深蹲</span>
+          <span class="tag tag-cyan">记录早餐</span>
+          <span class="tag tag-pink">不喝奶茶</span>
+          <span class="tag tag-orange">步行8000步</span>
+          <span class="tag tag-purple">喝水2升</span>
+        </div>
+      </div>
+
+      <!-- 技能系统 -->
+      <div class="card purple system-card">
+        <h3><span style="font-size:1.3rem;">&#9884;</span>技能系统</h3>
+        <p>升级后解锁强力被动/主动技能，让运动和饮食管理变得更加高效和有趣。</p>
+        <div style="margin-top:12px;">
+          <span class="tag tag-red">暴击</span><span style="color:var(--text-dim);font-size:0.85rem;">双倍伤害，概率触发</span><br>
+          <span class="tag tag-green">耐力光环</span><span style="color:var(--text-dim);font-size:0.85rem;">体力恢复+50%</span><br>
+          <span class="tag tag-cyan">食物透视</span><span style="color:var(--text-dim);font-size:0.85rem;">查看食物隐藏热量</span><br>
+          <span class="tag tag-orange">燃烧意志</span><span style="color:var(--text-dim);font-size:0.85rem;">运动后持续燃脂加成</span>
+        </div>
+      </div>
+
+      <!-- 道具掉落 -->
+      <div class="card orange system-card">
+        <h3><span style="font-size:1.3rem;">&#128230;</span>道具掉落</h3>
+        <p>完成运动后触发随机掉落，道具可在商店兑换或战斗中直接使用，增加惊喜感。</p>
+        <div style="margin-top:12px;">
+          <span class="tag tag-green">能量饮料</span><span style="color:var(--text-dim);font-size:0.85rem;">恢复30%体力</span><br>
+          <span class="tag tag-yellow">幸运金币</span><span style="color:var(--text-dim);font-size:0.85rem;">商店兑换稀有皮肤</span><br>
+          <span class="tag tag-cyan">护盾破除器</span><span style="color:var(--text-dim);font-size:0.85rem;">无视怪兽护盾一回合</span><br>
+          <span class="tag tag-pink">双倍经验卡</span><span style="color:var(--text-dim);font-size:0.85rem;">下一次运动2倍XP</span>
+        </div>
+      </div>
+
+      <!-- 连击Combo -->
+      <div class="card pink system-card">
+        <h3><span style="font-size:1.3rem;">&#128293;</span>连击 Combo</h3>
+        <p>连续完成同类型动作（如连续3天运动），激活 Combo 加成，伤害和 XP 随连击数递增。</p>
+        <div style="margin-top:12px;">
+          <span class="tag tag-pink">x2 Combo</span><span class="tag tag-orange">x3 Combo</span>
+          <span class="tag tag-red">x5 Combo</span><span class="tag tag-yellow">MAX!!!</span>
+        </div>
+        <p style="margin-top:8px;font-size:0.9rem;color:var(--text-dim);">断掉连击会有轻微损失厌恶提示，激励玩家保持节奏。</p>
+      </div>
+
+      <!-- 随机事件 -->
+      <div class="card red system-card" style="grid-column: 1 / -1;">
+        <h3><span style="font-size:1.3rem;">&#127922;</span>随机事件</h3>
+        <p>运动过程中可能触发各种随机事件，增加不确定性和趣味性。事件持续时间短，要求玩家快速反应。</p>
+        <div class="grid-3" style="margin-top:14px;">
+          <div style="background:rgba(15,23,42,0.5);padding:14px;border-radius:10px;border:1px solid var(--card-border);">
+            <div style="font-weight:700;color:var(--accent-red);margin-bottom:4px;">暴击时刻</div>
+            <div style="font-size:0.9rem;color:var(--text-dim);">接下来5分钟，所有动作伤害翻倍！</div>
+          </div>
+          <div style="background:rgba(15,23,42,0.5);padding:14px;border-radius:10px;border:1px solid var(--card-border);">
+            <div style="font-weight:700;color:var(--accent-green);margin-bottom:4px;">怪物虚弱</div>
+            <div style="font-size:0.9rem;color:var(--text-dim);">今日怪兽HP减半，速战速决！</div>
+          </div>
+          <div style="background:rgba(15,23,42,0.5);padding:14px;border-radius:10px;border:1px solid var(--card-border);">
+            <div style="font-weight:700;color:var(--accent-yellow);margin-bottom:4px;">神秘商人</div>
+            <div style="font-size:0.9rem;color:var(--text-dim);">运动结束后遇到限时折扣商店</div>
+          </div>
+          <div style="background:rgba(15,23,42,0.5);padding:14px;border-radius:10px;border:1px solid var(--card-border);">
+            <div style="font-weight:700;color:var(--accent-purple);margin-bottom:4px;">Boss突袭</div>
+            <div style="font-size:0.9rem;color:var(--text-dim);">额外出现一只稀有怪兽，击败后大奖</div>
+          </div>
+          <div style="background:rgba(15,23,42,0.5);padding:14px;border-radius:10px;border:1px solid var(--card-border);">
+            <div style="font-weight:700;color:var(--accent-cyan);margin-bottom:4px;">盟友支援</div>
+            <div style="font-size:0.9rem;color:var(--text-dim);">好友发动协力技，伤害+30%</div>
+          </div>
+          <div style="background:rgba(15,23,42,0.5);padding:14px;border-radius:10px;border:1px solid var(--card-border);">
+            <div style="font-weight:700;color:var(--accent-orange);margin-bottom:4px;">天降宝箱</div>
+            <div style="font-size:0.9rem;color:var(--text-dim);">完成额外挑战解锁隐藏宝箱</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4. 反馈心理学原理 -->
+  <section>
+    <h2><span class="icon" style="color:var(--accent-pink);">&#129504;</span>反馈心理学原理</h2>
+    <p style="color:var(--text-dim);margin-bottom:20px;">游戏化设计的核心在于理解人类心理。以下三大原理是"减肥大作战"反馈系统的理论基石：</p>
+    <ul class="psychology-list">
+      <li>
+        <div class="psy-icon" style="background:rgba(6,182,212,0.15);">&#128161;</div>
+        <div>
+          <div class="psy-title" style="color:var(--accent-cyan);">多巴胺回路 (Dopamine Loop)</div>
+          <div class="psy-desc">游戏中的每一次"+XP"弹窗、每一个掉落动画、每一次升级提示，都在刺激大脑释放多巴胺。我们将原本枯燥的减肥过程拆解为大量<span class="tag tag-cyan">微小奖励</span>，让大脑将"健康行为"与"快乐感受"绑定，形成正向循环。</div>
+        </div>
+      </li>
+      <li>
+        <div class="psy-icon" style="background:rgba(34,197,94,0.15);">&#9200;</div>
+        <div>
+          <div class="psy-title" style="color:var(--accent-green);">即时满足 (Instant Gratification)</div>
+          <div class="psy-desc">减肥的传统痛点是"延迟满足"——辛苦一个月才能看到体重变化。而在游戏中，<span class="tag tag-green">运动结束立刻</span>获得 XP、金币和可能的道具掉落。这种即时反馈填补了现实中的等待空窗期，让玩家持续感受到"我的努力有用"。</div>
+        </div>
+      </li>
+      <li>
+        <div class="psy-icon" style="background:rgba(239,68,68,0.15);">&#128737;</div>
+        <div>
+          <div class="psy-title" style="color:var(--accent-red);">损失厌恶 → 游戏护盾</div>
+          <div class="psy-desc">行为经济学中的"损失厌恶"指出，人对失去的痛苦大于获得的快乐。我们将过量进食转化为<span class="tag tag-red">怪兽护盾</span>——不是惩罚玩家，而是让敌人变强。玩家为了避免"打不赢今天的怪兽"，会更主动控制饮食。同时，连击断掉时的轻微损失提示，也巧妙利用了这种心理。</div>
+        </div>
+      </li>
+    </ul>
+  </section>
+
+  <!-- 5. 系统关联图 -->
+  <section>
+    <h2><span class="icon" style="color:var(--accent-purple);">&#127760;</span>各系统之间的关联图</h2>
+    <p style="color:var(--text-dim);margin-bottom:20px;">以下展示了七大反馈子系统如何与核心循环相互交织，形成完整的游戏化体验网络：</p>
+    <div class="relation-box">
+      <svg viewBox="0 0 960 560" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:960px;display:block;margin:0 auto;">
+        <defs>
+          <marker id="r-arr" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+            <path d="M0,0 L0,6 L7,3 z" fill="#64748b"/>
+          </marker>
+          <filter id="node-glow" x="-30%" y="-30%" width="160%" height="160%">
+            <feGaussianBlur stdDeviation="4" result="blur"/>
+            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+        </defs>
+
+        <!-- 中心：核心循环 -->
+        <circle cx="480" cy="280" r="55" fill="#1e293b" stroke="#eab308" stroke-width="3" filter="url(#node-glow)"/>
+        <text x="480" y="275" text-anchor="middle" fill="#eab308" font-size="13" font-weight="700">核心循环</text>
+        <text x="480" y="292" text-anchor="middle" fill="#94a3b8" font-size="10">吃 / 动 / 结算</text>
+
+        <!-- 节点1: XP等级 (左上) -->
+        <rect x="80" y="60" width="140" height="48" rx="10" fill="#1e293b" stroke="#06b6d4" stroke-width="2"/>
+        <text x="150" y="88" text-anchor="middle" fill="#06b6d4" font-size="13" font-weight="700">XP & 玩家等级</text>
+        <line x1="220" y1="100" x2="435" y2="240" stroke="#64748b" stroke-width="1.5" marker-end="url(#r-arr)"/>
+        <text x="300" y="165" fill="#64748b" font-size="10">循环产出XP</text>
+
+        <!-- 节点2: 成就徽章 (右上) -->
+        <rect x="740" y="60" width="140" height="48" rx="10" fill="#1e293b" stroke="#eab308" stroke-width="2"/>
+        <text x="810" y="88" text-anchor="middle" fill="#eab308" font-size="13" font-weight="700">成就徽章</text>
+        <line x1="740" y1="100" x2="525" y2="240" stroke="#64748b" stroke-width="1.5" marker-end="url(#r-arr)"/>
+        <text x="650" y="165" fill="#64748b" font-size="10">里程碑触发</text>
+
+        <!-- 节点3: 每日任务 (左中) -->
+        <rect x="40" y="240" width="140" height="48" rx="10" fill="#1e293b" stroke="#22c55e" stroke-width="2"/>
+        <text x="110" y="268" text-anchor="middle" fill="#22c55e" font-size="13" font-weight="700">每日任务</text>
+        <line x1="180" y1="264" x2="425" y2="280" stroke="#64748b" stroke-width="1.5" marker-end="url(#r-arr)"/>
+        <text x="280" y="265" fill="#64748b" font-size="10">引导循环行为</text>
+
+        <!-- 节点4: 技能系统 (右中) -->
+        <rect x="780" y="240" width="140" height="48" rx="10" fill="#1e293b" stroke="#a855f7" stroke-width="2"/>
+        <text x="850" y="268" text-anchor="middle" fill="#a855f7" font-size="13" font-weight="700">技能系统</text>
+        <line x1="780" y1="264" x2="535" y2="280" stroke="#64748b" stroke-width="1.5" marker-end="url(#r-arr)"/>
+        <text x="670" y="265" fill="#64748b" font-size="10">等级解锁技能</text>
+
+        <!-- 节点5: 道具掉落 (左下) -->
+        <rect x="80" y="440" width="140" height="48" rx="10" fill="#1e293b" stroke="#f97316" stroke-width="2"/>
+        <text x="150" y="468" text-anchor="middle" fill="#f97316" font-size="13" font-weight="700">道具掉落</text>
+        <line x1="220" y1="448" x2="435" y2="320" stroke="#64748b" stroke-width="1.5" marker-end="url(#r-arr)"/>
+        <text x="290" y="395" fill="#64748b" font-size="10">运动随机奖励</text>
+
+        <!-- 节点6: 连击Combo (中下) -->
+        <rect x="410" y="470" width="140" height="48" rx="10" fill="#1e293b" stroke="#ec4899" stroke-width="2"/>
+        <text x="480" y="498" text-anchor="middle" fill="#ec4899" font-size="13" font-weight="700">连击 Combo</text>
+        <line x1="480" y1="470" x2="480" y2="335" stroke="#64748b" stroke-width="1.5" marker-end="url(#r-arr)"/>
+        <text x="495" y="410" fill="#64748b" font-size="10">连续行为加成</text>
+
+        <!-- 节点7: 随机事件 (右下) -->
+        <rect x="740" y="440" width="140" height="48" rx="10" fill="#1e293b" stroke="#ef4444" stroke-width="2"/>
+        <text x="810" y="468" text-anchor="middle" fill="#ef4444" font-size="13" font-weight="700">随机事件</text>
+        <line x1="740" y1="448" x2="525" y2="320" stroke="#64748b" stroke-width="1.5" marker-end="url(#r-arr)"/>
+        <text x="650" y="395" fill="#64748b" font-size="10">改变循环规则</text>
+
+        <!-- 子系统之间的连接 -->
+        <line x1="150" y1="108" x2="150" y2="240" stroke="#334155" stroke-width="1" stroke-dasharray="4,3"/>
+        <line x1="810" y1="108" x2="850" y2="240" stroke="#334155" stroke-width="1" stroke-dasharray="4,3"/>
+        <line x1="110" y1="288" x2="150" y2="440" stroke="#334155" stroke-width="1" stroke-dasharray="4,3"/>
+        <line x1="850" y1="288" x2="810" y2="440" stroke="#334155" stroke-width="1" stroke-dasharray="4,3"/>
+        <line x1="220" y1="464" x2="410" y2="494" stroke="#334155" stroke-width="1" stroke-dasharray="4,3"/>
+        <line x1="550" y1="494" x2="740" y2="464" stroke="#334155" stroke-width="1" stroke-dasharray="4,3"/>
+
+        <!-- 图例说明 -->
+        <text x="480" y="545" text-anchor="middle" fill="#64748b" font-size="11">实线箭头 = 直接影响核心循环  |  虚线 = 子系统间间接关联</text>
+      </svg>
+    </div>
+  </section>
+
+</div>
+
+<footer>
+  <div class="container">
+    <p>减肥大作战 · 游戏化架构设计文档 v1.0</p>
+    <p style="margin-top:6px;font-size:0.8rem;">让每一个健康的举动，都成为一场值得庆祝的胜利。</p>
+  </div>
+</footer>
+
+</body>
+</html>

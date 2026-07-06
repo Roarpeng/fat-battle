@@ -1,0 +1,16 @@
+web/node_modules/
+web/dist/
+web/tmp/
+android/
+assets/
+docs/
+lib/
+test/
+tmp/
+.graphflow-cache/
+graphflow-out/
+.git/
+.trae/
+.dart_tool/
+.pub-cache/
+.build/
