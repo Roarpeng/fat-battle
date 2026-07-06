@@ -1,6 +1,7 @@
 import http from 'node:http'
 import fs from 'node:fs'
 import path from 'node:path'
+import zlib from 'node:zlib'
 import { fileURLToPath } from 'node:url'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -64,15 +65,31 @@ const server = http.createServer((req, res) => {
 
     const contentType = getContentType(filePath)
     const cacheControl = urlPath.includes('/assets/') ? 'public, max-age=31536000, immutable' : 'no-cache'
+    const acceptEncoding = req.headers['accept-encoding'] || ''
+    const shouldGzip = acceptEncoding.includes('gzip') && (
+      contentType.includes('javascript') ||
+      contentType.includes('css') ||
+      contentType.includes('html') ||
+      contentType.includes('json') ||
+      contentType.includes('svg')
+    )
 
-    res.writeHead(200, {
-      'Content-Type': contentType,
-      'Cache-Control': cacheControl,
-      'Content-Length': stats.size
-    })
-
-    const stream = fs.createReadStream(filePath)
-    stream.pipe(res)
+    if (shouldGzip) {
+      res.writeHead(200, {
+        'Content-Type': contentType,
+        'Cache-Control': cacheControl,
+        'Content-Encoding': 'gzip',
+        'Vary': 'Accept-Encoding'
+      })
+      fs.createReadStream(filePath).pipe(zlib.createGzip()).pipe(res)
+    } else {
+      res.writeHead(200, {
+        'Content-Type': contentType,
+        'Cache-Control': cacheControl,
+        'Content-Length': stats.size
+      })
+      fs.createReadStream(filePath).pipe(res)
+    }
   })
 })
 
