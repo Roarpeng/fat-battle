@@ -1,14 +1,15 @@
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, Camera, PenLine, Swords, Zap, Clock, Plus, X, Trash2 } from 'lucide-react'
+import { ArrowLeft, Camera, PenLine, Swords, Zap, Clock, Plus, X, Trash2, Flame } from 'lucide-react'
 import { exercises } from '../data/exercises'
 import { useGameStore } from '../store/useGameStore'
 import MiniMonsterCard from '../components/MiniMonsterCard'
+import { getRandomEncouragement } from '../data/encouragements'
 
 export default function ExercisePage() {
   const navigate = useNavigate()
-  const { monster, addExerciseRecord, user, customExercises, addCustomExercise, removeCustomExercise } = useGameStore()
+  const { monster, addExerciseRecord, user, customExercises, addCustomExercise, removeCustomExercise, setPendingAttack } = useGameStore()
 
   const [selected, setSelected] = useState<(typeof exercises)[0] | null>(null)
   const [duration, setDuration] = useState(30)
@@ -18,8 +19,8 @@ export default function ExercisePage() {
   const [customName, setCustomName] = useState('')
   const [customCalories, setCustomCalories] = useState('')
   const [customDamage, setCustomDamage] = useState('')
+  const [currentEncouragement, setCurrentEncouragement] = useState<{ id: string; message: string } | null>(null)
 
-  // 合并默认运动和自定义运动
   const allExercises = [...exercises, ...customExercises]
 
   const estimatedCalories = selected
@@ -33,9 +34,17 @@ export default function ExercisePage() {
       )
     : 0
 
+  const showExerciseEncouragement = useCallback((type: 'exercise_start' | 'exercise_complete') => {
+    const message = getRandomEncouragement(type)
+    const id = Date.now().toString()
+    setCurrentEncouragement({ id, message })
+    setTimeout(() => setCurrentEncouragement(null), 2500)
+  }, [])
+
   const handleSelect = (exercise: (typeof exercises)[0]) => {
     setSelected(exercise)
     setDuration(30)
+    showExerciseEncouragement('exercise_start')
   }
 
   const handleAttack = () => {
@@ -48,12 +57,30 @@ export default function ExercisePage() {
       reps: duration,
     })
 
-    // 不直接攻击怪物，只记录运动消耗的卡路里
-    // 伤害由首页特效计算并触发
+    let attackType: 'missile' | 'knife' | 'bomb' | 'fireball' | 'lightning'
+    if (estimatedCalories >= 300) {
+      attackType = 'bomb'
+    } else if (estimatedCalories >= 150) {
+      attackType = 'fireball'
+    } else if (estimatedCalories >= 80) {
+      attackType = 'lightning'
+    } else if (estimatedCalories >= 40) {
+      attackType = 'knife'
+    } else {
+      attackType = 'missile'
+    }
+
+    setPendingAttack({
+      damage: estimatedDamage,
+      attackType,
+      isOvereat: false,
+    })
+
     setDamageValue(estimatedDamage)
     setShowDamage(true)
+    showExerciseEncouragement('exercise_complete')
     setTimeout(() => setShowDamage(false), 800)
-    setTimeout(() => navigate('/'), 900)
+    setTimeout(() => navigate('/'), 1000)
   }
 
   const handleAddCustomExercise = () => {
@@ -81,7 +108,6 @@ export default function ExercisePage() {
 
   return (
     <div className="min-h-full flex flex-col px-4 py-3 gap-3 max-w-[480px] mx-auto">
-      {/* 顶部返回 + 标题 */}
       <div className="flex items-center justify-between shrink-0">
         <button
           onClick={() => navigate('/')}
@@ -93,8 +119,7 @@ export default function ExercisePage() {
         <div className="w-9" />
       </div>
 
-      {/* ========== 上 2/5：怪物区域 ========== */}
-      <div className="shrink-0">
+      <div className="shrink-0 relative">
         <MiniMonsterCard
           emoji={monster.emoji}
           name={monster.name}
@@ -102,10 +127,24 @@ export default function ExercisePage() {
           currentHp={monster.hp}
           maxHp={monster.maxHp}
         />
+
+        <AnimatePresence>
+          {currentEncouragement && (
+            <motion.div
+              key={currentEncouragement.id}
+              initial={{ opacity: 0, y: 20, scale: 0.9 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -10, scale: 0.9 }}
+              transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+              className="absolute -bottom-8 left-1/2 -translate-x-1/2 z-10 px-4 py-2 rounded-xl shadow-lg border-2 bg-green/90 border-green text-white"
+            >
+              <span className="text-xs font-bold">🔥 {currentEncouragement.message}</span>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
-      {/* ========== 中 1/5：摄像头/手动记录入口 ========== */}
-      <div className="shrink-0 grid grid-cols-2 gap-3">
+      <div className="shrink-0 grid grid-cols-2 gap-3 mt-8">
         <motion.button
           whileHover={{ scale: 1.03 }}
           whileTap={{ scale: 0.97 }}
@@ -129,9 +168,7 @@ export default function ExercisePage() {
         </motion.button>
       </div>
 
-      {/* ========== 下 2/5：运动列表 ========== */}
       <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-        {/* 自定义运动表单 */}
         <AnimatePresence>
           {showCustomForm && (
             <motion.div
@@ -176,7 +213,6 @@ export default function ExercisePage() {
           )}
         </AnimatePresence>
 
-        {/* 已选运动的伤害预览 */}
         <AnimatePresence>
           {selected && (
             <motion.div
@@ -188,7 +224,13 @@ export default function ExercisePage() {
               <div className="bg-card border border-border rounded-xl p-3 mb-2">
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
-                    <span className="text-xl">{selected.emoji}</span>
+                    <motion.span
+                      animate={{ scale: [1, 1.1, 1] }}
+                      transition={{ duration: 2, repeat: Infinity }}
+                      className="text-xl"
+                    >
+                      {selected.emoji}
+                    </motion.span>
                     <span className="font-bold text-sm text-text">{selected.name}</span>
                   </div>
                   <button
@@ -199,7 +241,6 @@ export default function ExercisePage() {
                   </button>
                 </div>
 
-                {/* 时长滑块 */}
                 <div className="flex items-center gap-3 mb-2">
                   <Clock size={14} className="text-text3 shrink-0" />
                   <input
@@ -214,7 +255,6 @@ export default function ExercisePage() {
                   <span className="text-xs font-bold text-text w-12 text-right">{duration}分</span>
                 </div>
 
-                {/* 预览数据 */}
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-1 text-xs text-text3">
                     <Zap size={12} className="text-orange" />
@@ -227,28 +267,28 @@ export default function ExercisePage() {
                   </div>
                 </div>
 
-                {/* 攻击按钮 */}
                 <motion.button
-                  whileHover={{ scale: 1.02 }}
+                  whileHover={{ scale: 1.02, boxShadow: '0 0 20px rgba(255,107,107,0.4)' }}
                   whileTap={{ scale: 0.98 }}
                   onClick={handleAttack}
                   className="w-full py-2.5 bg-gradient-to-r from-red to-red-dark text-white font-bold rounded-xl flex items-center justify-center gap-2 shadow-md shadow-red/20"
                 >
-                  <Swords size={18} />
+                  <Flame size={18} />
                   攻击脂肪怪！
                 </motion.button>
 
-                {/* 伤害飘字 */}
                 <AnimatePresence>
                   {showDamage && (
                     <motion.div
-                      initial={{ opacity: 1, y: 0 }}
-                      animate={{ opacity: 0, y: -40 }}
+                      initial={{ opacity: 1, y: 0, scale: 0.5 }}
+                      animate={{ opacity: 0, y: -40, scale: 1.5 }}
                       exit={{ opacity: 0 }}
                       transition={{ duration: 0.8 }}
                       className="text-center mt-1"
                     >
-                      <span className="text-red font-bold text-lg">-{damageValue}</span>
+                      <span className="text-red font-black text-xl" style={{ textShadow: '0 0 10px rgba(255,107,107,0.8)' }}>
+                        -{damageValue} HP
+                      </span>
                     </motion.div>
                   )}
                 </AnimatePresence>
@@ -257,7 +297,6 @@ export default function ExercisePage() {
           )}
         </AnimatePresence>
 
-        {/* 运动列表 */}
         <div className="flex items-center justify-between mb-2 shrink-0">
           <h2 className="text-sm font-bold text-text">选择运动</h2>
           <span className="text-[10px] text-text3">{allExercises.length} 个运动</span>
@@ -265,36 +304,54 @@ export default function ExercisePage() {
 
         <div className="flex-1 overflow-y-auto -mx-1 px-1 scrollbar-hide">
           <div className="grid grid-cols-2 gap-2">
-            {allExercises.map((exercise) => (
-              <motion.button
-                key={exercise.id}
-                whileTap={{ scale: 0.95 }}
-                onClick={() => handleSelect(exercise)}
-                className={`flex items-center gap-2 p-2.5 border rounded-xl text-left transition-all ${
-                  selected?.id === exercise.id
-                    ? 'bg-green/10 border-green/60'
-                    : 'bg-card border-border hover:border-green/40 hover:bg-bg2'
-                }`}
-              >
-                <span className="text-xl shrink-0">{exercise.emoji}</span>
-                <div className="flex-1 min-w-0">
-                  <div className="text-xs font-bold text-text truncate">{exercise.name}</div>
-                  <div className="text-[10px] text-text3">{exercise.damagePerMinute}/分 伤害</div>
-                </div>
-                {exercise.id.startsWith('custom-') && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      removeCustomExercise(exercise.id)
-                      if (selected?.id === exercise.id) setSelected(null)
-                    }}
-                    className="text-text3 hover:text-red shrink-0"
-                  >
-                    <Trash2 size={12} />
-                  </button>
-                )}
-              </motion.button>
-            ))}
+            {allExercises.map((exercise) => {
+              const difficultyColors = {
+                easy: 'border-green/30 hover:border-green/50',
+                medium: 'border-yellow/30 hover:border-yellow/50',
+                hard: 'border-red/30 hover:border-red/50',
+              }
+              const difficultyBadge = {
+                easy: 'bg-green/20 text-green',
+                medium: 'bg-yellow/20 text-yellow',
+                hard: 'bg-red/20 text-red',
+              }
+
+              return (
+                <motion.button
+                  key={exercise.id}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => handleSelect(exercise)}
+                  className={`flex items-center gap-2 p-2.5 border rounded-xl text-left transition-all ${
+                    selected?.id === exercise.id
+                      ? 'bg-green/10 border-green/60'
+                      : `bg-card ${difficultyColors[exercise.difficulty]} hover:bg-bg2`
+                  }`}
+                >
+                  <span className="text-xl shrink-0">{exercise.emoji}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs font-bold text-text truncate">{exercise.name}</div>
+                    <div className="flex items-center gap-1">
+                      <span className="text-[9px] text-text3">{exercise.damagePerMinute}/分</span>
+                      <span className={`text-[8px] px-1 rounded ${difficultyBadge[exercise.difficulty]}`}>
+                        {exercise.difficulty}
+                      </span>
+                    </div>
+                  </div>
+                  {exercise.id.startsWith('custom-') && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        removeCustomExercise(exercise.id)
+                        if (selected?.id === exercise.id) setSelected(null)
+                      }}
+                      className="text-text3 hover:text-red shrink-0"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  )}
+                </motion.button>
+              )
+            })}
           </div>
         </div>
       </div>

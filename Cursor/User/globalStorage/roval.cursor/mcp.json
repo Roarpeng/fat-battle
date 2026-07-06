@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "graphflow": {
+      "command": "/usr/bin/node",
+      "args": [
+        "/home/bosch/.trae-cn/extensions/roarpeng.graphflow-vscode-1.4.3/mcp-launcher.cjs"
+      ],
+      "env": {
+        "GRAPHFLOW_MCP_STDIO": "1",
+        "GRAPHFLOW_LOG_JSON": "1",
+        "GRAPHFLOW_WORKSPACE_ROOT": "/home/bosch/Desktop/Tmp/Code/fat-battle"
+      }
+    }
+  }
+}

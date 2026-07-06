@@ -22,6 +22,14 @@ export interface MonsterState {
   level: number
   name: string
   emoji: string
+  type?: string
+}
+
+export interface PendingAttack {
+  damage: number
+  attackType: 'missile' | 'knife' | 'bomb' | 'fireball' | 'lightning' | 'grease'
+  isOvereat: boolean
+  overeatCalories?: number
 }
 
 export interface DailyStatus {
@@ -29,6 +37,8 @@ export interface DailyStatus {
   exerciseBurn: number
   damage: number
   date: string
+  pendingAttack: PendingAttack | null
+  overeatCalories: number
 }
 
 export interface DietRecord {
@@ -153,6 +163,9 @@ export interface GameStateActions {
   incrementStreak: () => void
   resetDailyIfNeeded: () => void
   resetGame: () => void
+  // 虚标系统
+  setPendingAttack: (attack: PendingAttack | null) => void
+  setOvereatCalories: (calories: number) => void
   // 游戏化新增
   addXp: (amount: number) => { leveledUp: boolean; newLevel?: number }
   checkAchievements: () => AchievementProgress[]
@@ -301,6 +314,8 @@ const initialState: GameStateData = {
     exerciseBurn: 0,
     damage: 0,
     date: getTodayStr(),
+    pendingAttack: null,
+    overeatCalories: 0,
   },
   dietRecords: [],
   exerciseRecords: [],
@@ -443,13 +458,19 @@ export const useGameStore = create<GameState>()(
         }
 
         set({
-          daily: { intake: 0, exerciseBurn: 0, damage: 0, date: today },
+          daily: { intake: 0, exerciseBurn: 0, damage: 0, date: today, pendingAttack: null, overeatCalories: 0 },
           days: state.days + 1,
           weeklyData: newWeekly,
         })
       },
 
       resetGame: () => set(initialState),
+
+      setPendingAttack: (attack) =>
+        set((state) => ({ daily: { ...state.daily, pendingAttack: attack } })),
+
+      setOvereatCalories: (calories: number) =>
+        set((state) => ({ daily: { ...state.daily, overeatCalories: calories } })),
 
       // ========== 游戏化核心 Action ==========
 

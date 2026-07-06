@@ -19,6 +19,9 @@ export interface ExerciseState {
   lastRepTime: number
 }
 
+export type AvatarMode = 'real' | 'cartoon'
+export type CartoonColor = 'blue' | 'pink'
+
 export interface PoseServiceOptions {
   exerciseType?: ExerciseType
   onResults?: (results: PoseResults) => void
@@ -29,6 +32,7 @@ export interface PoseServiceOptions {
   onPrepareProgress?: (progress: number) => void
   onComboChange?: (combo: number, multiplier: number) => void
   onStaminaChange?: (stamina: number) => void
+  onPhotoCapture?: (photoData: string) => void
   videoElement?: HTMLVideoElement
   canvasElement?: HTMLCanvasElement
   squatThresholdAngle?: number
@@ -37,6 +41,8 @@ export interface PoseServiceOptions {
   minRepInterval?: number
   userWeight?: number
   gender?: 'male' | 'female'
+  avatarMode?: AvatarMode
+  cartoonColor?: CartoonColor
 }
 
 const MEDIAPIPE_POSE_URL = 'https://cdn.jsdelivr.net/npm/@mediapipe/pose'
@@ -84,6 +90,9 @@ export class PoseService {
   private cameraFacing: 'user' | 'environment' = 'user'
   private userWeight: number = 70
   private gender: 'male' | 'female' = 'male'
+  private avatarMode: AvatarMode = 'cartoon'
+  private cartoonColor: CartoonColor = 'blue'
+  private onPhotoCaptureCallback?: (photoData: string) => void
   private drawX: number = 0
   private drawY: number = 0
   private drawWidth: number = 0
@@ -214,6 +223,9 @@ export class PoseService {
     this.minRepInterval = options.minRepInterval ?? DEFAULT_MIN_REP_INTERVAL
     this.userWeight = options.userWeight ?? 70
     this.gender = options.gender ?? 'male'
+    this.avatarMode = options.avatarMode ?? 'cartoon'
+    this.cartoonColor = options.cartoonColor ?? 'blue'
+    this.onPhotoCaptureCallback = options.onPhotoCapture
     this.boundOnResults = this.onResults.bind(this)
   }
 
@@ -304,6 +316,31 @@ export class PoseService {
   }
   setOnStaminaChange(callback: (stamina: number) => void): void {
     this.onStaminaChangeCallback = callback
+  }
+
+  setOnPhotoCapture(callback: (photoData: string) => void): void {
+    this.onPhotoCaptureCallback = callback
+  }
+
+  setAvatarMode(mode: AvatarMode): void {
+    this.avatarMode = mode
+  }
+
+  getAvatarMode(): AvatarMode {
+    return this.avatarMode
+  }
+
+  setCartoonColor(color: CartoonColor): void {
+    this.cartoonColor = color
+  }
+
+  getCartoonColor(): CartoonColor {
+    return this.cartoonColor
+  }
+
+  capturePhoto(): string | null {
+    if (!this.canvasElement) return null
+    return this.canvasElement.toDataURL('image/png')
   }
 
   setVideoElement(video: HTMLVideoElement): void {
@@ -1032,45 +1069,45 @@ export class PoseService {
     ctx.save()
     ctx.clearRect(0, 0, canvasWidth, canvasHeight)
 
-    // 镜像翻转（前置摄像头）
     if (this.cameraFacing === 'user') {
       ctx.translate(canvasWidth, 0)
       ctx.scale(-1, 1)
     }
 
-    // 纯渐变背景，不绘制真人视频帧
-    const gradient = ctx.createLinearGradient(0, 0, 0, canvasHeight)
-    gradient.addColorStop(0, '#1a1a2e')
-    gradient.addColorStop(0.5, '#16213e')
-    gradient.addColorStop(1, '#0f3460')
-    ctx.fillStyle = gradient
-    ctx.fillRect(0, 0, canvasWidth, canvasHeight)
+    if (this.avatarMode === 'real' && this.videoElement && this.videoElement.readyState >= 2) {
+      ctx.drawImage(this.videoElement, 0, 0, canvasWidth, canvasHeight)
+    } else {
+      const gradient = ctx.createLinearGradient(0, 0, 0, canvasHeight)
+      gradient.addColorStop(0, '#1a1a2e')
+      gradient.addColorStop(0.5, '#16213e')
+      gradient.addColorStop(1, '#0f3460')
+      ctx.fillStyle = gradient
+      ctx.fillRect(0, 0, canvasWidth, canvasHeight)
 
-    // 绘制装饰性网格地面
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)'
-    ctx.lineWidth = 1
-    const gridSpacing = 40 * dpr
-    for (let y = canvasHeight * 0.65; y < canvasHeight; y += gridSpacing) {
-      ctx.beginPath()
-      ctx.moveTo(0, y)
-      ctx.lineTo(canvasWidth, y)
-      ctx.stroke()
-    }
-    for (let x = 0; x < canvasWidth; x += gridSpacing) {
-      ctx.beginPath()
-      ctx.moveTo(x, canvasHeight * 0.65)
-      ctx.lineTo(x, canvasHeight)
-      ctx.stroke()
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)'
+      ctx.lineWidth = 1
+      const gridSpacing = 40 * dpr
+      for (let y = canvasHeight * 0.65; y < canvasHeight; y += gridSpacing) {
+        ctx.beginPath()
+        ctx.moveTo(0, y)
+        ctx.lineTo(canvasWidth, y)
+        ctx.stroke()
+      }
+      for (let x = 0; x < canvasWidth; x += gridSpacing) {
+        ctx.beginPath()
+        ctx.moveTo(x, canvasHeight * 0.65)
+        ctx.lineTo(x, canvasHeight)
+        ctx.stroke()
+      }
     }
 
-    // landmark 坐标映射到整个 canvas（不再依赖视频尺寸）
     this.drawX = 0
     this.drawY = 0
     this.drawWidth = canvasWidth
     this.drawHeight = canvasHeight
 
     if (!results.poseLandmarks) {
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.3)'
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.5)'
       ctx.fillRect(0, 0, canvasWidth, canvasHeight)
       ctx.fillStyle = '#ffffff'
       ctx.font = `bold ${14 * dpr}px Arial`
@@ -1109,35 +1146,114 @@ export class PoseService {
 
     const isValid = (p: any) => p && p.visibility >= 0.5
 
-    // ========== 色彩方案 ==========
+    if (this.avatarMode === 'real') {
+      this.drawSkeleton(ctx, landmarks, mapX, mapY, isValid, dpr)
+    } else {
+      this.drawCartoon(ctx, landmarks, mapX, mapY, isValid, dpr)
+    }
+
+    ctx.restore()
+  }
+
+  private drawSkeleton(
+    ctx: CanvasRenderingContext2D,
+    landmarks: any[],
+    mapX: (x: number) => number,
+    mapY: (y: number) => number,
+    isValid: (p: any) => boolean,
+    dpr: number
+  ): void {
+    const colors = this.cartoonColor === 'blue'
+      ? { line: '#3498DB', joint: '#87CEEB' }
+      : { line: '#FF69B4', joint: '#FFC0CB' }
+
+    const lineWidth = Math.max(3, 4 * dpr)
+    const jointRadius = Math.max(4, 6 * dpr)
+
+    ctx.strokeStyle = colors.line
+    ctx.lineWidth = lineWidth
+    ctx.lineCap = 'round'
+    ctx.lineJoin = 'round'
+
+    const connections = [
+      [NOSE, LEFT_SHOULDER],
+      [NOSE, RIGHT_SHOULDER],
+      [LEFT_SHOULDER, RIGHT_SHOULDER],
+      [LEFT_SHOULDER, LEFT_ELBOW],
+      [RIGHT_SHOULDER, RIGHT_ELBOW],
+      [LEFT_ELBOW, LEFT_WRIST],
+      [RIGHT_ELBOW, RIGHT_WRIST],
+      [LEFT_SHOULDER, LEFT_HIP],
+      [RIGHT_SHOULDER, RIGHT_HIP],
+      [LEFT_HIP, RIGHT_HIP],
+      [LEFT_HIP, LEFT_KNEE],
+      [RIGHT_HIP, RIGHT_KNEE],
+      [LEFT_KNEE, LEFT_ANKLE],
+      [RIGHT_KNEE, RIGHT_ANKLE],
+    ]
+
+    connections.forEach(([start, end]) => {
+      const p1 = landmarks[start]
+      const p2 = landmarks[end]
+      if (isValid(p1) && isValid(p2)) {
+        ctx.beginPath()
+        ctx.moveTo(mapX(p1.x), mapY(p1.y))
+        ctx.lineTo(mapX(p2.x), mapY(p2.y))
+        ctx.stroke()
+      }
+    })
+
+    ctx.fillStyle = colors.joint
+    const jointIndices = [NOSE, LEFT_SHOULDER, RIGHT_SHOULDER, LEFT_ELBOW, RIGHT_ELBOW, LEFT_WRIST, RIGHT_WRIST, LEFT_HIP, RIGHT_HIP, LEFT_KNEE, RIGHT_KNEE, LEFT_ANKLE, RIGHT_ANKLE]
+    jointIndices.forEach((idx) => {
+      const p = landmarks[idx]
+      if (isValid(p)) {
+        ctx.beginPath()
+        ctx.arc(mapX(p.x), mapY(p.y), jointRadius, 0, 2 * Math.PI)
+        ctx.fill()
+      }
+    })
+  }
+
+  private drawCartoon(
+    ctx: CanvasRenderingContext2D,
+    landmarks: any[],
+    mapX: (x: number) => number,
+    mapY: (y: number) => number,
+    isValid: (p: any) => boolean,
+    dpr: number
+  ): void {
     const isMale = this.gender === 'male'
-    const colors = isMale
+    const colors = this.cartoonColor === 'blue'
       ? {
-          hair: '#2C3E50',
-          hairHighlight: '#34495E',
-          skin: '#FDD9B5',
-          skinShadow: '#E8C39E',
-          outfit: '#E74C3C',
-          outfitDark: '#C0392B',
+          hair: '#1E3A5F',
+          hairHighlight: '#2D5A87',
+          skin: '#87CEEB',
+          skinShadow: '#5BA3C7',
+          outfit: '#3498DB',
+          outfitDark: '#2471A3',
           pants: '#2C3E50',
           pantsDark: '#1a252f',
           shoe: '#1a1a1a',
-          eye: '#2C3E50',
+          eye: '#1E3A5F',
+          primary: '#3498DB',
+          secondary: '#87CEEB',
         }
       : {
           hair: '#FF6B9D',
           hairHighlight: '#FF8FB1',
-          skin: '#FDD9B5',
-          skinShadow: '#E8C39E',
-          outfit: '#9B59B6',
-          outfitDark: '#7D3C98',
-          pants: '#E8A0BF',
-          pantsDark: '#D4869F',
-          shoe: '#6C3483',
-          eye: '#9B59B6',
+          skin: '#FFC0CB',
+          skinShadow: '#FF8FA3',
+          outfit: '#FF69B4',
+          outfitDark: '#FF1493',
+          pants: '#DB7093',
+          pantsDark: '#BC5A84',
+          shoe: '#8B4577',
+          eye: '#FF6B9D',
+          primary: '#FF69B4',
+          secondary: '#FFC0CB',
         }
 
-    // ========== 计算身体比例 ==========
     const nose = landmarks[NOSE]
     const lShoulder = landmarks[LEFT_SHOULDER]
     const rShoulder = landmarks[RIGHT_SHOULDER]
@@ -1161,13 +1277,11 @@ export class PoseService {
       y: (lHip.y + rHip.y) / 2,
     }
 
-    // 肩宽决定整体比例
     const shoulderWidth = Math.abs(mapX(lShoulder.x) - mapX(rShoulder.x))
     const headR = Math.max(12 * dpr, shoulderWidth * 0.28)
     const limbWidth = Math.max(4 * dpr, shoulderWidth * 0.14)
     const torsoWidth = shoulderWidth * 0.9
 
-    // ========== 辅助绘制函数 ==========
     const drawLimb = (p1: any, p2: any, color: string, w: number) => {
       if (!isValid(p1) || !isValid(p2)) return
       ctx.strokeStyle = color
@@ -1188,7 +1302,6 @@ export class PoseService {
       ctx.fill()
     }
 
-    // ========== 绘制腿部（先画腿，在身体后面） ==========
     if (isValid(lHip) && isValid(lKnee)) {
       drawLimb(lHip, lKnee, colors.pants, limbWidth * 1.1)
     }
@@ -1202,7 +1315,6 @@ export class PoseService {
       drawLimb(rKnee, rAnkle, colors.pantsDark, limbWidth * 1.0)
     }
 
-    // 鞋子
     const drawShoe = (ankle: any) => {
       if (!isValid(ankle)) return
       ctx.fillStyle = colors.shoe
@@ -1213,11 +1325,9 @@ export class PoseService {
     drawShoe(lAnkle)
     drawShoe(rAnkle)
 
-    // ========== 绘制躯干 ==========
     if (isValid(lShoulder) && isValid(rShoulder) && isValid(lHip) && isValid(rHip)) {
       ctx.fillStyle = colors.outfit
       ctx.beginPath()
-      // 从左肩到右肩到右髋到左髋的躯干形状
       const sx = mapX(lShoulder.x)
       const sy = mapY(lShoulder.y)
       const ex = mapX(rShoulder.x)
@@ -1229,7 +1339,6 @@ export class PoseService {
 
       ctx.moveTo(sx, sy)
       ctx.lineTo(ex, ey)
-      // 右腰收窄
       const waistOffset = torsoWidth * 0.1
       ctx.lineTo(rhx - waistOffset * 0.3, rhy - limbWidth * 0.2)
       ctx.lineTo(rhx, rhy)
@@ -1238,7 +1347,6 @@ export class PoseService {
       ctx.closePath()
       ctx.fill()
 
-      // 衣服高光线
       ctx.strokeStyle = colors.outfitDark
       ctx.lineWidth = 1.5 * dpr
       ctx.beginPath()
@@ -1247,7 +1355,6 @@ export class PoseService {
       ctx.stroke()
     }
 
-    // ========== 绘制手臂 ==========
     if (isValid(lShoulder) && isValid(lElbow)) {
       drawLimb(lShoulder, lElbow, colors.outfit, limbWidth)
     }
@@ -1261,7 +1368,6 @@ export class PoseService {
       drawLimb(rElbow, rWrist, colors.skin, limbWidth * 0.85)
     }
 
-    // 手掌
     const drawHand = (wrist: any) => {
       if (!isValid(wrist)) return
       ctx.fillStyle = colors.skin
@@ -1272,18 +1378,15 @@ export class PoseService {
     drawHand(lWrist)
     drawHand(rWrist)
 
-    // 关节圆点（装饰）
     drawJoint(lElbow, limbWidth * 0.45, colors.outfitDark)
     drawJoint(rElbow, limbWidth * 0.45, colors.outfitDark)
     drawJoint(lKnee, limbWidth * 0.5, colors.pantsDark)
     drawJoint(rKnee, limbWidth * 0.5, colors.pantsDark)
 
-    // ========== 绘制头部 ==========
     if (isValid(nose)) {
       const hx = mapX(nose.x)
       const hy = mapY(nose.y)
 
-      // 头发后景（女性更长）
       if (!isMale) {
         ctx.fillStyle = colors.hair
         ctx.beginPath()
@@ -1291,22 +1394,18 @@ export class PoseService {
         ctx.fill()
       }
 
-      // 脸部圆形
       ctx.fillStyle = colors.skin
       ctx.beginPath()
       ctx.arc(hx, hy, headR, 0, 2 * Math.PI)
       ctx.fill()
 
-      // 脸部阴影（下巴区域）
       ctx.fillStyle = colors.skinShadow
       ctx.beginPath()
       ctx.arc(hx, hy + headR * 0.3, headR * 0.85, 0.1 * Math.PI, 0.9 * Math.PI)
       ctx.fill()
 
-      // 头发前景
       ctx.fillStyle = colors.hair
       if (isMale) {
-        // 男性：短发，带尖刺
         ctx.beginPath()
         ctx.arc(hx, hy - headR * 0.15, headR * 1.05, Math.PI * 1.1, Math.PI * 1.9, false)
         ctx.lineTo(hx + headR * 0.8, hy - headR * 0.3)
@@ -1319,11 +1418,9 @@ export class PoseService {
         ctx.closePath()
         ctx.fill()
       } else {
-        // 女性：刘海 + 两侧长发
         ctx.beginPath()
         ctx.arc(hx, hy - headR * 0.1, headR * 1.1, Math.PI, 2 * Math.PI, false)
         ctx.lineTo(hx + headR * 1.1, hy + headR * 0.2)
-        // 刘海
         ctx.lineTo(hx + headR * 0.6, hy - headR * 0.1)
         ctx.lineTo(hx + headR * 0.3, hy + headR * 0.2)
         ctx.lineTo(hx, hy - headR * 0.2)
@@ -1334,7 +1431,6 @@ export class PoseService {
         ctx.fill()
       }
 
-      // 头发高光
       ctx.fillStyle = colors.hairHighlight
       if (isMale) {
         ctx.beginPath()
@@ -1346,11 +1442,10 @@ export class PoseService {
         ctx.fill()
       }
 
-      // 眼睛
       const eyeY = hy + headR * 0.05
       const eyeOffsetX = headR * 0.35
       const eyeR = headR * 0.13
-      // 眼白
+
       ctx.fillStyle = '#ffffff'
       ctx.beginPath()
       ctx.arc(hx - eyeOffsetX, eyeY, eyeR, 0, 2 * Math.PI)
@@ -1358,7 +1453,7 @@ export class PoseService {
       ctx.beginPath()
       ctx.arc(hx + eyeOffsetX, eyeY, eyeR, 0, 2 * Math.PI)
       ctx.fill()
-      // 瞳孔
+
       ctx.fillStyle = colors.eye
       ctx.beginPath()
       ctx.arc(hx - eyeOffsetX, eyeY, eyeR * 0.6, 0, 2 * Math.PI)
@@ -1366,7 +1461,7 @@ export class PoseService {
       ctx.beginPath()
       ctx.arc(hx + eyeOffsetX, eyeY, eyeR * 0.6, 0, 2 * Math.PI)
       ctx.fill()
-      // 高光点
+
       ctx.fillStyle = '#ffffff'
       ctx.beginPath()
       ctx.arc(hx - eyeOffsetX + eyeR * 0.2, eyeY - eyeR * 0.2, eyeR * 0.25, 0, 2 * Math.PI)
@@ -1375,7 +1470,6 @@ export class PoseService {
       ctx.arc(hx + eyeOffsetX + eyeR * 0.2, eyeY - eyeR * 0.2, eyeR * 0.25, 0, 2 * Math.PI)
       ctx.fill()
 
-      // 嘴巴（小弧线）
       ctx.strokeStyle = '#C0392B'
       ctx.lineWidth = Math.max(1, 1.5 * dpr)
       ctx.lineCap = 'round'
@@ -1383,7 +1477,6 @@ export class PoseService {
       ctx.arc(hx, hy + headR * 0.4, headR * 0.15, 0.15 * Math.PI, 0.85 * Math.PI)
       ctx.stroke()
 
-      // 腮红（女性）
       if (!isMale) {
         ctx.fillStyle = 'rgba(255, 105, 157, 0.3)'
         ctx.beginPath()
@@ -1394,8 +1487,6 @@ export class PoseService {
         ctx.fill()
       }
     }
-
-    ctx.restore()
   }
 
   private drawPauseOverlay(): void {
