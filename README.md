@@ -1,22 +1,27 @@
 # 🥊 减肥大作战 (Fat Battle)
 
-> 一款将减肥过程游戏化的 Flutter 应用 —— 每日与"贪吃怪物"战斗，用饮食控制和锻炼削减怪物 HP，让坚持健康生活方式变成一场冒险。
+> 一款将减肥过程游戏化的跨平台应用 —— 每日与"贪吃怪物"战斗，用饮食控制和锻炼削减怪物 HP，让坚持健康生活方式变成一场冒险。
 
-[![Platform](https://img.shields.io/badge/platform-Android-green.svg)](https://www.android.com/)
+[![Platform](https://img.shields.io/badge/platform-Android%20%7C%20Web-green.svg)](https://www.android.com/)
 [![Framework](https://img.shields.io/badge/Flutter-3.x-blue.svg)](https://flutter.dev/)
+[![Web](https://img.shields.io/badge/Web-React%20%2B%20Vite-blue.svg)](https://react.dev/)
 [![Language](https://img.shields.io/badge/Dart-3.x-blue.svg)](https://dart.dev/)
 [![State Management](https://img.shields.io/badge/Riverpod-StateNotifierProvider-purple.svg)](https://riverpod.dev/)
 [![License](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
+
+**在线体验：** [https://roarpeng-trae-idera.ms.show](https://roarpeng-trae-idera.ms.show)
 
 ---
 
 ## 📖 目录
 
 - [项目简介](#项目简介)
+- [在线体验](#在线体验)
 - [核心功能](#核心功能)
 - [技术栈](#技术栈)
 - [项目结构](#项目结构)
 - [快速开始](#快速开始)
+- [Web 部署](#web-部署)
 - [硬件方案](#硬件方案)
 - [BLE 通信协议](#ble-通信协议)
 - [游戏算法](#游戏算法)
@@ -39,6 +44,18 @@
 
 动作识别采用「**摄像头 + 腰部 IMU**」的渐进式融合方案：通过 ESP32-S3-Touch-AMOLED-1.43 开发板（内置 QMI8658 六轴 IMU）采集腰部运动数据，经 BLE 蓝牙传输到手机，结合摄像头画面识别锻炼动作。
 
+项目包含 **Flutter App（Android）** 和 **Web 版本** 两条线，核心游戏算法共享，Web 版支持在线体验。
+
+## 在线体验
+
+Web 版本已部署到 ModelScope 创空间，无需安装即可体验核心功能：
+
+**[点击体验减肥大作战 Web 版](https://roarpeng-trae-idera.ms.show)**
+
+> Web 版包含角色创建、怪物战斗、饮食记录、锻炼追踪、成就系统、每日任务、技能系统等完整游戏循环。摄像头姿态检测和蓝牙硬件功能因浏览器权限限制，在 Web 端为演示模式。
+
+---
+
 ## 核心功能
 
 ### 🎮 游戏系统
@@ -47,6 +64,7 @@
 - **三种难度**：简单 / 普通 / 困难，影响怪物强度与每日卡路里目标
 - **疲劳系统**：锻炼时长累积消耗玩家体力，体力归零则战斗失败
 - **护盾与休息日**：商店购买，紧急恢复体力
+- **即时反馈**：锻炼时浮动 XP 数字、连击奖励、升级弹窗，让运动产生快乐
 
 ### 🍽️ 数据追踪
 - **饮食记录**：早/中/晚餐分类，卡路里自动计算，支持手动录入
@@ -55,16 +73,26 @@
 - **每周报表**：最近 7 天卡路里摄入/消耗/伤害统计
 
 ### 🏆 成就与激励
-- **12 项成就**：首杀、5 杀、10 杀、3/7/30 天连胜、千卡运动、千金币、Boss 击杀、减重 5kg、7/30 天坚持
+- **成就殿堂**：首杀、5 杀、10 杀、3/7/30 天连胜、千卡运动、千金币、Boss 击杀、减重 5kg、7/30 天坚持等
+- **每日任务**：每日刷新挑战任务，完成后获得额外奖励
+- **技能系统**：通过持续锻炼解锁技能，提升战斗效率
 - **金币商店**：购买护盾、休息日、签到加成
 - **连胜机制**：完成每日目标累积连胜，失败清零
 
-### 🔌 硬件集成
+### 📷 摄像头姿态识别（Web/App）
+- **MediaPipe Pose**：实时全身关键点检测
+- **动作识别**：俯卧撑、深蹲、开合跳等基础动作计数
+- **即时语音指导**：可爱宠物风格语音播报，纠正姿势
+- **自动暂停**：人体离开画面 15 帧后自动暂停，回归后自动恢复
+
+### 🔌 硬件集成（App）
 - **BLE 蓝牙通信**：连接 ESP32-S3 腰部 Hub 接收 IMU 数据
 - **动作识别**：基于 12 字节 IMU 数据（ax/ay/az/gx/gy/gz）识别运动类型
-- **数据持久化**：基于 SharedPreferences 本地保存游戏进度
+- **数据持久化**：基于 SharedPreferences / localStorage 本地保存游戏进度
 
 ## 技术栈
+
+### App 端
 
 | 类别 | 技术 |
 |------|------|
@@ -73,40 +101,74 @@
 | **状态管理** | Riverpod（StateNotifierProvider） |
 | **本地存储** | SharedPreferences |
 | **蓝牙通信** | flutter_blue_plus |
+| **摄像头识别** | MediaPipe Pose |
 | **硬件平台** | ESP32-S3-Touch-AMOLED-1.43 |
 | **传感器** | QMI8658 六轴 IMU |
-| **开发工具** | Android Studio / VS Code |
+
+### Web 端
+
+| 类别 | 技术 |
+|------|------|
+| **框架** | React 18 + Vite 5 |
+| **语言** | TypeScript |
+| **样式** | Tailwind CSS 4 |
+| **状态管理** | Zustand |
+| **路由** | React Router v7 |
+| **图表** | Recharts |
+| **动画** | Framer Motion |
+| **图标** | Lucide React |
+| **PWA** | vite-plugin-pwa |
+| **部署** | ModelScope 创空间（Docker） |
 
 ## 项目结构
 
 ```
 fat-battle/
-├── lib/
-│   ├── main.dart                    # 应用入口与主题配置
+├── lib/                              # Flutter App 源码
+│   ├── main.dart
 │   ├── constants/
-│   │   └── app_constants.dart       # 枚举、常量、成就、商店物品定义
+│   │   └── app_constants.dart
 │   ├── models/
-│   │   └── game_models.dart         # User/Monster/DailyState/FoodRecord 等数据模型
+│   │   └── game_models.dart
 │   ├── providers/
-│   │   └── game_provider.dart       # GameStateNotifier 与 GameState 状态管理
+│   │   └── game_provider.dart
 │   ├── services/
-│   │   ├── game_algorithm.dart      # BMI/卡路里/怪物生成/伤害计算等算法
-│   │   ├── ble_service.dart         # BLE 蓝牙通信服务
-│   │   └── motion_recognition.dart  # IMU 动作识别
+│   │   ├── game_algorithm.dart
+│   │   ├── ble_service.dart
+│   │   ├── motion_recognition.dart
+│   │   ├── pose_detection_service.dart
+│   │   ├── voice_service.dart
+│   │   └── food_recognition_service.dart
 │   ├── pages/
-│   │   ├── welcome_page.dart        # 欢迎页
-│   │   ├── setup_page.dart          # 5 步角色创建
-│   │   ├── home_page.dart           # 战斗首页
-│   │   ├── food_page.dart           # 饮食记录
-│   │   ├── exercise_page.dart       # 锻炼页面
-│   │   ├── stats_page.dart          # 数据统计
-│   │   └── settings_page.dart       # 设置/成就/商店
+│   │   ├── welcome_page.dart
+│   │   ├── setup_page.dart
+│   │   ├── home_page.dart
+│   │   ├── food_page.dart
+│   │   ├── exercise_page.dart
+│   │   ├── stats_page.dart
+│   │   └── settings_page.dart
 │   └── widgets/
-│       └── hp_bar.dart              # HP 进度条组件
-├── android/                         # Android 平台配置
+│       ├── hp_bar.dart
+│       └── hub_status_dot.dart
+├── android/                          # Android 平台配置
+├── web/                              # Web 版本源码
+│   ├── src/
+│   │   ├── App.tsx
+│   │   ├── main.tsx
+│   │   ├── pages/                    # Web 页面
+│   │   ├── components/               # 通用组件
+│   │   ├── store/                    # Zustand 状态管理
+│   │   └── services/                 # 摄像头/姿态检测服务
+│   ├── public/
+│   │   └── icon.svg                  # 应用图标
+│   ├── Dockerfile                    # 创空间部署配置
+│   ├── server.js                     # 静态文件服务器
+│   ├── package.json
+│   └── vite.config.ts
 ├── test/
-│   └── widget_test.dart             # Widget 冒烟测试
-├── pubspec.yaml                     # 依赖配置
+│   └── widget_test.dart
+├── pubspec.yaml
+├── Dockerfile                        # 根目录创空间构建入口
 └── README.md
 ```
 
@@ -141,6 +203,24 @@ flutter build apk --release
 
 构建产物路径：`build/app/outputs/flutter-apk/app-debug.apk`
 
+### Web 端运行
+
+```bash
+cd web
+
+# 1. 安装依赖
+npm install
+
+# 2. 开发模式
+npm run dev
+
+# 3. 构建生产版本
+npm run build
+
+# 4. 预览生产构建
+npm run preview
+```
+
 ### 依赖清单
 
 ```yaml
@@ -149,6 +229,29 @@ dependencies:
   shared_preferences: ^2.2.0  # 本地持久化
   flutter_blue_plus: ^1.15.0  # BLE 蓝牙通信
 ```
+
+## Web 部署
+
+Web 版本已配置 Docker 部署到 ModelScope 创空间：
+
+```bash
+# 1. 确保代码已提交
+git add .
+git commit -m "update"
+
+# 2. 推送到创空间
+git push modelscope master
+
+# 3. 触发部署（通过 ModelScope API 或控制台）
+```
+
+部署配置：
+- **类型**：Docker（`node:20-slim`）
+- **端口**：`0.0.0.0:7860`
+- **构建**：`npm install` → `npm run build` → `node server.js`
+- **优化**：代码分割 + gzip 压缩
+
+---
 
 ## 硬件方案
 
@@ -248,14 +351,27 @@ flutter analyze
 
 ## 路线图
 
+### App 端
 - [x] 第一阶段：Flutter 项目骨架 + 5 步角色创建
 - [x] 第二阶段：怪物战斗系统 + 饮食/锻炼追踪
 - [x] 第三阶段：BLE 蓝牙集成 + IMU 动作识别
 - [x] 第四阶段：Android 模拟器测试通过
-- [ ] 第五阶段：摄像头姿态识别（MediaPipe Pose）融合
-- [ ] 第六阶段：扩展四肢 ESP32+IMU 节点
-- [ ] 第七阶段：食物拍照 AI 识别
-- [ ] 第八阶段：发布到 Google Play
+- [x] 第五阶段：摄像头姿态识别（MediaPipe Pose）融合
+- [x] 第六阶段：语音播报 + 游戏化即时反馈系统
+- [ ] 第七阶段：扩展四肢 ESP32+IMU 节点
+- [ ] 第八阶段：食物拍照 AI 识别
+- [ ] 第九阶段：发布到 Google Play
+
+### Web 端
+- [x] Web 版本基础框架（React + Vite + Tailwind）
+- [x] 角色创建与怪物战斗系统
+- [x] 饮食/锻炼/统计页面
+- [x] 成就殿堂 + 每日任务 + 技能系统
+- [x] 摄像头姿态检测（MediaPipe Pose）
+- [x] 游戏化即时反馈（XP 浮动、连击、升级弹窗）
+- [x] 部署到 ModelScope 创空间
+- [ ] 食物拍照 AI 识别集成
+- [ ] 排行榜与社交分享
 
 ## 常见问题
 
