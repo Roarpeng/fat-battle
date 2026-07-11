@@ -2,6 +2,14 @@ import type { MonsterState, Difficulty } from '../game-types'
 import { generateMonster, updateMonsterPhase } from '../game-types'
 import { analyzeUserPerformance } from '../../lib/difficultyEngine'
 
+function calculateSkinLevel(totalDrops: number): number {
+  return Math.min(10, 1 + Math.floor(totalDrops / 8))
+}
+
+function calculateDialogueLevel(totalDrops: number): number {
+  return Math.min(10, 1 + Math.floor(totalDrops / 12))
+}
+
 export interface MonsterSlice {
   monster: MonsterState
   attackMonster: (damage: number) => void
@@ -38,7 +46,10 @@ export const createMonsterSlice = (set: any, get: any, _api?: any): MonsterSlice
         const coinsEarned = Math.round(state.monster.level * 10 * state.monster.coinMultiplier)
         const dropsEarned = state.monster.level * 2
         // 每日作战模式：击败后不再立即生成新怪物，而是标记今日已完成
-        // 同时给宠物积攒怪物掉落物
+        // 宠物即时吃掉掉落物，升级皮肤和对话能力
+        const totalDrops = state.companion.monsterDrops + dropsEarned
+        const newSkinLevel = calculateSkinLevel(totalDrops)
+        const newDialogueLevel = calculateDialogueLevel(totalDrops)
         return {
           monster: { ...state.monster, hp: 0 },
           coins: state.coins + coinsEarned,
@@ -46,7 +57,10 @@ export const createMonsterSlice = (set: any, get: any, _api?: any): MonsterSlice
           totalMonsterKills: (state.totalMonsterKills ?? 0) + 1,
           companion: {
             ...state.companion,
-            pendingDrops: state.companion.pendingDrops + dropsEarned,
+            monsterDrops: totalDrops,
+            skinLevel: newSkinLevel,
+            dialogueLevel: newDialogueLevel,
+            mood: 'happy' as const,
           },
         }
       }

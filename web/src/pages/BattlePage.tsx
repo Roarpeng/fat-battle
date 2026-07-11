@@ -411,16 +411,61 @@ export default function BattlePage() {
                 initial={{ y: 20, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
                 transition={{ delay: 0.6 }}
-                className="text-text2 mb-6"
+                className="text-text2 mb-4"
               >
                 主人太厉害了！今日的脂肪怪已经被击退啦~ 🎉
               </motion.p>
 
+              {/* 宠物感谢动画 */}
               <motion.div
                 initial={{ y: 20, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
-                transition={{ delay: 0.7 }}
-                className="flex items-center justify-center gap-2 mb-6 py-3 px-4 bg-gold/10 rounded-xl border border-gold/30"
+                transition={{ delay: 0.75 }}
+                className="bg-pink/10 border border-pink/30 rounded-2xl p-4 mb-4 space-y-2"
+              >
+                <motion.div
+                  animate={{ rotate: [0, 10, -10, 0] }}
+                  transition={{ duration: 0.6, repeat: 2, repeatDelay: 0.5 }}
+                  className="text-4xl text-center mb-1"
+                >
+                  {companion.emoji}
+                </motion.div>
+                <p className="text-sm font-bold text-pink text-center">
+                  呜呜~ 主人辛苦啦！{companion.name}吃到了能量碎片，好开心！
+                </p>
+                {companion.dialogueLevel >= 3 && (
+                  <p className="text-xs text-text3 text-center">
+                    感谢主人一直这么努力，{companion.name}会陪着你的~ 但主人也要注意休息哦，
+                    咪咪也要好好睡觉才能长大变强呢！💤
+                  </p>
+                )}
+                {companion.dialogueLevel < 3 && (
+                  <p className="text-xs text-text3 text-center">
+                    主人要注意休息哦，{companion.name}也要睡觉才能长大变强呢！💤
+                  </p>
+                )}
+                <div className="flex items-center justify-center gap-3 pt-1">
+                  {companion.skinLevel > 1 && (
+                    <span className="text-[10px] px-2 py-0.5 bg-pink/20 text-pink rounded-full font-bold">
+                      外观 Lv.{companion.skinLevel}
+                    </span>
+                  )}
+                  {companion.dialogueLevel > 1 && (
+                    <span className="text-[10px] px-2 py-0.5 bg-blue/20 text-blue rounded-full font-bold">
+                      对话 Lv.{companion.dialogueLevel}
+                    </span>
+                  )}
+                  <span className="text-[10px] px-2 py-0.5 bg-purple/20 text-purple rounded-full font-bold">
+                    +{monster.level * 2} 碎片
+                  </span>
+                </div>
+              </motion.div>
+
+              <motion.div
+                initial={{ y: 20, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ delay: 0.85 }}
+                className="flex items-center justify-center gap-2 mb-4 py-3 px-4 bg-gold/10 rounded-xl border border-gold/30"
               >
                 <Coins className="w-6 h-6 text-gold" />
                 <span className="text-gold font-bold text-xl">+{Math.round(monster.level * 10 * (monster.coinMultiplier || 1))}</span>

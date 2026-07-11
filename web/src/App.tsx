@@ -18,7 +18,7 @@ import CompanionPage from './pages/CompanionPage'
 import MainLayout from './components/MainLayout'
 
 export default function App() {
-  const { user, daily, monster, resetDailyIfNeeded, spawnDailyMonster, spawnPhantomMonster, solidifyMonster, collectDrops } = useGameStore()
+  const { user, daily, monster, resetDailyIfNeeded, spawnDailyMonster, spawnPhantomMonster, solidifyMonster } = useGameStore()
 
   const hasProfile = user.height > 0 && user.weight > 0
 
@@ -37,8 +37,6 @@ export default function App() {
         } else {
           spawnDailyMonster()
         }
-        // 宠物自动吃掉昨天积攒的怪物掉落物
-        collectDrops()
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
