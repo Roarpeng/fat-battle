@@ -1,4 +1,5 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
+import { useEffect } from 'react'
 import { useGameStore } from './store/useGameStore'
 import WelcomePage from './pages/WelcomePage'
 import SetupPage from './pages/SetupPage'
@@ -17,9 +18,24 @@ import CompanionPage from './pages/CompanionPage'
 import MainLayout from './components/MainLayout'
 
 export default function App() {
-  const { user } = useGameStore()
+  const { user, daily, resetDailyIfNeeded, spawnDailyMonster } = useGameStore()
 
   const hasProfile = user.height > 0 && user.weight > 0
+
+  // 每日重置：检查日期变化，重置日常数据并生成新的每日怪物
+  useEffect(() => {
+    if (!daily.date) {
+      // 首次使用：直接生成第1天的怪物
+      spawnDailyMonster()
+    } else {
+      const didReset = resetDailyIfNeeded()
+      if (didReset) {
+        // 日期变化了：生成新的每日怪物
+        spawnDailyMonster()
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   return (
     <Routes>

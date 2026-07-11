@@ -11,8 +11,9 @@ export interface ProgressSlice {
   streakFreezePrompt: boolean
   streakProtectedToday: boolean
   lastFreezeRefillDate: string
+  totalMonsterKills: number
   incrementStreak: () => void
-  resetDailyIfNeeded: () => void
+  resetDailyIfNeeded: () => boolean
   useStreakFreeze: () => boolean
   buyStreakFreeze: () => boolean
   declineStreakFreeze: () => void
@@ -28,6 +29,7 @@ export const createProgressSlice = (set: any, get: any, _api?: any): ProgressSli
   streakFreezePrompt: false,
   streakProtectedToday: false,
   lastFreezeRefillDate: '',
+  totalMonsterKills: 0,
 
   incrementStreak: () =>
     set((state: any) => {
@@ -43,7 +45,7 @@ export const createProgressSlice = (set: any, get: any, _api?: any): ProgressSli
   resetDailyIfNeeded: () => {
     const today = getTodayStr()
     const state = get()
-    if (state.daily.date === today) return
+    if (state.daily.date === today) return false
 
     const yesterday = new Date(today)
     yesterday.setDate(yesterday.getDate() - 1)
@@ -97,7 +99,7 @@ export const createProgressSlice = (set: any, get: any, _api?: any): ProgressSli
     }
 
     set({
-      daily: { intake: 0, exerciseBurn: 0, damage: 0, date: today, pendingAttack: null, overeatCalories: 0 },
+      daily: { intake: 0, exerciseBurn: 0, damage: 0, date: today, pendingAttack: null, overeatCalories: 0, monsterDefeated: false },
       days: state.days + 1,
       weeklyData: newWeekly,
       streak: newStreak,
@@ -107,6 +109,7 @@ export const createProgressSlice = (set: any, get: any, _api?: any): ProgressSli
       streakFreeze: newStreakFreeze,
       lastFreezeRefillDate: newLastFreezeRefillDate,
     })
+    return true
   },
 
   useStreakFreeze: () => {

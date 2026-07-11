@@ -49,7 +49,7 @@ export const createAchievementSlice = (set: any, get: any, _api?: any): Achievem
     const today = getTodayStr()
     const totalReps = state.exerciseRecords.reduce((sum: number, r: any) => sum + (r.reps ?? 0), 0)
     const totalDamage = state.exerciseRecords.reduce((sum: number, r: any) => sum + (r.calories * 2), 0)
-    const monsterKills = state.monster.level - 1
+    const monsterKills = state.totalMonsterKills ?? 0
     const exerciseCount = state.exerciseRecords.length
     const dietCount = state.dietRecords.length
     const streakDays = state.streak

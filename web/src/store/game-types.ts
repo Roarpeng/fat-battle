@@ -59,6 +59,7 @@ export interface DailyStatus {
   date: string
   pendingAttack: PendingAttack | null
   overeatCalories: number
+  monsterDefeated: boolean
 }
 
 export interface DietRecord {

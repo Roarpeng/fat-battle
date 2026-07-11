@@ -404,7 +404,7 @@ export default function BattlePage() {
                 transition={{ delay: 0.5 }}
                 className="text-3xl font-black mb-2 bg-gradient-to-r from-gold to-orange bg-clip-text text-transparent"
               >
-                胜利！
+                今日作战完成！
               </motion.h2>
 
               <motion.p
@@ -413,7 +413,7 @@ export default function BattlePage() {
                 transition={{ delay: 0.6 }}
                 className="text-text2 mb-6"
               >
-                你击败了 {monster.name}！
+                主人太厉害了！今日的脂肪怪已经被击退啦~ 🎉
               </motion.p>
 
               <motion.div
@@ -435,7 +435,7 @@ export default function BattlePage() {
                 onClick={handleNextLevel}
                 className="w-full py-4 px-6 bg-gradient-to-r from-gold to-gold-dark text-bg font-bold text-lg rounded-2xl shadow-lg shadow-gold/30 active:bg-white/[0.12]"
               >
-                进入下一关 →
+                收下成就 ✨
               </motion.button>
             </motion.div>
           </motion.div>
@@ -645,6 +645,11 @@ export default function BattlePage() {
             <span className="text-[10px] px-2 py-0.5 bg-gold/20 text-gold rounded-full font-bold">
               Lv.{monster.level}
             </span>
+            {(monster.hp <= 0 || daily.monsterDefeated) && (
+              <span className="text-[10px] px-2 py-0.5 bg-green/20 text-green rounded-full font-bold">
+                今日已击败
+              </span>
+            )}
             {monster.defId && getMonsterStory(monster.defId) && (
               <motion.button
                 whileHover={{ scale: HOVER_SCALE }}
@@ -691,6 +696,18 @@ export default function BattlePage() {
       </motion.div>
 
       <div className="flex flex-col gap-2" style={{ height: '25%' }}>
+        {(monster.hp <= 0 || daily.monsterDefeated) && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="shrink-0 flex items-center justify-center gap-2 px-3 py-2 bg-green/10 border border-green/30 rounded-xl"
+          >
+            <Trophy className="w-4 h-4 text-green" />
+            <span className="text-xs font-bold text-green">
+              今日脂肪怪已击退！继续记录饮食和锻炼保持健康吧~
+            </span>
+          </motion.div>
+        )}
         <div className="grid grid-cols-2 gap-3 h-full">
           {/* 主操作按钮 - 统一 hover 1.02 / tap 0.95 + State Layer */}
           <motion.button

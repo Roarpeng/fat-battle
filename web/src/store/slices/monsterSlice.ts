@@ -7,6 +7,7 @@ export interface MonsterSlice {
   attackMonster: (damage: number) => void
   healMonster: () => void
   levelUpMonster: () => void
+  spawnDailyMonster: () => void
 }
 
 function generateMonsterWithDifficulty(
@@ -33,10 +34,12 @@ export const createMonsterSlice = (set: any, get: any, _api?: any): MonsterSlice
       const newDaily = { ...state.daily, damage: state.daily.damage + damage }
       if (newHp === 0) {
         const coinsEarned = Math.round(state.monster.level * 10 * state.monster.coinMultiplier)
+        // 每日作战模式：击败后不再立即生成新怪物，而是标记今日已完成
         return {
-          monster: generateMonsterWithDifficulty(state.monster.level + 1, state.user.difficulty, get),
+          monster: { ...state.monster, hp: 0 },
           coins: state.coins + coinsEarned,
-          daily: newDaily,
+          daily: { ...newDaily, monsterDefeated: true },
+          totalMonsterKills: (state.totalMonsterKills ?? 0) + 1,
         }
       }
       const updatedMonster = { ...state.monster, hp: newHp }
@@ -50,5 +53,10 @@ export const createMonsterSlice = (set: any, get: any, _api?: any): MonsterSlice
   levelUpMonster: () =>
     set((state: any) => ({
       monster: generateMonsterWithDifficulty(state.monster.level + 1, state.user.difficulty, get),
+    })),
+
+  spawnDailyMonster: () =>
+    set((state: any) => ({
+      monster: generateMonsterWithDifficulty(state.days, state.user.difficulty, get),
     })),
 })

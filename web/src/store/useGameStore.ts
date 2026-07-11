@@ -90,6 +90,7 @@ export interface GameStateData {
   streakFreezePrompt: boolean
   streakProtectedToday: boolean
   lastFreezeRefillDate: string
+  totalMonsterKills: number
   // AI 教练建议
   advice?: import('../lib/difficultyEngine').DifficultyAdvice
   lastAdviceDate: string
@@ -111,7 +112,7 @@ export interface GameStateActions {
   addCoins: (amount: number) => void
   spendCoins: (amount: number) => boolean
   incrementStreak: () => void
-  resetDailyIfNeeded: () => void
+  resetDailyIfNeeded: () => boolean
   resetGame: () => void
   setPendingAttack: (attack: import('./game-types').PendingAttack | null) => void
   setOvereatCalories: (calories: number) => void
@@ -129,6 +130,8 @@ export interface GameStateActions {
   useStreakFreeze: () => boolean
   buyStreakFreeze: () => boolean
   declineStreakFreeze: () => void
+  // 每日作战
+  spawnDailyMonster: () => void
   // 战斗伙伴
   feedCompanion: (calories: number) => void
   exerciseWithCompanion: (duration: number) => void
@@ -184,6 +187,7 @@ export const useGameStore = create<GameState>()(
               date: getTodayStr(),
               pendingAttack: null,
               overeatCalories: 0,
+              monsterDefeated: false,
             },
             dietRecords: [],
             exerciseRecords: [],
@@ -207,6 +211,7 @@ export const useGameStore = create<GameState>()(
             streakFreezePrompt: false,
             streakProtectedToday: false,
             lastFreezeRefillDate: '',
+            totalMonsterKills: 0,
             companion: companionSlice.companion,
           }),
       }
@@ -240,6 +245,7 @@ export const useGameStore = create<GameState>()(
         streakFreezePrompt: state.streakFreezePrompt,
         streakProtectedToday: state.streakProtectedToday,
         lastFreezeRefillDate: state.lastFreezeRefillDate,
+        totalMonsterKills: state.totalMonsterKills,
         companion: state.companion,
       }),
     }

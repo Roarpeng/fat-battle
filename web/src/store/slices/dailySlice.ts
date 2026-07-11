@@ -32,6 +32,7 @@ export const initialDaily: DailyStatus = {
   date: '', // filled at store creation
   pendingAttack: null,
   overeatCalories: 0,
+  monsterDefeated: false,
 }
 
 export const createDailySlice = (set: any, get: any, _api?: any): DailySlice => ({
