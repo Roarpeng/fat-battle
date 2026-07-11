@@ -11,6 +11,8 @@ export interface CompanionSlice {
   exerciseWithCompanion: (duration: number) => void
   updateCompanionMood: () => void
   petCompanion: () => void
+  addPendingDrops: (drops: number) => void
+  collectDrops: () => void
 }
 
 function getDateStrFromTimestamp(time: number): string {
@@ -61,6 +63,14 @@ function determineMood(
   return 'normal'
 }
 
+function calculateSkinLevel(totalDrops: number): number {
+  return Math.min(10, 1 + Math.floor(totalDrops / 8))
+}
+
+function calculateDialogueLevel(totalDrops: number): number {
+  return Math.min(10, 1 + Math.floor(totalDrops / 12))
+}
+
 export const createCompanionSlice = (set: any, get: any, _api?: any): CompanionSlice => ({
   companion: {
     defId: 'cat',
@@ -75,6 +85,10 @@ export const createCompanionSlice = (set: any, get: any, _api?: any): CompanionS
     totalExercises: 0,
     totalDiets: 0,
     lastActiveDate: getTodayStr(),
+    pendingDrops: 0,
+    monsterDrops: 0,
+    skinLevel: 1,
+    dialogueLevel: 1,
   },
 
   feedCompanion: (calories) =>
@@ -143,6 +157,36 @@ export const createCompanionSlice = (set: any, get: any, _api?: any): CompanionS
       return {
         companion: {
           ...companion,
+          mood: 'happy',
+        },
+      }
+    }),
+
+  addPendingDrops: (drops: number) =>
+    set((state: any) => {
+      const companion = refreshCompanionDaily(state.companion)
+      return {
+        companion: {
+          ...companion,
+          pendingDrops: companion.pendingDrops + drops,
+        },
+      }
+    }),
+
+  collectDrops: () =>
+    set((state: any) => {
+      const companion = refreshCompanionDaily(state.companion)
+      if (companion.pendingDrops <= 0) return state
+      const totalDrops = companion.monsterDrops + companion.pendingDrops
+      const newSkinLevel = calculateSkinLevel(totalDrops)
+      const newDialogueLevel = calculateDialogueLevel(totalDrops)
+      return {
+        companion: {
+          ...companion,
+          monsterDrops: totalDrops,
+          pendingDrops: 0,
+          skinLevel: newSkinLevel,
+          dialogueLevel: newDialogueLevel,
           mood: 'happy',
         },
       }

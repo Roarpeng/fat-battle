@@ -132,11 +132,15 @@ export interface GameStateActions {
   declineStreakFreeze: () => void
   // 每日作战
   spawnDailyMonster: () => void
+  spawnPhantomMonster: () => void
+  solidifyMonster: () => void
   // 战斗伙伴
   feedCompanion: (calories: number) => void
   exerciseWithCompanion: (duration: number) => void
   updateCompanionMood: () => void
   petCompanion: () => void
+  addPendingDrops: (drops: number) => void
+  collectDrops: () => void
 }
 
 export type GameState = GameStateData & GameStateActions

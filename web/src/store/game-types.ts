@@ -39,6 +39,8 @@ export interface MonsterState {
   season?: 'spring' | 'summer' | 'autumn' | 'winter'
   // AI 教练动态难度倍率
   hpMultiplier?: number
+  // 虚影机制：击败后第二天的怪物以虚影形态出现
+  isPhantom: boolean
 }
 
 export interface PendingAttack {
@@ -191,6 +193,7 @@ export const generateMonster = (level: number, difficulty: 'easy' | 'normal' | '
     isEnraged,
     season: def.season,
     hpMultiplier,
+    isPhantom: false,
   }
 }
 

@@ -26,6 +26,11 @@ export interface CompanionState {
   totalExercises: number
   totalDiets: number
   lastActiveDate: string
+  // 怪物掉落物系统
+  pendingDrops: number        // 待领取的怪物掉落物（昨天击败怪物产生）
+  monsterDrops: number        // 累计吃掉的怪物掉落物
+  skinLevel: number           // 外观皮肤等级 1-10
+  dialogueLevel: number       // 对话能力等级 1-10
 }
 
 export const DEFAULT_COMPANION: CompanionDef = {

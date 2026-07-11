@@ -551,6 +551,16 @@ export default function BattlePage() {
                   <span className="text-[8px] font-bold">狂暴</span>
                 </motion.span>
               )}
+              {/* 虚影状态 */}
+              {monster.isPhantom && (
+                <motion.span
+                  animate={{ opacity: [0.5, 1, 0.5] }}
+                  transition={{ duration: 1.5, repeat: Infinity }}
+                  className="flex items-center gap-0.5 text-purple"
+                >
+                  <span className="text-[8px] font-bold">👻 虚影</span>
+                </motion.span>
+              )}
               {shieldEffect && (
                 <motion.span
                   initial={{ scale: 0 }}
@@ -632,13 +642,19 @@ export default function BattlePage() {
             />
           )}
 
-          <MonsterAnimation
-            emoji={monster.phaseEmoji || monster.emoji}
-            isShaking={attackEffects.some((e) => e.isOvereat) || monster.isEnraged}
-            isHit={isMonsterHit}
-            isDead={monster.hp <= 0}
-            hpPercentage={hpPercentage}
-          />
+          <motion.div
+            animate={monster.isPhantom ? { opacity: [0.4, 0.7, 0.4] } : { opacity: 1 }}
+            transition={{ duration: 2, repeat: monster.isPhantom ? Infinity : 0 }}
+            className={monster.isPhantom ? 'filter blur-[1px]' : ''}
+          >
+            <MonsterAnimation
+              emoji={monster.phaseEmoji || monster.emoji}
+              isShaking={attackEffects.some((e) => e.isOvereat) || monster.isEnraged}
+              isHit={isMonsterHit}
+              isDead={monster.hp <= 0}
+              hpPercentage={hpPercentage}
+            />
+          </motion.div>
 
           <div className="flex items-center gap-2 mt-2">
             <span className="text-lg font-bold text-text">{monster.name}</span>

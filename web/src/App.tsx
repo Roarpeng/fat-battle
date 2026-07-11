@@ -18,7 +18,7 @@ import CompanionPage from './pages/CompanionPage'
 import MainLayout from './components/MainLayout'
 
 export default function App() {
-  const { user, daily, resetDailyIfNeeded, spawnDailyMonster } = useGameStore()
+  const { user, daily, monster, resetDailyIfNeeded, spawnDailyMonster, spawnPhantomMonster, solidifyMonster, collectDrops } = useGameStore()
 
   const hasProfile = user.height > 0 && user.weight > 0
 
@@ -28,14 +28,31 @@ export default function App() {
       // 首次使用：直接生成第1天的怪物
       spawnDailyMonster()
     } else {
+      const prevMonsterDefeated = daily.monsterDefeated
       const didReset = resetDailyIfNeeded()
       if (didReset) {
-        // 日期变化了：生成新的每日怪物
-        spawnDailyMonster()
+        // 日期变化了：如果昨天击败了怪物，今天怪物以虚影形态出现
+        if (prevMonsterDefeated) {
+          spawnPhantomMonster()
+        } else {
+          spawnDailyMonster()
+        }
+        // 宠物自动吃掉昨天积攒的怪物掉落物
+        collectDrops()
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // 虚影怪物自动凝实：如果怪物是虚影状态，几秒后自动凝实
+  useEffect(() => {
+    if (monster.isPhantom) {
+      const timer = setTimeout(() => {
+        solidifyMonster()
+      }, 3000)
+      return () => clearTimeout(timer)
+    }
+  }, [monster.isPhantom, solidifyMonster])
 
   return (
     <Routes>

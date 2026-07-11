@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Heart, Utensils, Dumbbell, Sparkles } from 'lucide-react'
+import { Heart, Utensils, Dumbbell, Sparkles, Ghost, Palette, MessageCircle } from 'lucide-react'
 import MobileHeader from '../components/MobileHeader'
 import { useGameStore } from '../store/useGameStore'
 import {
@@ -18,9 +18,10 @@ interface HeartParticle {
 }
 
 export default function CompanionPage() {
-  const { companion, petCompanion, updateCompanionMood } = useGameStore()
+  const { companion, petCompanion, updateCompanionMood, collectDrops } = useGameStore()
   const [hearts, setHearts] = useState<HeartParticle[]>([])
   const [isPetting, setIsPetting] = useState(false)
+  const [showDropsCollected, setShowDropsCollected] = useState(false)
 
   useEffect(() => {
     updateCompanionMood()
@@ -61,6 +62,14 @@ export default function CompanionPage() {
       setHearts((prev) => prev.filter((h) => !newHearts.find((nh) => nh.id === h.id)))
     }, 2000)
   }, [petCompanion])
+
+  const handleCollectDrops = useCallback(() => {
+    if (companion.pendingDrops > 0) {
+      collectDrops()
+      setShowDropsCollected(true)
+      setTimeout(() => setShowDropsCollected(false), 2500)
+    }
+  }, [companion.pendingDrops, collectDrops])
 
   return (
     <div className="flex flex-col h-full">
@@ -182,6 +191,96 @@ export default function CompanionPage() {
             <Utensils size={20} className="text-red mx-auto mb-1" />
             <div className="text-lg font-black text-text">{companion.totalDiets}</div>
             <div className="text-[10px] text-text3">累计饮食记录</div>
+          </div>
+        </div>
+
+        {/* 怪物掉落物 */}
+        <div className="bg-card border border-border rounded-2xl p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Ghost size={16} className="text-purple" />
+              <span className="text-sm font-bold text-text">怪物掉落物</span>
+            </div>
+            <span className="text-xs text-text3">累计吃掉 {companion.monsterDrops} 个</span>
+          </div>
+
+          {companion.pendingDrops > 0 && (
+            <motion.div
+              initial={{ opacity: 0, y: 5 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="flex items-center justify-between bg-purple/10 border border-purple/30 rounded-xl p-3"
+            >
+              <div className="flex items-center gap-2">
+                <span className="text-lg">👻</span>
+                <div>
+                  <div className="text-sm font-bold text-purple">{companion.pendingDrops} 个待领取</div>
+                  <div className="text-[10px] text-text3">昨天击败的脂肪怪留下的能量碎片</div>
+                </div>
+              </div>
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={handleCollectDrops}
+                className="px-3 py-1.5 bg-purple text-white text-xs font-bold rounded-full"
+              >
+                给咪咪吃
+              </motion.button>
+            </motion.div>
+          )}
+
+          {companion.pendingDrops <= 0 && companion.monsterDrops > 0 && (
+            <div className="text-xs text-text3 text-center py-2">
+              咪咪已经吃掉了 {companion.monsterDrops} 个能量碎片，继续击败脂肪怪来获得更多吧！
+            </div>
+          )}
+
+          {companion.pendingDrops <= 0 && companion.monsterDrops === 0 && (
+            <div className="text-xs text-text3 text-center py-2">
+              击败脂肪怪后，咪咪可以吃掉它们留下的能量碎片哦~
+            </div>
+          )}
+
+          <AnimatePresence>
+            {showDropsCollected && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0 }}
+                className="text-center text-sm font-bold text-green"
+              >
+                咪咪吃掉了能量碎片！变得更强了！✨
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        {/* 皮肤等级 & 对话能力 */}
+        <div className="grid grid-cols-2 gap-3">
+          <div className="bg-card border border-border rounded-2xl p-3 text-center space-y-2">
+            <Palette size={18} className="text-pink mx-auto" />
+            <div className="text-lg font-black text-text">Lv.{companion.skinLevel}</div>
+            <div className="text-[10px] text-text3">外观皮肤</div>
+            <div className="h-1.5 bg-bg2 rounded-full overflow-hidden">
+              <motion.div
+                className="h-full bg-pink rounded-full"
+                initial={{ width: 0 }}
+                animate={{ width: `${Math.min(100, ((companion.monsterDrops % 8) / 8) * 100)}%` }}
+                transition={{ duration: 0.5 }}
+              />
+            </div>
+          </div>
+          <div className="bg-card border border-border rounded-2xl p-3 text-center space-y-2">
+            <MessageCircle size={18} className="text-blue mx-auto" />
+            <div className="text-lg font-black text-text">Lv.{companion.dialogueLevel}</div>
+            <div className="text-[10px] text-text3">对话能力</div>
+            <div className="h-1.5 bg-bg2 rounded-full overflow-hidden">
+              <motion.div
+                className="h-full bg-blue rounded-full"
+                initial={{ width: 0 }}
+                animate={{ width: `${Math.min(100, ((companion.monsterDrops % 12) / 12) * 100)}%` }}
+                transition={{ duration: 0.5 }}
+              />
+            </div>
           </div>
         </div>
 
