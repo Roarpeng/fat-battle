@@ -1,12 +1,11 @@
 import { motion } from 'framer-motion'
-import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, ClipboardList, CheckCircle2, Zap, Gift, RotateCcw } from 'lucide-react'
+import { ClipboardList, CheckCircle2, Zap, Gift, RotateCcw } from 'lucide-react'
 import { useGameStore } from '../store/useGameStore'
 import Card from '../components/Card'
 import Button from '../components/Button'
+import MobileHeader from '../components/MobileHeader'
 
 export default function DailyQuestsPage() {
-  const navigate = useNavigate()
   const { dailyQuests, generateDailyQuests, playerLevel } = useGameStore()
 
   const completedCount = dailyQuests.filter((q) => q.completed).length
@@ -21,24 +20,16 @@ export default function DailyQuestsPage() {
   return (
     <div className="min-h-full flex flex-col px-4 py-4 gap-4 max-w-[480px] mx-auto">
       {/* Header */}
-      <div className="flex items-center gap-3">
-        <button
-          onClick={() => navigate(-1)}
-          className="w-9 h-9 flex items-center justify-center bg-card border border-border rounded-full hover:bg-bg2 transition-colors"
-        >
-          <ArrowLeft size={18} className="text-text" />
-        </button>
-        <div className="flex-1">
-          <h1 className="text-lg font-bold text-text flex items-center gap-2">
-            <ClipboardList size={20} className="text-blue" />
-            每日任务
-          </h1>
-          <p className="text-text3 text-xs">完成任务获取金币和经验奖励</p>
-        </div>
-        <Button variant="secondary" size="sm" icon={<RotateCcw size={12} />} onClick={handleRefresh}>
-          刷新
-        </Button>
-      </div>
+      <MobileHeader
+        title="每日任务"
+        gradient="from-blue to-purple"
+        useHistoryBack
+        rightAction={
+          <Button variant="secondary" size="sm" icon={<RotateCcw size={12} />} onClick={handleRefresh}>
+            刷新
+          </Button>
+        }
+      />
 
       {/* 总体进度 */}
       <Card className="bg-gradient-to-r from-blue/10 to-purple/10 border-blue/30">

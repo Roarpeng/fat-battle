@@ -22,6 +22,29 @@
   --color-orange: #ffa502;
 }
 
+/* ===== 统一 CSS 自定义属性 (动画时长) ===== */
+:root {
+  /* 交互时长 */
+  --duration-tap: 100ms;
+  --duration-nav-tap: 150ms;
+  --duration-page-enter: 300ms;
+  --duration-page-exit: 200ms;
+  --duration-dialog: 350ms;
+  --duration-micro: 150ms;
+  --duration-large: 500ms;
+  --duration-stagger: 50ms;
+
+  /* State Layer 透明度 (Material 3) */
+  --state-layer-hover: rgba(255, 255, 255, 0.08);
+  --state-layer-press: rgba(255, 255, 255, 0.12);
+
+  /* 缓动函数 */
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-decelerate: cubic-bezier(0, 0, 0, 1);
+  --ease-accelerate: cubic-bezier(0.3, 0, 1, 1);
+  --ease-spring: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
 @layer base {
   * {
     margin: 0;
@@ -44,7 +67,26 @@
   }
 }
 
-/* 滚动条 */
+/* ===== Focus-Visible 样式 (可访问性) ===== */
+:focus-visible {
+  outline: 2px solid var(--color-blue);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* 仅键盘导航时显示 focus ring */
+.focus-ring:focus-visible {
+  outline: 2px solid var(--color-blue);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px rgba(79, 172, 254, 0.3);
+}
+
+/* ===== 滚动条 (跨浏览器一致) ===== */
+/* WebKit / Chrome / Safari / Edge */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -60,7 +102,22 @@
   background: var(--color-text3);
 }
 
-/* 动画 */
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+}
+
+/* 隐藏滚动条工具类 */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* ===== 动画 ===== */
 @keyframes float {
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-10px); }
@@ -105,6 +162,20 @@
   100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
 }
 
+/* HP低血量脉冲动画 */
+@keyframes hpPulse {
+  0%, 100% { box-shadow: 0 0 8px rgba(255, 107, 107, 0.4); }
+  50% { box-shadow: 0 0 20px rgba(255, 107, 107, 0.8), 0 0 40px rgba(255, 107, 107, 0.3); }
+}
+
+/* HP水平抖动动画 */
+@keyframes hpShake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-2px); }
+  50% { transform: translateX(2px); }
+  75% { transform: translateX(-2px); }
+}
+
 .animate-float { animation: float 3s ease-in-out infinite; }
 .animate-shake { animation: shake 0.5s ease-in-out; }
 .animate-glow { animation: glow 2s ease-in-out infinite; }
@@ -112,3 +183,16 @@
 .animate-bounceIn { animation: bounceIn 0.5s ease-out; }
 .animate-slideDown { animation: slideDown 0.3s ease-out; }
 .animate-fadeIn { animation: fadeIn 0.3s ease-out; }
+.animate-hp-pulse { animation: hpPulse 1.5s ease-in-out infinite; }
+.animate-hp-shake { animation: hpShake 0.2s ease-in-out; }
+
+/* ===== prefers-reduced-motion 尊重用户动画偏好 ===== */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

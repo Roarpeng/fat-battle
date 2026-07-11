@@ -28,6 +28,7 @@ import { useNavigate } from 'react-router-dom'
 import { useGameStore, Difficulty } from '../store/useGameStore'
 import Card from '../components/Card'
 import Button from '../components/Button'
+import MobileHeader from '../components/MobileHeader'
 
 export default function SettingsPage() {
   const navigate = useNavigate()
@@ -77,15 +78,19 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="min-h-full p-4 pb-6 max-w-[480px] mx-auto">
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3 }}
-      >
-        <h1 className="text-2xl font-black mb-4 bg-gradient-to-r from-purple to-pink bg-clip-text text-transparent">
-          设置
-        </h1>
+    <div className="min-h-full max-w-[480px] mx-auto">
+      <MobileHeader
+        title="设置"
+        gradient="from-purple to-pink"
+        backTo="/"
+      />
+
+      <div className="p-4 pb-6">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: 0.1 }}
+        >
 
         <Card className="mb-4 bg-gradient-to-br from-purple/10 to-blue/10">
           <div className="flex items-center justify-between mb-4">
@@ -419,6 +424,7 @@ export default function SettingsPage() {
           </button>
         </Card>
       </motion.div>
+      </div>
 
       <AnimatePresence>
         {showResetConfirm && (

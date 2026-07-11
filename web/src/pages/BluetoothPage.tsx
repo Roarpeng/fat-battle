@@ -1,7 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  ArrowLeft,
   Bluetooth,
   Search,
   X,
@@ -25,6 +24,7 @@ import { useNavigate } from 'react-router-dom'
 import Card from '../components/Card'
 import Button from '../components/Button'
 import DamageNumber from '../components/DamageNumber'
+import MobileHeader from '../components/MobileHeader'
 import { useGameStore } from '../store/useGameStore'
 import { getExerciseById } from '../data/exercises'
 import { BluetoothService, createBluetoothService, type ConnectionStatus, type ImuData } from '../services/bluetoothService'
@@ -433,25 +433,16 @@ export default function BluetoothPage() {
         )}
       </AnimatePresence>
 
-      <motion.div
-        initial={{ opacity: 0, y: -10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3 }}
-        className="flex items-center justify-between"
-      >
-        <button
-          onClick={() => navigate(-1)}
-          className="p-2 -ml-2 rounded-xl hover:bg-bg2 transition-colors text-text"
-        >
-          <ArrowLeft size={22} />
-        </button>
-        <h1 className="text-xl font-black bg-gradient-to-r from-blue to-green bg-clip-text text-transparent">
-          蓝牙设备
-        </h1>
-        <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full ${currentStatus.bg}`}>
-          <StatusIcon size={14} className={currentStatus.color} />
-        </div>
-      </motion.div>
+      <MobileHeader
+        title="蓝牙设备"
+        gradient="from-blue to-cyan"
+        useHistoryBack
+        rightAction={
+          <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full ${currentStatus.bg}`}>
+            <StatusIcon size={14} className={currentStatus.color} />
+          </div>
+        }
+      />
       <Card>
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">

@@ -7,6 +7,16 @@ import { useGameStore } from '../store/useGameStore'
 import MiniMonsterCard from '../components/MiniMonsterCard'
 import FoodRecognitionModal from '../components/FoodRecognitionModal'
 import { getRandomEncouragement } from '../data/encouragements'
+import { TAP_SCALE, HOVER_SCALE, LIST_TAP_SCALE, staggerContainer, staggerItem, deleteItem } from '../lib/interaction'
+import MobileHeader from '../components/MobileHeader'
+
+// 热量色阶函数 - 更精细的四级色阶
+function getCalorieColor(calories: number): { text: string; border: string } {
+  if (calories < 150) return { text: 'text-green', border: 'border-green/30 hover:border-green/50' }
+  if (calories < 300) return { text: 'text-yellow', border: 'border-yellow/30 hover:border-yellow/50' }
+  if (calories < 500) return { text: 'text-orange', border: 'border-orange/30 hover:border-orange/50' }
+  return { text: 'text-red', border: 'border-red/30 hover:border-red/50' }
+}
 
 export default function FoodPage() {
   const navigate = useNavigate()
@@ -177,21 +187,17 @@ export default function FoodPage() {
   const todayRecords = dietRecords.slice(-5)
 
   return (
-    <div className="min-h-full flex flex-col px-4 py-3 gap-3 max-w-[480px] mx-auto">
-      <div className="flex items-center justify-between shrink-0">
-        <button
-          onClick={() => navigate('/')}
-          className="w-9 h-9 flex items-center justify-center bg-card border border-border rounded-full hover:bg-bg2 transition-colors"
-        >
-          <ArrowLeft size={18} className="text-text" />
-        </button>
-        <h1 className="text-lg font-bold text-text">记录饮食</h1>
-        <div className="w-9" />
-      </div>
+    <div className="min-h-full flex flex-col max-w-[480px] mx-auto">
+      <MobileHeader
+        title="记录饮食"
+        gradient="from-purple to-pink"
+        backTo="/"
+      />
 
+      <div className="flex flex-col px-4 py-3 gap-3">
       <div className="shrink-0 relative">
         <MiniMonsterCard
-          emoji={monster.emoji}
+          emoji={monster.phaseEmoji || monster.emoji}
           name={monster.name}
           level={monster.level}
           currentHp={monster.hp}
@@ -261,7 +267,7 @@ export default function FoodPage() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-text3">总卡路里:</span>
-                  <span className={`text-lg font-bold ${totalSelectedCalories > 300 ? 'text-red' : totalSelectedCalories > 150 ? 'text-yellow' : 'text-green'}`}>
+                  <span className={`text-lg font-bold ${totalSelectedCalories > 500 ? 'text-red' : totalSelectedCalories > 300 ? 'text-orange' : totalSelectedCalories > 150 ? 'text-yellow' : 'text-green'}`}>
                     {totalSelectedCalories} kcal
                   </span>
                 </div>
@@ -272,10 +278,10 @@ export default function FoodPage() {
                 )}
               </div>
               <motion.button
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
+                whileHover={{ scale: HOVER_SCALE }}
+                whileTap={{ scale: TAP_SCALE }}
                 onClick={handleSubmitSelection}
-                className="w-full mt-3 py-2.5 bg-gradient-to-r from-purple to-purple-dark text-white font-bold rounded-xl flex items-center justify-center gap-2"
+                className="w-full mt-3 py-2.5 bg-gradient-to-r from-purple to-purple-dark text-white font-bold rounded-xl flex items-center justify-center gap-2 active:bg-white/[0.12]"
               >
                 <Check size={16} />
                 确认提交
@@ -286,10 +292,10 @@ export default function FoodPage() {
       </AnimatePresence>
 
       <motion.button
-        whileHover={{ scale: 1.02 }}
-        whileTap={{ scale: 0.98 }}
+        whileHover={{ scale: HOVER_SCALE }}
+        whileTap={{ scale: TAP_SCALE }}
         onClick={() => setShowRecognition(true)}
-        className="shrink-0 flex items-center justify-center gap-3 py-4 bg-gradient-to-r from-purple/15 to-blue/15 border-2 border-purple/30 rounded-2xl hover:border-purple/60 transition-colors"
+        className="shrink-0 flex items-center justify-center gap-3 min-h-[44px] bg-gradient-to-r from-purple/15 to-blue/15 border-2 border-purple/30 rounded-2xl hover:border-purple/60 active:bg-white/[0.12] transition-colors shadow-md hover:shadow-lg"
       >
         <div className="w-10 h-10 rounded-full bg-purple/20 flex items-center justify-center">
           <Camera size={20} className="text-purple" />
@@ -306,7 +312,7 @@ export default function FoodPage() {
           <h2 className="text-sm font-bold text-text">经常吃的食物</h2>
           <button
             onClick={() => setShowCustomForm(!showCustomForm)}
-            className="flex items-center gap-1 text-[10px] text-purple font-bold px-2 py-1 bg-purple/10 rounded-full hover:bg-purple/20 transition-colors"
+            className="flex items-center gap-1 text-[10px] text-purple font-bold px-2 py-1 bg-purple/10 rounded-full hover:bg-purple/20 transition-colors min-h-[32px]"
           >
             {showCustomForm ? <X size={10} /> : <Plus size={10} />}
             {showCustomForm ? '取消' : '自定义'}
@@ -349,73 +355,85 @@ export default function FoodPage() {
         </AnimatePresence>
 
         <div className="flex-1 overflow-y-auto -mx-1 px-1 scrollbar-hide">
-          <div className="grid grid-cols-2 gap-2">
-            {frequentFoods.map((food) => {
-              const isSelected = selectedFoods.some((f) => f.id === food.id)
-              return (
-                <motion.button
-                  key={food.id}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={() => toggleFoodSelection(food)}
-                  className={`flex items-center gap-2 p-2.5 border rounded-xl hover:bg-bg2 transition-all text-left relative ${
-                    isSelected
-                      ? 'border-purple/60 bg-purple/10'
-                      : food.calories > 300 
-                        ? 'border-red/30 hover:border-red/50' 
-                        : food.calories > 150 
-                          ? 'border-yellow/30 hover:border-yellow/50' 
-                          : 'border-green/30 hover:border-green/50'
-                  }`}
-                >
-                  {isSelected && (
-                    <motion.div
-                      initial={{ scale: 0 }}
-                      animate={{ scale: 1 }}
-                      className="absolute top-1 right-1 w-4 h-4 bg-purple rounded-full flex items-center justify-center"
-                    >
-                      <Check size={8} className="text-white" />
-                    </motion.div>
-                  )}
-                  <span className="text-xl shrink-0">{food.emoji}</span>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-xs font-bold text-text truncate">{food.name}</div>
-                    <div className={`text-[10px] font-bold ${
-                      food.calories > 300 ? 'text-red' : food.calories > 150 ? 'text-yellow' : 'text-green'
-                    }`}>
-                      {food.calories} kcal
+          {/* 食物列表 - 使用 staggerContainer + staggerItem */}
+          <motion.div
+            variants={staggerContainer}
+            initial="initial"
+            animate="animate"
+          >
+            <div className="grid grid-cols-2 gap-2">
+              {frequentFoods.map((food) => {
+                const isSelected = selectedFoods.some((f) => f.id === food.id)
+                const calorieColor = getCalorieColor(food.calories)
+                return (
+                  <motion.button
+                    key={food.id}
+                    variants={staggerItem}
+                    whileTap={{ scale: LIST_TAP_SCALE }}
+                    onClick={() => toggleFoodSelection(food)}
+                    className={`flex items-center gap-2 p-2.5 border rounded-xl text-left relative transition-all shadow-sm hover:shadow-md ${
+                      isSelected
+                        ? 'border-purple/60 bg-purple/10 shadow-md'
+                        : calorieColor.border + ' bg-card hover:bg-bg2'
+                    }`}
+                  >
+                    {isSelected && (
+                      <motion.div
+                        initial={{ scale: 0 }}
+                        animate={{ scale: 1 }}
+                        className="absolute top-1 right-1 w-4 h-4 bg-purple rounded-full flex items-center justify-center"
+                      >
+                        <Check size={8} className="text-white" />
+                      </motion.div>
+                    )}
+                    <span className="text-xl shrink-0">{food.emoji}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs font-bold text-text truncate">{food.name}</div>
+                      <div className={`text-[10px] font-bold ${calorieColor.text}`}>
+                        {food.calories} kcal
+                      </div>
                     </div>
-                  </div>
-                  <Plus size={14} className={`shrink-0 ${isSelected ? 'text-purple' : 'text-text3'}`} />
-                </motion.button>
-              )
-            })}
-          </div>
+                    <Plus size={14} className={`shrink-0 ${isSelected ? 'text-purple' : 'text-text3'}`} />
+                  </motion.button>
+                )
+              })}
+            </div>
+          </motion.div>
 
+          {/* 今日已记录 - 使用 stagger + 增强删除动画 */}
           {todayRecords.length > 0 && (
             <div className="mt-3">
               <h3 className="text-[10px] text-text3 mb-1.5">今日已记录</h3>
-              <div className="space-y-1.5">
-                {todayRecords.map((record) => (
-                  <motion.div
-                    key={record.id}
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    className="flex items-center justify-between px-3 py-2 bg-bg2/60 rounded-lg"
-                  >
-                    <span className="text-xs text-text">{record.name}</span>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-text3">{record.calories} kcal</span>
-                      <motion.button
-                        whileTap={{ scale: 0.9 }}
-                        onClick={() => removeDietRecord(record.id)}
-                        className="text-text3 hover:text-red transition-colors"
-                      >
-                        <Trash2 size={12} />
-                      </motion.button>
-                    </div>
-                  </motion.div>
-                ))}
-              </div>
+              <motion.div
+                variants={staggerContainer}
+                initial="initial"
+                animate="animate"
+                className="space-y-1.5"
+              >
+                <AnimatePresence>
+                  {todayRecords.map((record) => (
+                    <motion.div
+                      key={record.id}
+                      variants={staggerItem}
+                      exit={deleteItem.exit}
+                      layout
+                      className="flex items-center justify-between px-3 py-2 bg-bg2/60 rounded-lg"
+                    >
+                      <span className="text-xs text-text">{record.name}</span>
+                      <div className="flex items-center gap-2">
+                        <span className={`text-xs font-bold ${getCalorieColor(record.calories).text}`}>{record.calories} kcal</span>
+                        <motion.button
+                          whileTap={{ scale: 0.9 }}
+                          onClick={() => removeDietRecord(record.id)}
+                          className="text-text3 hover:text-red transition-colors min-w-[28px] min-h-[28px] flex items-center justify-center"
+                        >
+                          <Trash2 size={12} />
+                        </motion.button>
+                      </div>
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
+              </motion.div>
             </div>
           )}
         </div>
@@ -427,6 +445,7 @@ export default function FoodPage() {
         onConfirm={handleRecognizedItems}
         mealType="snack"
       />
+      </div>
     </div>
   )
 }

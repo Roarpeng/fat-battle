@@ -376,6 +376,7 @@ export default function PoseDetectionPage() {
       damage,
       attackType,
       isOvereat: false,
+      exerciseId: exercise?.id,
     })
 
     // ========== 游戏化即时反馈系统 ==========

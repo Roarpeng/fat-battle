@@ -12,6 +12,8 @@ import BluetoothPage from './pages/BluetoothPage'
 import AchievementsPage from './pages/AchievementsPage'
 import DailyQuestsPage from './pages/DailyQuestsPage'
 import SkillsPage from './pages/SkillsPage'
+import CodexPage from './pages/CodexPage'
+import CompanionPage from './pages/CompanionPage'
 import MainLayout from './components/MainLayout'
 
 export default function App() {
@@ -28,6 +30,8 @@ export default function App() {
       <Route path="/achievements" element={<AchievementsPage />} />
       <Route path="/quests" element={<DailyQuestsPage />} />
       <Route path="/skills" element={<SkillsPage />} />
+      <Route path="/codex" element={<CodexPage />} />
+      <Route path="/companion" element={<CompanionPage />} />
       {/* 独立页面（不在 MainLayout 导航下） */}
       <Route path="/food" element={<FoodPage />} />
       <Route path="/exercise" element={<ExercisePage />} />

@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, Trophy, Lock, Unlock, Flame, Utensils, Swords, Target, Star } from 'lucide-react'
+import { Trophy, Lock, Unlock, Flame, Utensils, Swords, Target, Star } from 'lucide-react'
 import { useGameStore, ACHIEVEMENTS_DEF } from '../store/useGameStore'
 import Card from '../components/Card'
+import MobileHeader from '../components/MobileHeader'
 
 type Category = 'all' | 'exercise' | 'diet' | 'battle' | 'streak' | 'milestone'
 
@@ -28,7 +28,6 @@ const rarityNames: Record<string, string> = {
 }
 
 export default function AchievementsPage() {
-  const navigate = useNavigate()
   const { achievements } = useGameStore()
   const [activeCategory, setActiveCategory] = useState<Category>('all')
 
@@ -44,21 +43,7 @@ export default function AchievementsPage() {
   return (
     <div className="min-h-full flex flex-col px-4 py-4 gap-4 max-w-[480px] mx-auto">
       {/* Header */}
-      <div className="flex items-center gap-3">
-        <button
-          onClick={() => navigate(-1)}
-          className="w-9 h-9 flex items-center justify-center bg-card border border-border rounded-full hover:bg-bg2 transition-colors"
-        >
-          <ArrowLeft size={18} className="text-text" />
-        </button>
-        <div className="flex-1">
-          <h1 className="text-lg font-bold text-text flex items-center gap-2">
-            <Trophy size={20} className="text-gold" />
-            成就殿堂
-          </h1>
-          <p className="text-text3 text-xs">你的荣耀时刻，每一步都值得纪念</p>
-        </div>
-      </div>
+      <MobileHeader title="成就殿堂" gradient="from-gold to-orange" useHistoryBack />
 
       {/* 总体进度 */}
       <Card className="bg-gradient-to-r from-gold/10 to-orange/10 border-gold/30">

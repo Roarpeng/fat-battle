@@ -1,8 +1,8 @@
 import { motion } from 'framer-motion'
-import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, Zap, Lock, Unlock, Sparkles, Shield, TrendingUp, Wind, Search, Magnet } from 'lucide-react'
+import { Zap, Lock, Unlock, Sparkles, Shield, TrendingUp, Wind, Search, Magnet } from 'lucide-react'
 import { useGameStore, SKILLS_DEF } from '../store/useGameStore'
 import Card from '../components/Card'
+import MobileHeader from '../components/MobileHeader'
 
 const skillIconMap: Record<string, typeof Zap> = {
   crit_strike: Zap,
@@ -14,7 +14,6 @@ const skillIconMap: Record<string, typeof Zap> = {
 }
 
 export default function SkillsPage() {
-  const navigate = useNavigate()
   const { playerLevel, skills } = useGameStore()
 
   const mergedSkills = SKILLS_DEF.map((def) => {
@@ -27,21 +26,7 @@ export default function SkillsPage() {
   return (
     <div className="min-h-full flex flex-col px-4 py-4 gap-4 max-w-[480px] mx-auto">
       {/* Header */}
-      <div className="flex items-center gap-3">
-        <button
-          onClick={() => navigate(-1)}
-          className="w-9 h-9 flex items-center justify-center bg-card border border-border rounded-full hover:bg-bg2 transition-colors"
-        >
-          <ArrowLeft size={18} className="text-text" />
-        </button>
-        <div className="flex-1">
-          <h1 className="text-lg font-bold text-text flex items-center gap-2">
-            <Sparkles size={20} className="text-purple" />
-            技能系统
-          </h1>
-          <p className="text-text3 text-xs">解锁强力技能，让战斗更轻松</p>
-        </div>
-      </div>
+      <MobileHeader title="技能系统" gradient="from-purple to-pink" useHistoryBack />
 
       {/* 玩家等级 */}
       <Card className="bg-gradient-to-r from-purple/10 to-blue/10 border-purple/30">
