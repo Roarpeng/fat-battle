@@ -112,7 +112,7 @@ export default function PoseDetectionPage() {
   const [showNextStep, setShowNextStep] = useState(false)
   const [completedSets, setCompletedSets] = useState(0)
   const [avatarMode, setAvatarMode] = useState<AvatarMode>('cartoon')
-  const [cartoonColor, setCartoonColor] = useState<CartoonColor>('blue')
+  const [cartoonColor, setCartoonColor] = useState<CartoonColor>('orange')
   const [showAvatarSelector, setShowAvatarSelector] = useState(false)
   const [capturedPhotos, setCapturedPhotos] = useState<string[]>([])
   const [showPhotoPreview, setShowPhotoPreview] = useState(false)
@@ -798,7 +798,7 @@ export default function PoseDetectionPage() {
             onClick={() => setShowAvatarSelector(true)}
             className="w-8 h-8 flex items-center justify-center bg-card border border-border rounded-full hover:bg-bg2 transition-colors"
           >
-            <span className="text-lg">{avatarMode === 'real' ? '👤' : (cartoonColor === 'blue' ? '🦸' : '🦹')}</span>
+            <span className="text-lg">{avatarMode === 'real' ? '👤' : '🧸'}</span>
           </button>
         </div>
       </motion.div>
@@ -1369,27 +1369,41 @@ export default function PoseDetectionPage() {
                   avatarMode === 'cartoon' ? 'border-purple bg-purple/15' : 'border-border hover:border-purple/50'
                 }`}
               >
-                <span className="text-3xl">{cartoonColor === 'blue' ? '🦸' : '🦹'}</span>
+                <span className="text-3xl">🧸</span>
                 <span className="text-xs font-bold text-text">卡通模式</span>
-                <span className="text-[8px] text-text3">火柴人形象</span>
+                <span className="text-[8px] text-text3">可爱Q版形象</span>
               </button>
             </div>
 
             {avatarMode === 'cartoon' && (
               <div className="mb-3">
-                <p className="text-[10px] text-text3 mb-2">选择颜色</p>
-                <div className="flex gap-2">
+                <p className="text-[10px] text-text3 mb-2">选择配色</p>
+                <div className="flex gap-2 justify-center">
                   <button
                     onClick={() => {
-                      setCartoonColor('blue')
+                      setCartoonColor('orange')
                       if (poseServiceRef.current) {
-                        poseServiceRef.current.setCartoonColor('blue')
+                        poseServiceRef.current.setCartoonColor('orange')
                       }
                     }}
-                    className={`w-10 h-10 rounded-full border-2 transition-all ${
-                      cartoonColor === 'blue' ? 'border-white scale-110' : 'border-transparent'
+                    className={`w-9 h-9 rounded-full border-2 transition-all ${
+                      cartoonColor === 'orange' ? 'border-white scale-110' : 'border-transparent'
                     }`}
-                    style={{ background: 'linear-gradient(135deg, #3498DB, #87CEEB)' }}
+                    style={{ background: 'linear-gradient(135deg, #FF9F43, #FFD4B8)' }}
+                    title="活力橙"
+                  />
+                  <button
+                    onClick={() => {
+                      setCartoonColor('mint')
+                      if (poseServiceRef.current) {
+                        poseServiceRef.current.setCartoonColor('mint')
+                      }
+                    }}
+                    className={`w-9 h-9 rounded-full border-2 transition-all ${
+                      cartoonColor === 'mint' ? 'border-white scale-110' : 'border-transparent'
+                    }`}
+                    style={{ background: 'linear-gradient(135deg, #55EFC4, #B2DFDB)' }}
+                    title="清新薄荷"
                   />
                   <button
                     onClick={() => {
@@ -1398,10 +1412,24 @@ export default function PoseDetectionPage() {
                         poseServiceRef.current.setCartoonColor('pink')
                       }
                     }}
-                    className={`w-10 h-10 rounded-full border-2 transition-all ${
+                    className={`w-9 h-9 rounded-full border-2 transition-all ${
                       cartoonColor === 'pink' ? 'border-white scale-110' : 'border-transparent'
                     }`}
-                    style={{ background: 'linear-gradient(135deg, #FF69B4, #FFC0CB)' }}
+                    style={{ background: 'linear-gradient(135deg, #FF6B6B, #FFC0CB)' }}
+                    title="珊瑚粉"
+                  />
+                  <button
+                    onClick={() => {
+                      setCartoonColor('lavender')
+                      if (poseServiceRef.current) {
+                        poseServiceRef.current.setCartoonColor('lavender')
+                      }
+                    }}
+                    className={`w-9 h-9 rounded-full border-2 transition-all ${
+                      cartoonColor === 'lavender' ? 'border-white scale-110' : 'border-transparent'
+                    }`}
+                    style={{ background: 'linear-gradient(135deg, #A29BFE, #D5CCFF)' }}
+                    title="薰衣草紫"
                   />
                 </div>
               </div>
