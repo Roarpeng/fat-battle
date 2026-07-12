@@ -1,6 +1,66 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 
+// ========== localStorage 容量保护包装器 ==========
+const MAX_STORAGE_SIZE = 4.5 * 1024 * 1024 // 4.5MB
+
+function truncateStateString(value: string): string {
+  try {
+    const truncateArr = (arr: unknown[], limit: number) =>
+      Array.isArray(arr) ? arr.slice(-limit) : arr
+
+    for (const limit of [30, 15, 5, 0]) {
+      const draft = JSON.parse(value)
+      draft.dietRecords = truncateArr(draft.dietRecords, limit)
+      draft.exerciseRecords = truncateArr(draft.exerciseRecords, limit)
+      const result = JSON.stringify(draft)
+      if (result.length <= MAX_STORAGE_SIZE) {
+        return result
+      }
+    }
+    return value
+  } catch {
+    return value
+  }
+}
+
+const customLocalStorage = {
+  getItem: (key: string): string | null => {
+    try {
+      return localStorage.getItem(key)
+    } catch (e) {
+      console.warn(`[storage] getItem("${key}") failed:`, e)
+      return null
+    }
+  },
+  setItem: (key: string, value: string): void => {
+    let finalValue = value
+    if (value.length > MAX_STORAGE_SIZE) {
+      console.error('存储空间不足，建议清理历史数据')
+      finalValue = truncateStateString(value)
+    }
+    try {
+      localStorage.setItem(key, finalValue)
+    } catch (e) {
+      const isQuotaError =
+        e instanceof DOMException &&
+        (e.name === 'QuotaExceededError' || e.code === 22)
+      if (isQuotaError) {
+        console.error('[storage] QuotaExceededError: 写入被拒绝，防止覆盖已有数据')
+        return
+      }
+      console.error(`[storage] setItem("${key}") failed:`, e)
+    }
+  },
+  removeItem: (key: string): void => {
+    try {
+      localStorage.removeItem(key)
+    } catch (e) {
+      console.warn(`[storage] removeItem("${key}") failed:`, e)
+    }
+  },
+}
+
 // ========== 类型与常量 ==========
 export type {
   Difficulty,
@@ -28,6 +88,9 @@ export {
   getXpToNextLevel,
   getLevelTitle,
   getInitialWeeklyData,
+} from './game-utils'
+
+export {
   ACHIEVEMENTS_DEF,
   SKILLS_DEF,
   ITEMS_DEF,
@@ -36,7 +99,7 @@ export {
   LEVEL_TITLES,
   MONSTER_NAMES,
   MONSTER_EMOJIS,
-} from './game-types'
+} from './game-constants'
 
 // ========== Slice Creators ==========
 import { createUserSlice, initialUser } from './slices/userSlice'
@@ -60,8 +123,8 @@ import type { InventorySlice } from './slices/inventorySlice'
 import { createCompanionSlice } from './slices/companionSlice'
 import type { CompanionSlice } from './slices/companionSlice'
 
-import { generateMonster, getTodayStr, getInitialWeeklyData } from './game-types'
-import { ACHIEVEMENTS_DEF, SKILLS_DEF, ITEMS_DEF } from './game-types'
+import { generateMonster, getTodayStr, getInitialWeeklyData } from './game-utils'
+import { ACHIEVEMENTS_DEF, SKILLS_DEF, ITEMS_DEF } from './game-constants'
 
 // ========== 组合类型定义（保持向后兼容） ==========
 
@@ -222,7 +285,7 @@ export const useGameStore = create<GameState>()(
     },
     {
       name: 'fat-battle-game-store',
-      storage: createJSONStorage(() => localStorage),
+      storage: createJSONStorage(() => customLocalStorage),
       partialize: (state) => ({
         user: state.user,
         monster: state.monster,

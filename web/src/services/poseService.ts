@@ -1,76 +1,11 @@
-export type PoseStatus = 'idle' | 'loading' | 'ready' | 'running' | 'error'
-export type ExerciseType = 'squat' | 'pushup' | 'jumprope' | 'highknee' | 'plank' | 'burpee' | 'lunge' | 'mountainclimber'
-
-export interface PoseLandmark {
-  x: number
-  y: number
-  z: number
-  visibility?: number
-}
-
-export interface PoseResults {
-  landmarks: PoseLandmark[]
-  timestamp: number
-}
-
-export interface ExerciseState {
-  isActive: boolean
-  count: number
-  lastRepTime: number
-}
-
-export type AvatarMode = 'real' | 'cartoon'
-export type CartoonColor = 'orange' | 'mint' | 'pink' | 'lavender'
-
-export interface PoseServiceOptions {
-  exerciseType?: ExerciseType
-  onResults?: (results: PoseResults) => void
-  onCount?: (count: number) => void
-  onStatusChange?: (status: PoseStatus) => void
-  onError?: (error: Error) => void
-  onPauseChange?: (paused: boolean) => void
-  onPrepareProgress?: (progress: number) => void
-  onComboChange?: (combo: number, multiplier: number) => void
-  onStaminaChange?: (stamina: number) => void
-  onPhotoCapture?: (photoData: string) => void
-  videoElement?: HTMLVideoElement
-  canvasElement?: HTMLCanvasElement
-  squatThresholdAngle?: number
-  standThresholdAngle?: number
-  pushupThresholdAngle?: number
-  minRepInterval?: number
-  userWeight?: number
-  gender?: 'male' | 'female'
-  avatarMode?: AvatarMode
-  cartoonColor?: CartoonColor
-}
-
-const MEDIAPIPE_POSE_URL = 'https://cdn.jsdelivr.net/npm/@mediapipe/pose'
-const DEFAULT_SQUAT_THRESHOLD = 110
-const DEFAULT_STAND_THRESHOLD = 160
-const DEFAULT_PUSHUP_THRESHOLD = 100
-const DEFAULT_MIN_REP_INTERVAL = 600
-
-const NOSE = 0
-const LEFT_SHOULDER = 11
-const RIGHT_SHOULDER = 12
-const LEFT_ELBOW = 13
-const RIGHT_ELBOW = 14
-const LEFT_WRIST = 15
-const RIGHT_WRIST = 16
-const LEFT_HIP = 23
-const RIGHT_HIP = 24
-const LEFT_KNEE = 25
-const RIGHT_KNEE = 26
-const LEFT_ANKLE = 27
-const RIGHT_ANKLE = 28
-
-declare global {
-  interface Window {
-    Pose?: any
-    Camera?: any
-  }
-}
+import type { PoseStatus, ExerciseType, PoseLandmark, PoseResults, ExerciseState, AvatarMode, CartoonColor, PoseServiceOptions } from './poseTypes'
+import {
+  MEDIAPIPE_POSE_URL, DEFAULT_SQUAT_THRESHOLD, DEFAULT_STAND_THRESHOLD,
+  DEFAULT_PUSHUP_THRESHOLD, DEFAULT_MIN_REP_INTERVAL,
+  NOSE, LEFT_SHOULDER, RIGHT_SHOULDER, LEFT_ELBOW, RIGHT_ELBOW,
+  LEFT_WRIST, RIGHT_WRIST, LEFT_HIP, RIGHT_HIP, LEFT_KNEE, RIGHT_KNEE,
+  LEFT_ANKLE, RIGHT_ANKLE,
+} from './poseTypes'
 
 export class PoseService {
   private status: PoseStatus = 'idle'
@@ -1703,3 +1638,5 @@ export class PoseService {
 export const createPoseService = (options?: PoseServiceOptions): PoseService => {
   return new PoseService(options)
 }
+
+export * from './poseTypes'

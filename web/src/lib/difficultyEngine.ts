@@ -7,7 +7,7 @@ export interface DifficultyAdvice {
   message: string
 }
 
-function getLast3DaysCompletionRate(weeklyData: WeeklyData | null): number {
+export function getLast3DaysCompletionRate(weeklyData: WeeklyData | null): number {
   if (!weeklyData || !weeklyData.days || weeklyData.days.length === 0) {
     return 0.5
   }

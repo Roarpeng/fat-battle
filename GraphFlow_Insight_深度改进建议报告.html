@@ -1,0 +1,1074 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GraphFlow Insight 深度改进建议报告</title>
+    <style>
+        :root {
+            --bg-primary: #0f0f1e;
+            --bg-secondary: #1a1a2e;
+            --bg-card: #16213e;
+            --bg-card-hover: #1a2744;
+            --text-primary: #e4e6eb;
+            --text-secondary: #a0a3bd;
+            --text-muted: #6b7280;
+            --accent-purple: #a29bfe;
+            --accent-blue: #74b9ff;
+            --accent-green: #55efc4;
+            --accent-orange: #ff9f43;
+            --accent-pink: #ff6b6b;
+            --accent-yellow: #ffeaa7;
+            --accent-white: #dfe6e9;
+            --accent-black: #2d3436;
+            --accent-red: #e17055;
+            --border-color: #2d3748;
+            --shadow-glow: 0 0 30px rgba(162, 155, 254, 0.15);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.8;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 960px;
+            margin: 0 auto;
+            padding: 40px 24px;
+        }
+
+        /* Header */
+        .header {
+            text-align: center;
+            margin-bottom: 48px;
+            padding: 48px 32px;
+            background: linear-gradient(135deg, var(--bg-card) 0%, var(--bg-secondary) 100%);
+            border-radius: 20px;
+            border: 1px solid var(--border-color);
+            box-shadow: var(--shadow-glow);
+        }
+
+        .header h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--accent-purple), var(--accent-blue), var(--accent-green));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 12px;
+        }
+
+        .header .subtitle {
+            color: var(--text-secondary);
+            font-size: 1rem;
+            margin-bottom: 20px;
+        }
+
+        .header .meta {
+            display: flex;
+            justify-content: center;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+
+        .meta-tag {
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+
+        .meta-tag.graphflow {
+            background: rgba(162, 155, 254, 0.15);
+            color: var(--accent-purple);
+            border: 1px solid rgba(162, 155, 254, 0.3);
+        }
+
+        .meta-tag.insight {
+            background: rgba(85, 239, 196, 0.15);
+            color: var(--accent-green);
+            border: 1px solid rgba(85, 239, 196, 0.3);
+        }
+
+        .meta-tag.date {
+            background: rgba(255, 159, 67, 0.15);
+            color: var(--accent-orange);
+            border: 1px solid rgba(255, 159, 67, 0.3);
+        }
+
+        /* Stats Bar */
+        .stats-bar {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 16px;
+            margin-bottom: 48px;
+        }
+
+        .stat-card {
+            background: var(--bg-card);
+            border-radius: 14px;
+            padding: 20px;
+            text-align: center;
+            border: 1px solid var(--border-color);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+        }
+
+        .stat-value {
+            font-size: 1.8rem;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+
+        .stat-label {
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+        }
+
+        .stat-value.purple { color: var(--accent-purple); }
+        .stat-value.green { color: var(--accent-green); }
+        .stat-value.orange { color: var(--accent-orange); }
+        .stat-value.blue { color: var(--accent-blue); }
+
+        /* Section */
+        .section {
+            margin-bottom: 48px;
+        }
+
+        .section-title {
+            font-size: 1.4rem;
+            font-weight: 700;
+            margin-bottom: 24px;
+            padding-left: 16px;
+            border-left: 4px solid var(--accent-purple);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .section-title .icon {
+            font-size: 1.2rem;
+        }
+
+        /* Blue Hat Synthesis */
+        .synthesis-box {
+            background: linear-gradient(135deg, rgba(116, 185, 255, 0.1), rgba(162, 155, 254, 0.1));
+            border: 1px solid rgba(116, 185, 255, 0.3);
+            border-radius: 16px;
+            padding: 32px;
+            position: relative;
+        }
+
+        .synthesis-box::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, var(--accent-blue), var(--accent-purple));
+            border-radius: 16px 16px 0 0;
+        }
+
+        .synthesis-box p {
+            font-size: 1.05rem;
+            color: var(--text-primary);
+            line-height: 1.9;
+        }
+
+        .synthesis-box .highlight {
+            color: var(--accent-green);
+            font-weight: 600;
+        }
+
+        /* Six Hats Grid */
+        .hats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+            gap: 20px;
+        }
+
+        .hat-card {
+            background: var(--bg-card);
+            border-radius: 16px;
+            padding: 28px;
+            border: 1px solid var(--border-color);
+            position: relative;
+            overflow: hidden;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .hat-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 12px 32px rgba(0,0,0,0.4);
+        }
+
+        .hat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 5px;
+            height: 100%;
+        }
+
+        .hat-card.white::before { background: var(--accent-white); }
+        .hat-card.red::before { background: var(--accent-red); }
+        .hat-card.black::before { background: #636e72; }
+        .hat-card.yellow::before { background: var(--accent-yellow); }
+        .hat-card.green::before { background: var(--accent-green); }
+        .hat-card.blue::before { background: var(--accent-blue); }
+
+        .hat-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 16px;
+        }
+
+        .hat-name {
+            font-size: 1.1rem;
+            font-weight: 700;
+        }
+
+        .hat-card.white .hat-name { color: var(--accent-white); }
+        .hat-card.red .hat-name { color: var(--accent-red); }
+        .hat-card.black .hat-name { color: #b2bec3; }
+        .hat-card.yellow .hat-name { color: var(--accent-yellow); }
+        .hat-card.green .hat-name { color: var(--accent-green); }
+        .hat-card.blue .hat-name { color: var(--accent-blue); }
+
+        .hat-role {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+
+        .certainty-bar {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+
+        .certainty-label {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            white-space: nowrap;
+        }
+
+        .certainty-track {
+            flex: 1;
+            height: 6px;
+            background: var(--bg-secondary);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+
+        .certainty-fill {
+            height: 100%;
+            border-radius: 3px;
+            transition: width 0.6s ease;
+        }
+
+        .hat-card.white .certainty-fill { background: var(--accent-white); }
+        .hat-card.red .certainty-fill { background: var(--accent-red); }
+        .hat-card.black .certainty-fill { background: #636e72; }
+        .hat-card.yellow .certainty-fill { background: var(--accent-yellow); }
+        .hat-card.green .certainty-fill { background: var(--accent-green); }
+        .hat-card.blue .certainty-fill { background: var(--accent-blue); }
+
+        .certainty-value {
+            font-size: 0.8rem;
+            font-weight: 600;
+            min-width: 36px;
+            text-align: right;
+        }
+
+        .hat-observation {
+            font-size: 0.92rem;
+            color: var(--text-secondary);
+            margin-bottom: 16px;
+            line-height: 1.8;
+        }
+
+        .hat-insight {
+            background: rgba(255,255,255,0.03);
+            border-radius: 10px;
+            padding: 16px;
+            font-size: 0.9rem;
+            color: var(--text-primary);
+            line-height: 1.8;
+            border-left: 3px solid;
+        }
+
+        .hat-card.white .hat-insight { border-left-color: var(--accent-white); }
+        .hat-card.red .hat-insight { border-left-color: var(--accent-red); }
+        .hat-card.black .hat-insight { border-left-color: #636e72; }
+        .hat-card.yellow .hat-insight { border-left-color: var(--accent-yellow); }
+        .hat-card.green .hat-insight { border-left-color: var(--accent-green); }
+        .hat-card.blue .hat-insight { border-left-color: var(--accent-blue); }
+
+        .insight-label {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+            font-weight: 600;
+        }
+
+        /* Risk & Value Cards */
+        .dual-card {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        @media (max-width: 768px) {
+            .dual-card { grid-template-columns: 1fr; }
+            .hats-grid { grid-template-columns: 1fr; }
+        }
+
+        .risk-card, .value-card {
+            border-radius: 16px;
+            padding: 28px;
+            border: 1px solid var(--border-color);
+        }
+
+        .risk-card {
+            background: linear-gradient(135deg, rgba(255, 107, 107, 0.08), rgba(45, 52, 54, 0.3));
+            border-color: rgba(255, 107, 107, 0.2);
+        }
+
+        .value-card {
+            background: linear-gradient(135deg, rgba(255, 234, 167, 0.08), rgba(85, 239, 196, 0.05));
+            border-color: rgba(255, 234, 167, 0.2);
+        }
+
+        .card-label {
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            font-weight: 600;
+            margin-bottom: 12px;
+        }
+
+        .risk-card .card-label { color: var(--accent-pink); }
+        .value-card .card-label { color: var(--accent-yellow); }
+
+        .card-content {
+            font-size: 0.92rem;
+            color: var(--text-secondary);
+            line-height: 1.9;
+        }
+
+        /* Decision Matrix Table */
+        .matrix-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: var(--bg-card);
+            border-radius: 12px;
+            overflow: hidden;
+            border: 1px solid var(--border-color);
+        }
+
+        .matrix-table thead {
+            background: var(--bg-secondary);
+        }
+
+        .matrix-table th {
+            padding: 14px 16px;
+            text-align: left;
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .matrix-table td {
+            padding: 14px 16px;
+            font-size: 0.88rem;
+            border-bottom: 1px solid var(--border-color);
+            color: var(--text-primary);
+        }
+
+        .matrix-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .matrix-table tr:hover td {
+            background: var(--bg-card-hover);
+        }
+
+        .priority-badge {
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 0.78rem;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .priority-badge.must {
+            background: rgba(255, 107, 107, 0.15);
+            color: var(--accent-pink);
+            border: 1px solid rgba(255, 107, 107, 0.3);
+        }
+
+        .priority-badge.should {
+            background: rgba(255, 159, 67, 0.15);
+            color: var(--accent-orange);
+            border: 1px solid rgba(255, 159, 67, 0.3);
+        }
+
+        .priority-badge.could {
+            background: rgba(85, 239, 196, 0.15);
+            color: var(--accent-green);
+            border: 1px solid rgba(85, 239, 196, 0.3);
+        }
+
+        .roi-cell {
+            font-weight: 700;
+            font-size: 1rem;
+        }
+
+        .roi-high { color: var(--accent-green); }
+        .roi-medium { color: var(--accent-orange); }
+        .roi-low { color: var(--text-muted); }
+
+        /* Roadmap */
+        .roadmap {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .phase-card {
+            background: var(--bg-card);
+            border-radius: 14px;
+            padding: 24px 28px;
+            border: 1px solid var(--border-color);
+            display: flex;
+            gap: 24px;
+            align-items: flex-start;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .phase-card:hover {
+            transform: translateX(4px);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+        }
+
+        .phase-number {
+            flex-shrink: 0;
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.3rem;
+            font-weight: 700;
+        }
+
+        .phase-1 .phase-number { background: rgba(255, 107, 107, 0.2); color: var(--accent-pink); }
+        .phase-2 .phase-number { background: rgba(255, 159, 67, 0.2); color: var(--accent-orange); }
+        .phase-3 .phase-number { background: rgba(162, 155, 254, 0.2); color: var(--accent-purple); }
+        .phase-4 .phase-number { background: rgba(85, 239, 196, 0.2); color: var(--accent-green); }
+
+        .phase-content {
+            flex: 1;
+        }
+
+        .phase-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 8px;
+        }
+
+        .phase-name {
+            font-size: 1.05rem;
+            font-weight: 700;
+        }
+
+        .phase-time {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            padding: 2px 10px;
+            background: var(--bg-secondary);
+            border-radius: 10px;
+        }
+
+        .phase-goal {
+            font-size: 0.85rem;
+            color: var(--accent-blue);
+            margin-bottom: 12px;
+        }
+
+        .phase-items {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .phase-item {
+            padding: 4px 12px;
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            font-size: 0.82rem;
+            color: var(--text-secondary);
+        }
+
+        .phase-1 .phase-item { border-left: 3px solid var(--accent-pink); }
+        .phase-2 .phase-item { border-left: 3px solid var(--accent-orange); }
+        .phase-3 .phase-item { border-left: 3px solid var(--accent-purple); }
+        .phase-4 .phase-item { border-left: 3px solid var(--accent-green); }
+
+        /* Quick Wins */
+        .quick-wins {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-top: 20px;
+        }
+
+        .win-card {
+            background: var(--bg-card);
+            border-radius: 12px;
+            padding: 20px;
+            border: 1px solid var(--border-color);
+            text-align: center;
+            transition: transform 0.2s;
+        }
+
+        .win-card:hover {
+            transform: translateY(-3px);
+        }
+
+        .win-icon {
+            font-size: 2rem;
+            margin-bottom: 8px;
+        }
+
+        .win-name {
+            font-size: 0.9rem;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .win-time {
+            font-size: 0.78rem;
+            color: var(--accent-green);
+        }
+
+        /* Reflection */
+        .reflection-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+        }
+
+        .reflection-card {
+            background: var(--bg-card);
+            border-radius: 14px;
+            padding: 24px;
+            border: 1px solid var(--border-color);
+        }
+
+        .reflection-title {
+            font-size: 0.95rem;
+            font-weight: 700;
+            margin-bottom: 14px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .reflection-list {
+            list-style: none;
+        }
+
+        .reflection-list li {
+            padding: 6px 0;
+            font-size: 0.86rem;
+            color: var(--text-secondary);
+            padding-left: 20px;
+            position: relative;
+        }
+
+        .reflection-list li::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 14px;
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+        }
+
+        .reflection-card.strengths .reflection-list li::before { background: var(--accent-green); }
+        .reflection-card.gaps .reflection-list li::before { background: var(--accent-orange); }
+        .reflection-card.assumptions .reflection-list li::before { background: var(--accent-blue); }
+
+        .recommendation-box {
+            background: linear-gradient(135deg, rgba(162, 155, 254, 0.1), rgba(85, 239, 196, 0.05));
+            border: 1px solid rgba(162, 155, 254, 0.2);
+            border-radius: 14px;
+            padding: 24px;
+            margin-top: 20px;
+            font-size: 0.92rem;
+            line-height: 1.9;
+            color: var(--text-primary);
+        }
+
+        /* Footer */
+        .footer {
+            text-align: center;
+            padding: 32px 0;
+            color: var(--text-muted);
+            font-size: 0.82rem;
+            border-top: 1px solid var(--border-color);
+            margin-top: 48px;
+        }
+
+        .footer a {
+            color: var(--accent-purple);
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1>GraphFlow Insight 深度改进建议报告</h1>
+            <p class="subtitle">基于六顶思考帽 + 5-Why 深度分析框架的项目全景改进洞察</p>
+            <div class="meta">
+                <span class="meta-tag graphflow">GraphFlow MCP</span>
+                <span class="meta-tag insight">Insight Mode</span>
+                <span class="meta-tag date">2026-07-12</span>
+            </div>
+        </div>
+
+        <!-- Stats -->
+        <div class="stats-bar">
+            <div class="stat-card">
+                <div class="stat-value purple">11</div>
+                <div class="stat-label">工作项已合并</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value green">6</div>
+                <div class="stat-label">思考帽分析</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value orange">10</div>
+                <div class="stat-label">改进项排序</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value blue">4</div>
+                <div class="stat-label">实施阶段</div>
+            </div>
+        </div>
+
+        <!-- Blue Hat Synthesis -->
+        <div class="section">
+            <h2 class="section-title"><span class="icon">🎯</span> 核心综合 (Blue Hat Synthesis)</h2>
+            <div class="synthesis-box">
+                <p>真正需要解决的核心问题不是<span class="highlight">"还有什么需要改进"</span>，而是<span class="highlight">"在有限资源下应该先改什么"</span>。改进建议必须按 <strong>用户感知价值 × 技术债务缓解程度 ÷ 实施成本</strong> 的 ROI 公式排序，并区分三个优先级层次：</p>
+                <br>
+                <p><span class="highlight">必须做</span>：数据安全（localStorage → IndexedDB 迁移 / 导出导入）、核心算法测试覆盖<br>
+                <span class="highlight">应该做</span>：Store 拆分为领域切片、情感反馈强化（多感官 + 宠物进化）<br>
+                <span class="highlight">可以做</span>：轻社交（宠物探望 / 能量交换）、自适应难度系统</p>
+            </div>
+        </div>
+
+        <!-- Six Hats Analysis -->
+        <div class="section">
+            <h2 class="section-title"><span class="icon">🎩</span> 六顶思考帽深度分析</h2>
+            <div class="hats-grid">
+                <!-- White Hat -->
+                <div class="hat-card white">
+                    <div class="hat-header">
+                        <span class="hat-name">⚪ White Hat — 客观分析者</span>
+                        <span class="hat-role">事实与数据</span>
+                    </div>
+                    <div class="certainty-bar">
+                        <span class="certainty-label">确信度</span>
+                        <div class="certainty-track"><div class="certainty-fill" style="width: 95%"></div></div>
+                        <span class="certainty-value">0.95</span>
+                    </div>
+                    <p class="hat-observation">项目包含 547 个图节点、1111 条边、64 个文件、400 个符号。核心 Store 文件 useGameStore.ts 达 28KB。游戏逻辑在 Web (gameAlgorithm.ts) 和 Flutter (game_algorithm.dart) 中重复实现。核心算法零单元测试覆盖。所有用户数据存储在 localStorage 中无加密无备份。</p>
+                    <div class="hat-insight">
+                        <div class="insight-label">关键洞察</div>
+                        项目形成了典型的<strong>"技术债务三角"</strong>：单体 Store → 协作困难、跨平台逻辑重复 → 维护成本翻倍、零测试覆盖 → 回归风险不可控。三者相互放大形成系统性技术风险。
+                    </div>
+                </div>
+
+                <!-- Red Hat -->
+                <div class="hat-card red">
+                    <div class="hat-header">
+                        <span class="hat-name">🔴 Red Hat — 情感体验者</span>
+                        <span class="hat-role">直觉与情感</span>
+                    </div>
+                    <div class="certainty-bar">
+                        <span class="certainty-label">确信度</span>
+                        <div class="certainty-track"><div class="certainty-fill" style="width: 75%"></div></div>
+                        <span class="certainty-value">0.75</span>
+                    </div>
+                    <p class="hat-observation">可爱宠物 + 脂肪怪物战斗叙事具有强烈的即时吸引力，但每日战斗胜利后的情感反馈闭环存在断裂风险——胜利弹窗一闪而过，宠物感恩消息仅文字展示，缺乏多感官反馈（震动 / 音效 / 动画）的叠加强化。第三天后新鲜感消退时留存会断崖式下降。</p>
+                    <div class="hat-insight">
+                        <div class="insight-label">关键洞察</div>
+                        产品核心竞争力不在技术架构而在<strong>情感设计</strong>——"饮食 + 运动 → 怪物战斗 → 宠物成长"的统一叙事是差异化优势，但当前情感反馈的密度和深度不足以支撑长期留存。
+                    </div>
+                </div>
+
+                <!-- Black Hat -->
+                <div class="hat-card black">
+                    <div class="hat-header">
+                        <span class="hat-name">⚫ Black Hat — 风险评估者</span>
+                        <span class="hat-role">谨慎与批判</span>
+                    </div>
+                    <div class="certainty-bar">
+                        <span class="certainty-label">确信度</span>
+                        <div class="certainty-track"><div class="certainty-fill" style="width: 85%"></div></div>
+                        <span class="certainty-value">0.85</span>
+                    </div>
+                    <p class="hat-observation">最大的系统性风险是数据持久化层的脆弱性——localStorage 的 5-10MB 容量限制意味着数据累积后一旦触发上限将静默写入失败导致数据损坏。浏览器清除缓存时所有数据永久丢失。跨平台逻辑重复导致修一个 bug 需同步修改两处。</p>
+                    <div class="hat-insight">
+                        <div class="insight-label">关键洞察</div>
+                        数据持久化层的脆弱性是整个产品<strong>最大的系统性弱点</strong>——这不是一个优化项而是一个必须优先修复的<strong>生存性风险</strong>。一旦发生数据丢失，用户信任将不可逆地崩塌。
+                    </div>
+                </div>
+
+                <!-- Yellow Hat -->
+                <div class="hat-card yellow">
+                    <div class="hat-header">
+                        <span class="hat-name">🟡 Yellow Hat — 价值发现者</span>
+                        <span class="hat-role">乐观与收益</span>
+                    </div>
+                    <div class="certainty-bar">
+                        <span class="certainty-label">确信度</span>
+                        <div class="certainty-track"><div class="certainty-fill" style="width: 85%"></div></div>
+                        <span class="certainty-value">0.85</span>
+                    </div>
+                    <p class="hat-observation">项目最大的核心价值在于将减肥这一"需要毅力坚持的痛苦活动"转化为"有即时反馈的游戏体验"。每日脂肪怪物战斗创造目标感，虚拟宠物即时消耗能量碎片创造被需要的情感连接。与 Ring Fit Adventure 的硬件门槛、Keep 的工具属性、Pokemon Sleep 的被动追踪都不同。</p>
+                    <div class="hat-insight">
+                        <div class="insight-label">关键洞察</div>
+                        核心价值满足了现代上班族"想要健康但缺乏持续动力"的深层需求——通过游戏化机制将<strong>延迟的健康回报转化为即时的情感满足</strong>，关键是要持续加深这个情感闭环。
+                    </div>
+                </div>
+
+                <!-- Green Hat -->
+                <div class="hat-card green">
+                    <div class="hat-header">
+                        <span class="hat-name">🟢 Green Hat — 创新探索者</span>
+                        <span class="hat-role">创造力与备选</span>
+                    </div>
+                    <div class="certainty-bar">
+                        <span class="certainty-label">确信度</span>
+                        <div class="certainty-track"><div class="certainty-fill" style="width: 60%"></div></div>
+                        <span class="certainty-value">0.60</span>
+                    </div>
+                    <p class="hat-observation">探索低压力轻社交创新模式——让好友的虚拟宠物可以探望彼此、交换能量碎片、或组队挑战周 BOSS。引入自适应难度系统：根据用户实际运动完成情况和 BMI 变化趋势动态调整怪物等级。探索 AR 模式让脂肪怪物出现在真实环境中。</p>
+                    <div class="hat-insight">
+                        <div class="insight-label">关键洞察</div>
+                        当前单人闭环设计限制了产品传播性——通过<strong>低压力轻社交</strong>（宠物探望、能量碎片交换）而非高压力竞争（排行榜）可以在不破坏核心体验的前提下打开<strong>增长天花板</strong>。
+                    </div>
+                </div>
+
+                <!-- Blue Hat -->
+                <div class="hat-card blue">
+                    <div class="hat-header">
+                        <span class="hat-name">🔵 Blue Hat — 过程管理者</span>
+                        <span class="hat-role">全局与协调</span>
+                    </div>
+                    <div class="certainty-bar">
+                        <span class="certainty-label">确信度</span>
+                        <div class="certainty-track"><div class="certainty-fill" style="width: 85%"></div></div>
+                        <span class="certainty-value">0.85</span>
+                    </div>
+                    <p class="hat-observation">项目已有完善建议报告和可玩性竞品分析报告，但改进项尚未按 ROI 排序和分阶段实施。六顶思考帽分析揭示了清晰的模式：数据安全是生存性必须修，情感反馈深度是差异化核心价值，技术债务三角是可维护性基础，轻社交是增长天花板。</p>
+                    <div class="hat-insight">
+                        <div class="insight-label">关键洞察</div>
+                        真正需要解决的核心问题是<strong>"在有限资源下应该先改什么"</strong>——改进建议必须按 ROI 公式排序，区分"必须做"、"应该做"、"可以做"三个优先级层次。
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Critical Risk & Core Value -->
+        <div class="section">
+            <h2 class="section-title"><span class="icon">⚠️</span> 关键风险与核心价值</h2>
+            <div class="dual-card">
+                <div class="risk-card">
+                    <div class="card-label">🚨 生存性风险</div>
+                    <div class="card-content">
+                        数据持久化层的脆弱性是整个产品最大的系统性弱点。localStorage 的 5-10MB 容量限制意味着数据累积后将静默写入失败导致数据损坏。浏览器清除缓存或无痕模式下所有数据将永久丢失且无法恢复。跨平台逻辑重复导致一处 bug 修复遗漏将引发 App 和小程序行为不一致。<strong>这不是优化项，而是必须优先修复的生存性风险。</strong>
+                    </div>
+                </div>
+                <div class="value-card">
+                    <div class="card-label">✨ 核心价值主张</div>
+                    <div class="card-content">
+                        将减肥这一"需要毅力坚持的痛苦活动"转化为"有即时反馈的游戏体验"。每日脂肪怪物战斗机制创造每日明确的目标感和成就感，虚拟宠物即时消耗能量碎片创造被需要的情感连接。这种"健康目标游戏化"的统一叙事在市场上具有独特差异化定位，与 Ring Fit Adventure 的硬件门槛、Keep 的工具属性、Pokemon Sleep 的被动追踪都不同。<strong>关键是要持续加深这个情感闭环。</strong>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Decision Matrix -->
+        <div class="section">
+            <h2 class="section-title"><span class="icon">📊</span> ROI 决策矩阵</h2>
+            <table class="matrix-table">
+                <thead>
+                    <tr>
+                        <th>改进项</th>
+                        <th>用户价值</th>
+                        <th>技术债务</th>
+                        <th>实施成本</th>
+                        <th>ROI</th>
+                        <th>优先级</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>数据导出 / 导入功能</td>
+                        <td>5</td>
+                        <td>4</td>
+                        <td>2</td>
+                        <td class="roi-cell roi-high">10</td>
+                        <td><span class="priority-badge must">必须做</span></td>
+                    </tr>
+                    <tr>
+                        <td>localStorage 容量监控 + IndexedDB 迁移</td>
+                        <td>4</td>
+                        <td>5</td>
+                        <td>3</td>
+                        <td class="roi-cell roi-high">9</td>
+                        <td><span class="priority-badge must">必须做</span></td>
+                    </tr>
+                    <tr>
+                        <td>核心算法单元测试 (Vitest)</td>
+                        <td>2</td>
+                        <td>5</td>
+                        <td>2</td>
+                        <td class="roi-cell roi-high">7</td>
+                        <td><span class="priority-badge must">必须做</span></td>
+                    </tr>
+                    <tr>
+                        <td>useGameStore 拆分为领域切片</td>
+                        <td>2</td>
+                        <td>5</td>
+                        <td>3</td>
+                        <td class="roi-cell roi-medium">7</td>
+                        <td><span class="priority-badge should">应该做</span></td>
+                    </tr>
+                    <tr>
+                        <td>情感反馈强化 (多感官 + 宠物进化)</td>
+                        <td>5</td>
+                        <td>2</td>
+                        <td>3</td>
+                        <td class="roi-cell roi-medium">7</td>
+                        <td><span class="priority-badge should">应该做</span></td>
+                    </tr>
+                    <tr>
+                        <td>packages/game-core 共享包</td>
+                        <td>2</td>
+                        <td>4</td>
+                        <td>3</td>
+                        <td class="roi-cell roi-medium">6</td>
+                        <td><span class="priority-badge should">应该做</span></td>
+                    </tr>
+                    <tr>
+                        <td>连续打卡容错机制</td>
+                        <td>4</td>
+                        <td>1</td>
+                        <td>1</td>
+                        <td class="roi-cell roi-medium">5</td>
+                        <td><span class="priority-badge should">应该做</span></td>
+                    </tr>
+                    <tr>
+                        <td>怪物图鉴系统</td>
+                        <td>3</td>
+                        <td>1</td>
+                        <td>2</td>
+                        <td class="roi-cell roi-low">4</td>
+                        <td><span class="priority-badge could">可以做</span></td>
+                    </tr>
+                    <tr>
+                        <td>自适应难度系统</td>
+                        <td>4</td>
+                        <td>2</td>
+                        <td>3</td>
+                        <td class="roi-cell roi-low">4</td>
+                        <td><span class="priority-badge could">可以做</span></td>
+                    </tr>
+                    <tr>
+                        <td>轻社交 (宠物探望 / 能量交换)</td>
+                        <td>3</td>
+                        <td>1</td>
+                        <td>4</td>
+                        <td class="roi-cell roi-low">3</td>
+                        <td><span class="priority-badge could">可以做</span></td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <!-- Quick Wins -->
+            <div class="quick-wins">
+                <div class="win-card">
+                    <div class="win-icon">⚡</div>
+                    <div class="win-name">连续打卡容错机制</div>
+                    <div class="win-time">1 天</div>
+                </div>
+                <div class="win-card">
+                    <div class="win-icon">🧪</div>
+                    <div class="win-name">核心算法单元测试</div>
+                    <div class="win-time">2-3 天</div>
+                </div>
+                <div class="win-card">
+                    <div class="win-icon">💾</div>
+                    <div class="win-name">数据导出 / 导入</div>
+                    <div class="win-time">2 天</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Implementation Roadmap -->
+        <div class="section">
+            <h2 class="section-title"><span class="icon">🗺️</span> 四阶段实施路线图</h2>
+            <div class="roadmap">
+                <div class="phase-card phase-1">
+                    <div class="phase-number">1</div>
+                    <div class="phase-content">
+                        <div class="phase-header">
+                            <span class="phase-name">生存保障</span>
+                            <span class="phase-time">1-2 周</span>
+                        </div>
+                        <div class="phase-goal">目标：消除数据丢失风险和回归风险</div>
+                        <div class="phase-items">
+                            <span class="phase-item">localStorage 容量监控与告警</span>
+                            <span class="phase-item">数据导出 / 导入功能</span>
+                            <span class="phase-item">IndexedDB 迁移方案评估</span>
+                            <span class="phase-item">核心算法 Vitest 测试覆盖</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="phase-card phase-2">
+                    <div class="phase-number">2</div>
+                    <div class="phase-content">
+                        <div class="phase-header">
+                            <span class="phase-name">技术健康</span>
+                            <span class="phase-time">2-4 周</span>
+                        </div>
+                        <div class="phase-goal">目标：缓解技术债务三角，提升可维护性</div>
+                        <div class="phase-items">
+                            <span class="phase-item">useGameStore 拆分为 5 个领域切片</span>
+                            <span class="phase-item">创建 packages/game-core 共享包</span>
+                            <span class="phase-item">selector 性能优化</span>
+                            <span class="phase-item">ESLint + Prettier + Zod 配置</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="phase-card phase-3">
+                    <div class="phase-number">3</div>
+                    <div class="phase-content">
+                        <div class="phase-header">
+                            <span class="phase-name">情感深化</span>
+                            <span class="phase-time">4-6 周</span>
+                        </div>
+                        <div class="phase-goal">目标：加深情感闭环，提升留存</div>
+                        <div class="phase-items">
+                            <span class="phase-item">多感官胜利反馈 (震动 / 音效 / 动画)</span>
+                            <span class="phase-item">宠物阶段性进化系统</span>
+                            <span class="phase-item">连续打卡容错机制</span>
+                            <span class="phase-item">怪物图鉴系统</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="phase-card phase-4">
+                    <div class="phase-number">4</div>
+                    <div class="phase-content">
+                        <div class="phase-header">
+                            <span class="phase-name">增长探索</span>
+                            <span class="phase-time">6-8 周</span>
+                        </div>
+                        <div class="phase-goal">目标：打开增长天花板</div>
+                        <div class="phase-items">
+                            <span class="phase-item">自适应难度系统</span>
+                            <span class="phase-item">轻社交宠物探望</span>
+                            <span class="phase-item">能量碎片交换</span>
+                            <span class="phase-item">周 BOSS 组队挑战</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Critical Path -->
+        <div class="section">
+            <h2 class="section-title"><span class="icon">🔗</span> 关键路径与风险缓解</h2>
+            <div class="synthesis-box">
+                <p><strong>关键路径：</strong>Phase 1 → Phase 2 可以并行部分工作，Phase 3 依赖 Phase 2 的 Store 拆分，Phase 4 依赖 Phase 3 的宠物进化系统。</p>
+                <br>
+                <p><strong>风险缓解：</strong>每个阶段结束时进行回归测试，确保核心功能（打卡 / 运动 / 战斗）不受影响。</p>
+            </div>
+        </div>
+
+        <!-- Reflection -->
+        <div class="section">
+            <h2 class="section-title"><span class="icon">🪞</span> 计划反思</h2>
+            <div class="reflection-grid">
+                <div class="reflection-card strengths">
+                    <div class="reflection-title">✅ 分析优势</div>
+                    <ul class="reflection-list">
+                        <li>六顶思考帽提供了多维度视角</li>
+                        <li>Blue Hat 的 ROI 排序框架确保了可执行性</li>
+                        <li>Black Hat 识别了生存性风险（数据安全）</li>
+                        <li>Yellow Hat 明确了核心价值主张</li>
+                    </ul>
+                </div>
+                <div class="reflection-card gaps">
+                    <div class="reflection-title">⚠️ 待补充</div>
+                    <ul class="reflection-list">
+                        <li>缺少具体的工时估算</li>
+                        <li>缺少技术方案详细设计（如 IndexedDB schema）</li>
+                        <li>缺少用户验证策略（如何确认改进有效）</li>
+                        <li>缺少回滚计划</li>
+                    </ul>
+                </div>
+                <div class="reflection-card assumptions">
+                    <div class="reflection-title">📋 前提假设</div>
+                    <ul class="reflection-list">
+                        <li>假设团队有 1-2 名全职开发者</li>
+                        <li>假设用户数据量在 3-6 个月内不会超过 localStorage 限制</li>
+                        <li>假设 Flutter 和 Web 可以共享 TypeScript 包（需验证）</li>
+                    </ul>
+                </div>
+            </div>
+            <div class="recommendation-box">
+                <strong>最终建议：</strong>Phase 1 应在 2 周内完成以消除数据安全风险，同时启动核心算法测试。Phase 2 和 Phase 3 可以部分并行以加速交付。建议每周进行一次代码审查确保重构质量。
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+            <p>本报告由 GraphFlow Insight 模式（六顶思考帽 + 5-Why）生成 | 2026-07-12</p>
+        </div>
+    </div>
+</body>
+</html>
