@@ -51,3 +51,6 @@ graphflow-out/
 # TFLite model files (download via download_models.ps1)
 assets/models/*.tflite
 
+# TRAE temporary files
+.trae-html-share-packages/
+

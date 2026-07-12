@@ -1,5 +1,5 @@
 import type { MonsterState, WeeklyData } from './game-types'
-import { getMonsterDefByLevel, calculateMonsterHp } from '../data/monsters'
+import { getMonsterDefByLevel, calculateMonsterHp, calculateMonsterShield } from '../data/monsters'
 
 export const getTodayStr = () => {
   const d = new Date()
@@ -16,6 +16,7 @@ export const calculateBmi = (weight: number, height: number) => {
 export const generateMonster = (level: number, difficulty: 'easy' | 'normal' | 'hard' = 'normal', hpMultiplier: number = 1): MonsterState => {
   const def = getMonsterDefByLevel(level)
   const maxHp = Math.round(calculateMonsterHp(def, level, difficulty) * hpMultiplier)
+  const maxShield = calculateMonsterShield(def, level, difficulty)
   const hpPercentage = 1.0
   const phases = def.phases || []
   const currentPhase = phases.length > 0 ? phases[0] : null
@@ -44,6 +45,10 @@ export const generateMonster = (level: number, difficulty: 'easy' | 'normal' | '
     season: def.season,
     hpMultiplier,
     isPhantom: false,
+    // ========== 护盾系统（护盾完全来自过量卡路里，初始为0） ==========
+    shield: 0,
+    maxShield: 0,
+    shieldReductionRate: def.shieldReductionRate,
   }
 }
 

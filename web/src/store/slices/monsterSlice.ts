@@ -13,6 +13,8 @@ function calculateDialogueLevel(totalDrops: number): number {
 export interface MonsterSlice {
   monster: MonsterState
   attackMonster: (damage: number) => void
+  /** 暴食增加怪物护盾（护盾完全来自过量卡路里） */
+  addMonsterShield: (calories: number) => void
   healMonster: () => void
   levelUpMonster: () => void
   spawnDailyMonster: () => void
@@ -40,18 +42,42 @@ export const createMonsterSlice = (set: any, get: any, _api?: any): MonsterSlice
 
   attackMonster: (damage) =>
     set((state: any) => {
-      const newHp = Math.max(0, state.monster.hp - damage)
+      const monster = state.monster
+      let newHp = monster.hp
+      let newShield = monster.shield
+
+      // ========== 护盾机制 ==========
+      if (newShield > 0) {
+        // 护盾存在时：护盾直接扣除全额伤害
+        newShield -= damage
+
+        // HP同时受到穿透伤害（护盾减伤率决定穿透比例）
+        const hpDamage = Math.round(damage * monster.shieldReductionRate)
+        newHp = Math.max(0, newHp - hpDamage)
+
+        // 如果护盾破了，剩余护盾的负数部分额外打到HP上
+        if (newShield < 0) {
+          newHp = Math.max(0, newHp + newShield) // newShield为负，相当于hp -= abs(newShield)
+          newShield = 0
+        }
+      } else {
+        // 护盾已破，全额伤害打到HP
+        newHp = Math.max(0, newHp - damage)
+      }
+
+      // 实际对HP造成的伤害（用于每日统计 - 记录原始运动伤害）
       const newDaily = { ...state.daily, damage: state.daily.damage + damage }
+
       if (newHp === 0) {
-        const coinsEarned = Math.round(state.monster.level * 10 * state.monster.coinMultiplier)
-        const dropsEarned = state.monster.level * 2
+        const coinsEarned = Math.round(monster.level * 10 * monster.coinMultiplier)
+        const dropsEarned = monster.level * 2
         // 每日作战模式：击败后不再立即生成新怪物，而是标记今日已完成
         // 宠物即时吃掉掉落物，升级皮肤和对话能力
         const totalDrops = state.companion.monsterDrops + dropsEarned
         const newSkinLevel = calculateSkinLevel(totalDrops)
         const newDialogueLevel = calculateDialogueLevel(totalDrops)
         return {
-          monster: { ...state.monster, hp: 0 },
+          monster: { ...monster, hp: 0, shield: 0 },
           coins: state.coins + coinsEarned,
           daily: { ...newDaily, monsterDefeated: true },
           totalMonsterKills: (state.totalMonsterKills ?? 0) + 1,
@@ -64,13 +90,31 @@ export const createMonsterSlice = (set: any, get: any, _api?: any): MonsterSlice
           },
         }
       }
-      const updatedMonster = { ...state.monster, hp: newHp }
+      const updatedMonster = { ...monster, hp: newHp, shield: newShield }
       const phaseUpdate = updateMonsterPhase(updatedMonster)
       return { monster: { ...updatedMonster, ...phaseUpdate }, daily: newDaily }
     }),
 
   healMonster: () =>
     set((state: any) => ({ monster: { ...state.monster, hp: state.monster.maxHp } })),
+
+  /** 暴食增加怪物护盾：过量卡路里按比例转化为护盾值 */
+  addMonsterShield: (calories: number) =>
+    set((state: any) => {
+      if (calories <= 0) return {}
+      const monster = state.monster
+      // 转化比例：每 1 过量卡路里 = 1 点护盾（可调整）
+      // maxShield 用于护盾条百分比显示，随护盾增长动态调整
+      const newShield = monster.shield + calories
+      const newMaxShield = Math.max(monster.maxShield, newShield)
+      return {
+        monster: {
+          ...monster,
+          shield: newShield,
+          maxShield: newMaxShield,
+        },
+      }
+    }),
 
   levelUpMonster: () =>
     set((state: any) => ({

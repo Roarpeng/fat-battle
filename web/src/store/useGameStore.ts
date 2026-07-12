@@ -166,6 +166,8 @@ export interface GameStateActions {
   updateWeight: (weight: number) => void
   setDifficulty: (difficulty: import('./game-types').Difficulty) => void
   attackMonster: (damage: number) => void
+  /** 暴食增加怪物护盾（护盾完全来自过量卡路里） */
+  addMonsterShield: (calories: number) => void
   healMonster: () => void
   levelUpMonster: () => void
   addDietRecord: (record: Omit<import('./game-types').DietRecord, 'id'>) => void

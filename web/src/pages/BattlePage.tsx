@@ -30,7 +30,7 @@ interface StoryBubbleState {
 export default function BattlePage() {
   const navigate = useNavigate()
   const location = useLocation()
-  const { monster, daily, coins, days, streak, user, setPendingAttack, attackMonster, companion, updateCompanionMood } = useGameStore()
+  const { monster, daily, coins, days, streak, user, setPendingAttack, attackMonster, addMonsterShield, companion, updateCompanionMood } = useGameStore()
   const [showVictory, setShowVictory] = useState(false)
   const [prevMonsterHp, setPrevMonsterHp] = useState(monster.hp)
   const [damageNumbers, setDamageNumbers] = useState<Array<{ id: string; value: number; type: 'damage' | 'heal' | 'critical' }>>([])
@@ -224,10 +224,13 @@ export default function BattlePage() {
         setAttackEffects((prev) => [...prev, { id: effectId, type: 'grease', damage: pendingAttack.overeatCalories || 0, isOvereat: true }])
         setShieldEffect(true)
 
-        const healAmount = Math.floor((pendingAttack.overeatCalories || 0) * 0.05)
-        if (healAmount > 0) {
+        // 暴食 → 增加怪物护盾（而非回血）
+        const overeatAmount = pendingAttack.overeatCalories || 0
+        if (overeatAmount > 0) {
+          const shieldAmount = Math.floor(overeatAmount * 0.1) // 每10过量卡路里=1护盾
+          addMonsterShield(shieldAmount)
           setTimeout(() => {
-            addDamageNumber(healAmount, 'heal')
+            addDamageNumber(shieldAmount, 'heal') // 显示为护盾增长
           }, 800)
         }
 
@@ -263,10 +266,12 @@ export default function BattlePage() {
       setAttackEffects((prev) => [...prev, { id: greaseId, type: 'grease', damage: overeatCalories, isOvereat: true }])
       setShieldEffect(true)
 
-      const healAmount = Math.floor(overeatCalories * 0.05)
-      if (healAmount > 0) {
+      // 暴食 → 增加怪物护盾（而非回血）
+      const shieldAmount = Math.floor(overeatCalories * 0.1) // 每10过量卡路里=1护盾
+      addMonsterShield(shieldAmount)
+      if (shieldAmount > 0) {
         setTimeout(() => {
-          addDamageNumber(healAmount, 'heal')
+          addDamageNumber(shieldAmount, 'heal') // 显示为护盾增长
         }, 800)
       }
 
@@ -633,7 +638,7 @@ export default function BattlePage() {
             </span>
             <span>{monster.hp} / {monster.maxHp}</span>
           </div>
-          <HpBar current={monster.hp} max={monster.maxHp} size="sm" showText={false} overeatFactor={overeatFactor} />
+          <HpBar current={monster.hp} max={monster.maxHp} size="sm" showText={false} overeatFactor={overeatFactor} shield={monster.shield} maxShield={monster.maxShield} />
           {/* 弱点提示 */}
           <div className="flex items-center gap-2 mt-1">
             <span className="flex items-center gap-0.5 text-[8px] text-text3">
@@ -641,6 +646,16 @@ export default function BattlePage() {
               弱点: <span className="text-yellow font-bold">{getCategoryEmoji(monster.weakness)} {getWeaknessLabel(monster.weakness)}</span>
             </span>
           </div>
+          {/* 护盾提示 */}
+          {monster.shield > 0 && (
+            <div className="flex items-center gap-2 mt-0.5">
+              <span className="flex items-center gap-0.5 text-[8px] text-cyan">
+                <Shield size={8} className="text-cyan" />
+                护盾: <span className="text-cyan font-bold">{Math.round(monster.shield)} / {Math.round(monster.maxShield)}</span>
+                <span className="text-text3">(减伤 {Math.round(monster.shieldReductionRate * 100)}%)</span>
+              </span>
+            </div>
+          )}
         </div>
 
         <div className="flex-1 flex flex-col items-center justify-center relative px-4 min-h-0">

@@ -40,6 +40,13 @@ export interface MonsterState {
   hpMultiplier?: number
   // 虚影机制：击败后第二天的怪物以虚影形态出现
   isPhantom: boolean
+  // ========== 护盾系统 ==========
+  /** 当前护盾值 */
+  shield: number
+  /** 最大护盾值 */
+  maxShield: number
+  /** 护盾减伤率 (0-1)，护盾存在时怪物本体受到的伤害比例 */
+  shieldReductionRate: number
 }
 
 export interface PendingAttack {

@@ -106,6 +106,14 @@ export interface MonsterDef {
   season?: 'spring' | 'summer' | 'autumn' | 'winter'
   /** 背景故事引用（可选，详情见 monsterStories.ts） */
   story?: string
+  // ========== 护盾系统 ==========
+  /** 护盾基础值 */
+  baseShield: number
+  /** 每级护盾成长 */
+  shieldPerLevel: number
+  /** 护盾减伤率 (0-1)，护盾存在时怪物本体受到的伤害比例
+   *  例如 0.3 表示护盾存在时，怪物本体只承受 30% 的伤害，护盾承担全额 */
+  shieldReductionRate: number
 }
 
 // ========== 12种怪物定义 ==========
@@ -126,6 +134,9 @@ export const MONSTER_DEFS: MonsterDef[] = [
     enrageThreshold: 0.2,
     enrageMultiplier: 1.3,
     coinMultiplier: 1,
+    baseShield: 20,
+    shieldPerLevel: 5,
+    shieldReductionRate: 0.15,
   },
   {
     id: 'goblin',
@@ -141,6 +152,9 @@ export const MONSTER_DEFS: MonsterDef[] = [
     enrageThreshold: 0.2,
     enrageMultiplier: 1.3,
     coinMultiplier: 1,
+    baseShield: 25,
+    shieldPerLevel: 6,
+    shieldReductionRate: 0.18,
   },
   {
     id: 'ghost',
@@ -156,6 +170,9 @@ export const MONSTER_DEFS: MonsterDef[] = [
     enrageThreshold: 0.2,
     enrageMultiplier: 1.4,
     coinMultiplier: 1,
+    baseShield: 22,
+    shieldPerLevel: 5,
+    shieldReductionRate: 0.16,
   },
   {
     id: 'skeleton',
@@ -171,6 +188,9 @@ export const MONSTER_DEFS: MonsterDef[] = [
     enrageThreshold: 0.25,
     enrageMultiplier: 1.3,
     coinMultiplier: 1,
+    baseShield: 28,
+    shieldPerLevel: 6,
+    shieldReductionRate: 0.2,
   },
 
   // ---- 精英怪 (Elite) ----
@@ -188,6 +208,9 @@ export const MONSTER_DEFS: MonsterDef[] = [
     enrageThreshold: 0.3,
     enrageMultiplier: 1.5,
     coinMultiplier: 2,
+    baseShield: 75,
+    shieldPerLevel: 12,
+    shieldReductionRate: 0.28,
     phases: [
       {
         name: '正常状态',
@@ -219,6 +242,9 @@ export const MONSTER_DEFS: MonsterDef[] = [
     enrageThreshold: 0.3,
     enrageMultiplier: 1.5,
     coinMultiplier: 2,
+    baseShield: 85,
+    shieldPerLevel: 14,
+    shieldReductionRate: 0.3,
     phases: [
       {
         name: '优雅形态',
@@ -250,6 +276,9 @@ export const MONSTER_DEFS: MonsterDef[] = [
     enrageThreshold: 0.3,
     enrageMultiplier: 1.6,
     coinMultiplier: 2,
+    baseShield: 100,
+    shieldPerLevel: 15,
+    shieldReductionRate: 0.32,
     phases: [
       {
         name: '慵懒形态',
@@ -283,6 +312,9 @@ export const MONSTER_DEFS: MonsterDef[] = [
     enrageThreshold: 0.3,
     enrageMultiplier: 1.8,
     coinMultiplier: 3,
+    baseShield: 180,
+    shieldPerLevel: 25,
+    shieldReductionRate: 0.35,
     phases: [
       {
         name: '傲慢阶段',
@@ -321,6 +353,9 @@ export const MONSTER_DEFS: MonsterDef[] = [
     enrageThreshold: 0.3,
     enrageMultiplier: 1.8,
     coinMultiplier: 3,
+    baseShield: 200,
+    shieldPerLevel: 28,
+    shieldReductionRate: 0.35,
     phases: [
       {
         name: '盛宴阶段',
@@ -361,6 +396,9 @@ export const MONSTER_DEFS: MonsterDef[] = [
     enrageThreshold: 0.25,
     enrageMultiplier: 2.0,
     coinMultiplier: 5,
+    baseShield: 450,
+    shieldPerLevel: 45,
+    shieldReductionRate: 0.4,
     phases: [
       {
         name: '慵懒王座',
@@ -406,6 +444,9 @@ export const MONSTER_DEFS: MonsterDef[] = [
     enrageThreshold: 0.2,
     enrageMultiplier: 2.2,
     coinMultiplier: 5,
+    baseShield: 550,
+    shieldPerLevel: 55,
+    shieldReductionRate: 0.42,
     phases: [
       {
         name: '诱惑阶段',
@@ -456,6 +497,9 @@ export const SEASONAL_MONSTERS: MonsterDef[] = [
     enrageThreshold: 0.3,
     enrageMultiplier: 1.4,
     coinMultiplier: 3,
+    baseShield: 80,
+    shieldPerLevel: 12,
+    shieldReductionRate: 0.28,
     season: 'spring',
     phases: [
       { name: '花眠', hpThreshold: 1.0, emoji: '🌸', damageBonus: 1.0, desc: '樱花精灵在花瓣中沉睡。' },
@@ -476,6 +520,9 @@ export const SEASONAL_MONSTERS: MonsterDef[] = [
     enrageThreshold: 0.25,
     enrageMultiplier: 1.7,
     coinMultiplier: 4,
+    baseShield: 210,
+    shieldPerLevel: 28,
+    shieldReductionRate: 0.35,
     season: 'summer',
     phases: [
       { name: '冰封', hpThreshold: 1.0, emoji: '🍧', damageBonus: 1.0, desc: '冰沙巨魔的冰甲闪闪发光。' },
@@ -497,6 +544,9 @@ export const SEASONAL_MONSTERS: MonsterDef[] = [
     enrageThreshold: 0.3,
     enrageMultiplier: 1.5,
     coinMultiplier: 3,
+    baseShield: 100,
+    shieldPerLevel: 15,
+    shieldReductionRate: 0.3,
     season: 'autumn',
     phases: [
       { name: '丰收', hpThreshold: 1.0, emoji: '🎃', damageBonus: 1.0, desc: '南瓜骑士守护着丰收的甜食。' },
@@ -517,6 +567,9 @@ export const SEASONAL_MONSTERS: MonsterDef[] = [
     enrageThreshold: 0.25,
     enrageMultiplier: 1.7,
     coinMultiplier: 4,
+    baseShield: 230,
+    shieldPerLevel: 30,
+    shieldReductionRate: 0.35,
     season: 'winter',
     phases: [
       { name: '冰封', hpThreshold: 1.0, emoji: '❄️', damageBonus: 1.0, desc: '寒霜巨魔在暴风雪中沉睡。' },
@@ -560,6 +613,12 @@ export function getMonsterDefByLevel(level: number): MonsterDef {
 export function calculateMonsterHp(def: MonsterDef, level: number, difficulty: 'easy' | 'normal' | 'hard' = 'normal'): number {
   const diffMultiplier = difficulty === 'easy' ? 0.7 : difficulty === 'hard' ? 1.3 : 1.0
   return Math.round((def.baseHp + def.hpPerLevel * (level - 1)) * diffMultiplier)
+}
+
+/** 计算怪物在指定等级的护盾值 */
+export function calculateMonsterShield(def: MonsterDef, level: number, difficulty: 'easy' | 'normal' | 'hard' = 'normal'): number {
+  const diffMultiplier = difficulty === 'easy' ? 0.7 : difficulty === 'hard' ? 1.3 : 1.0
+  return Math.round((def.baseShield + def.shieldPerLevel * (level - 1)) * diffMultiplier)
 }
 
 /** 计算运动类型对怪物的伤害倍率 */
