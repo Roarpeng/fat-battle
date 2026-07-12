@@ -26,7 +26,8 @@ export default function FoodRecognitionModal({ open, onClose, onConfirm, mealTyp
 
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)    // 相册选择
+  const cameraInputRef = useRef<HTMLInputElement>(null)   // 拍照
   const barcodeFileRef = useRef<HTMLInputElement>(null)
   const scannerRef = useRef<BarcodeScannerService | null>(null)
   const recognitionRef = useRef<FoodRecognitionService | null>(null)
@@ -200,10 +201,7 @@ export default function FoodRecognitionModal({ open, onClose, onConfirm, mealTyp
 
   const renderPhotoTab = () => (
     <div className="space-y-4">
-      <div
-        className="relative w-full aspect-video bg-bg2 rounded-xl overflow-hidden flex items-center justify-center border border-border"
-        onClick={() => fileInputRef.current?.click()}
-      >
+      <div className="relative w-full aspect-video bg-bg2 rounded-xl overflow-hidden flex items-center justify-center border border-border">
         {status === 'loading' ? (
           <div className="flex flex-col items-center gap-3">
             <Loader2 className="w-10 h-10 text-red animate-spin" />
@@ -217,7 +215,7 @@ export default function FoodRecognitionModal({ open, onClose, onConfirm, mealTyp
               <p className="text-gold text-lg font-bold mt-1">{totalCal} 大卡</p>
             </div>
             <button
-              onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click() }}
+              onClick={() => cameraInputRef.current?.click()}
               className="w-full py-2 text-sm text-blue hover:underline"
             >
               重新拍照
@@ -226,19 +224,42 @@ export default function FoodRecognitionModal({ open, onClose, onConfirm, mealTyp
         ) : (
           <div className="flex flex-col items-center gap-2 text-text2">
             <Camera className="w-12 h-12" />
-            <span className="text-sm">点击拍照或上传图片</span>
+            <span className="text-sm">拍照或上传图片识别热量</span>
             <span className="text-xs text-text3">AI 自动识别食物热量</span>
           </div>
         )}
+        {/* 拍照专用 input：capture="environment" 直接打开后置摄像头 */}
         <input
-          ref={fileInputRef}
+          ref={cameraInputRef}
           type="file"
           accept="image/*"
           capture="environment"
           className="hidden"
           onChange={handlePhotoUpload}
         />
+        {/* 相册选择专用 input：不带 capture，弹出文件/相册选择器 */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={handlePhotoUpload}
+        />
       </div>
+
+      {status !== 'loading' && (
+        <div className="flex gap-3">
+          <Button fullWidth variant="primary" onClick={() => cameraInputRef.current?.click()}>
+            <Camera className="w-4 h-4" />
+            拍照识别
+          </Button>
+          <Button fullWidth variant="secondary" onClick={() => fileInputRef.current?.click()}>
+            <ScanLine className="w-4 h-4" />
+            从相册选择
+          </Button>
+        </div>
+      )}
+
       {errorMsg && (
         <p className="text-red text-sm text-center">{errorMsg}</p>
       )}
