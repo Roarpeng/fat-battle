@@ -37,6 +37,16 @@ class ApiConfig {
   static bool get hasBaiduCredentials =>
       baiduApiKey.isNotEmpty && baiduSecretKey.isNotEmpty;
 
+  /// 百度后端代理地址（推荐方式：API Key 保存在后端 .env 中）
+  /// 真机调试用电脑局域网 IP，模拟器用 10.0.2.2
+  static const baiduProxyUrl = String.fromEnvironment(
+    'BAIDU_PROXY_URL',
+    defaultValue: 'http://192.168.50.195:7860/api/food-recognize',
+  );
+
+  /// 是否走后端代理（优先于直连）
+  static bool get useBaiduProxy => baiduProxyUrl.isNotEmpty;
+
   // ===== 薄荷健康 API =====
   /// 薄荷健康 App ID
   static const booheeAppId = String.fromEnvironment('BOOHEE_APP_ID');
@@ -59,4 +69,33 @@ class ApiConfig {
   /// FatSecret REST API 基础地址
   static const fatsecretBaseUrl =
       'https://platform.fatsecret.com/rest/server.api';
+
+  // ===== MiniCPM-V 食物识别 API =====
+  /// MiniCPM-V 后端代理地址
+  static const minicpmBaseUrl = String.fromEnvironment(
+    'MINICPM_BASE_URL',
+    defaultValue: 'http://192.168.50.195:7860/api/minicpm',
+  );
+
+  /// MiniCPM-V API Key（可选，后端代理时使用）
+  static const minicpmApiKey = String.fromEnvironment('MINICPM_API_KEY');
+
+  /// 是否已配置 MiniCPM
+  static bool get hasMiniCPMConfig => minicpmBaseUrl.isNotEmpty;
+
+  // ===== GLM 食物识别 API =====
+  /// 智谱 AI API Key（通过 --dart-define 注入）
+  static const zhipuApiKey = String.fromEnvironment('ZHIPU_API_KEY');
+
+  /// 智谱 AI API 端点
+  static const glmApiUrl = 'https://open.bigmodel.cn/api/paas/v4/chat/completions';
+
+  /// GLM 视觉模型（图片识别用）
+  static const glmVisionModel = 'glm-4.6v-flash';
+
+  /// GLM 纯文本模型（文本搜索用）
+  static const glmTextModel = 'glm-4-flash';
+
+  /// 是否已配置 GLM（只需配置 API Key）
+  static bool get hasGlmConfig => zhipuApiKey.isNotEmpty;
 }

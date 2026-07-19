@@ -170,30 +170,28 @@ class _FoodPageState extends ConsumerState<FoodPage> {
         debugInfo.writeln('保存失败: $e');
       }
 
-      // 直接调用百度API获取原始响应
+      // 使用 V2 服务（GLM-4.6V-Flash 优先，百度兜底）
       try {
-        final dishes = await BaiduFoodService().recognizeFood(
-          compressed,
-          topNum: 10,
-          filterThreshold: 0.01,
-        );
+        final tmpFile = File('${Directory.systemTemp.path}/fatbattle_photo_${DateTime.now().microsecondsSinceEpoch}.jpg');
+        await tmpFile.writeAsBytes(compressed, flush: true);
 
-        // 过滤掉"非菜"（百度API在识别不出食物时返回的特殊结果）
-        final validDishes = dishes.where((d) => d.name != '非菜').toList();
-
-        debugInfo.writeln('\n=== 百度API响应 ===');
-        debugInfo.writeln('返回结果数: ${dishes.length}');
-        debugInfo.writeln('有效结果数(排除非菜): ${validDishes.length}');
-        for (var i = 0; i < dishes.length; i++) {
-          debugInfo.writeln('${i+1}. ${dishes[i].name} '
-              '(概率:${dishes[i].probability.toStringAsFixed(4)}, '
-              '卡路里:${dishes[i].calorie})');
+        final recogResult = await FoodRecognitionServiceV2().recognize(tmpFile);
+        debugInfo.writeln('\n=== 识别结果 ===');
+        debugInfo.writeln('识别源: ${recogResult.source}');
+        debugInfo.writeln('结果数量: ${recogResult.items.length}');
+        for (var i = 0; i < recogResult.items.length; i++) {
+          final item = recogResult.items[i];
+          debugInfo.writeln('${i + 1}. ${item.name} '
+              '(卡路里:${item.calories} kcal/100g, 来源:${item.source})');
         }
+
+        try {
+          await tmpFile.delete();
+        } catch (_) {}
 
         if (mounted) {
           Navigator.of(context).pop();
-          if (validDishes.isEmpty) {
-            // 所有结果都是"非菜"，说明图片不是食物
+          if (recogResult.items.isEmpty) {
             _showDebugDialog(
               '未识别到食物',
               '所有识别服务均未识别出食物。\n\n'
@@ -206,26 +204,18 @@ class _FoodPageState extends ConsumerState<FoodPage> {
             );
             return;
           }
-          validDishes.sort((a, b) => b.probability.compareTo(a.probability));
-          final displayDishes = validDishes.take(8).toList();
-          final recogResults = displayDishes.map((dish) => RecognizedFood(
-            name: dish.name,
-            calories: dish.calorie.round(),
-            source: '百度',
-            thumbUrl: dish.baikeImageUrl,
-          )).toList();
+          final displayItems = recogResult.items.take(8).toList();
           _showFoodConfirmDialog(
-            recogResults,
+            displayItems,
             '拍照识别结果',
-            topDishes: displayDishes,
           );
         }
       } catch (e) {
-        debugInfo.writeln('\n=== 百度API错误 ===');
+        debugInfo.writeln('\n=== 识别错误 ===');
         debugInfo.writeln('错误: $e');
         if (mounted) {
           Navigator.of(context).pop();
-          _showDebugDialog('百度API调用失败', debugInfo.toString());
+          _showDebugDialog('识别失败', debugInfo.toString());
         }
       }
     } catch (e) {
@@ -326,9 +316,20 @@ class _FoodPageState extends ConsumerState<FoodPage> {
                       searching = false;
                     });
                   }
-                } catch (_) {
+                } catch (e) {
+                  debugPrint('搜索失败: $e');
                   if (context.mounted) {
-                    sb(() => searching = false);
+                    sb(() {
+                      results = [];
+                      searching = false;
+                    });
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('搜索失败: $e'),
+                        backgroundColor: Colors.red,
+                        duration: const Duration(seconds: 3),
+                      ),
+                    );
                   }
                 }
               });
@@ -382,10 +383,8 @@ class _FoodPageState extends ConsumerState<FoodPage> {
                               ),
                               trailing: Text('${food.calories}', style: TextStyle(color: AppColors.gold, fontWeight: FontWeight.bold)),
                               onTap: () {
-                                final gameNotifier = ref.read(gameStateProvider.notifier);
-                                gameNotifier.addFood(food.toFoodItem(meal));
                                 Navigator.of(ctx).pop();
-                                _showToast('已添加 ${food.name} 到${meal.name}');
+                                _showFoodConfirmDialog([food], '搜索结果');
                               },
                             );
                           },
@@ -838,19 +837,18 @@ class _FoodPageState extends ConsumerState<FoodPage> {
           Padding(
             padding: const EdgeInsets.only(left: 4, bottom: 4),
             child: Text(
-              '🔍 搜索结果（点击添加）',
+              '🔍 搜索结果（点击确认）',
               style: TextStyle(fontSize: 12, color: AppColors.green, fontWeight: FontWeight.bold),
             ),
           ),
           ...results.take(5).map((food) {
             return GestureDetector(
               onTap: () {
-                gameNotifier.addFood(food.toFoodItem(meal));
                 _foodNameControllers[meal]!.clear();
                 setState(() {
                   _searchResults[meal] = [];
                 });
-                _showToast('已添加 ${food.name}');
+                _showFoodConfirmDialog([food], '搜索结果');
               },
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),

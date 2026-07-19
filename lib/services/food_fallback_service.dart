@@ -3,8 +3,10 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
+import '../config/api_config.dart';
 import 'food_recognition_service.dart';
 import 'baidu_food_service.dart';
+import 'glm_food_service.dart';
 import '../constants/app_constants.dart';
 
 /// 食物识别结果
@@ -12,7 +14,7 @@ class FoodRecognitionResult {
   /// 识别出的食物列表
   final List<RecognizedFood> items;
 
-  /// 数据来源：`baidu` | `boohee` | `fatsecret` | `local`
+  /// 数据来源：`glm` | `baidu` | `boohee` | `fatsecret` | `local`
   final String source;
 
   /// 是否识别成功（即使本地兜底也视为成功）
@@ -34,17 +36,18 @@ class FoodRecognitionResult {
       'items: ${items.length})';
 }
 
-/// 三级降级链：百度 → 薄荷 → FatSecret → 本地兜底
+/// 多级降级链：GLM-4.6V-FLASH → 百度 → 本地兜底
 ///
 /// 设计说明：
-/// - 百度菜品识别是唯一支持图片直接识别的源；
-/// - 薄荷/FatSecret 仅支持文本搜索，因此用于"补全卡路里"或"作为百度失败后的过渡"；
-/// - 当百度整体失败或返回空时，直接走本地兜底。
+/// - GLM-4.6V-Flash 是首选识别源（免费多模态大模型，识别效果最佳，支持各类食物）
+/// - 百度菜品识别作为备选，在 GLM 不可用时兜底
+/// - 当所有在线识别失败时，走本地兜底保证可用性
 class FoodFallbackService {
   static final FoodFallbackService _instance = FoodFallbackService._internal();
   factory FoodFallbackService() => _instance;
   FoodFallbackService._internal();
 
+  final GlmFoodService _glm = GlmFoodService();
   final BaiduFoodService _baidu = BaiduFoodService();
   final FoodRecognitionService _legacy = FoodRecognitionService();
 
@@ -53,14 +56,51 @@ class FoodFallbackService {
     final u8 = await imageFile.readAsBytes();
     debugPrint('=== 食物识别开始 ===');
     debugPrint('图片大小: ${u8.length} 字节');
+    debugPrint('GLM 已配置: ${ApiConfig.hasGlmConfig}');
     debugPrint('百度已配置: ${_baidu.isConfigured()}');
 
-    // ===== 1. 百度菜品识别 =====
+    // ===== 1. GLM-4.6V-Flash（主源） =====
+    if (ApiConfig.hasGlmConfig) {
+      try {
+        debugPrint('开始调用 GLM-4.6V-Flash API...');
+        final glmItems = await _withRetry(
+          () => _glm.recognizeFood(u8, topNum: 5, thinking: false),
+        );
+        debugPrint('GLM API 返回: ${glmItems.length} 个结果');
+        for (var i = 0; i < glmItems.length; i++) {
+          debugPrint('结果${i + 1}: ${glmItems[i].name} '
+              '(置信度: ${glmItems[i].confidence.toStringAsFixed(3)}, '
+              '卡路里: ${glmItems[i].calorie} kcal/100g)');
+        }
+        if (glmItems.isNotEmpty) {
+          final items = glmItems
+              .map((g) => RecognizedFood(
+                    name: g.name,
+                    calories: g.calorie.round(),
+                    source: 'GLM-4.6V',
+                    description: g.description,
+                  ))
+              .toList();
+          return FoodRecognitionResult(
+            items: items,
+            source: 'glm',
+            success: true,
+          );
+        }
+        debugPrint('GLM 返回空结果，降级到百度');
+      } catch (e) {
+        debugPrint('GLM 识别失败，降级到百度: $e');
+      }
+    } else {
+      debugPrint('GLM 未配置，直接走百度');
+    }
+
+    // ===== 2. 百度菜品识别（备选） =====
     if (_baidu.isConfigured()) {
       try {
         debugPrint('开始调用百度API...');
         final dishes = await _withRetry(
-          () => _baidu.recognizeDish(
+          () => _baidu.recognizeFood(
             u8,
             topNum: 8,
             filterThreshold: 0.5,
@@ -68,7 +108,9 @@ class FoodFallbackService {
         );
         debugPrint('百度API返回: ${dishes.length} 个结果');
         for (var i = 0; i < dishes.length; i++) {
-          debugPrint('结果${i+1}: ${dishes[i].name} (置信度: ${dishes[i].probability}, 卡路里: ${dishes[i].calorie})');
+          debugPrint('结果${i + 1}: ${dishes[i].name} '
+              '(置信度: ${dishes[i].probability}, '
+              '卡路里: ${dishes[i].calorie})');
         }
         if (dishes.isNotEmpty) {
           final items = <RecognizedFood>[];
@@ -90,11 +132,10 @@ class FoodFallbackService {
       debugPrint('百度未配置，直接走本地兜底');
     }
 
-    // ===== 2-4. 百度未配置或返回空 → 本地兜底 =====
-    // 注：薄荷/FatSecret 不支持图片直接识别，
-    // 在没有百度返回名称作为查询词的情况下无法发起文本搜索，
-    // 因此直接走本地兜底。
-    return _localFallback(error: _baidu.isConfigured() ? '百度返回空' : '百度未配置');
+    // ===== 3. 本地兜底 =====
+    return _localFallback(
+      error: _baidu.isConfigured() ? '百度返回空' : '百度未配置',
+    );
   }
 
   /// 用薄荷/FatSecret 文本搜索补全百度菜品的卡路里

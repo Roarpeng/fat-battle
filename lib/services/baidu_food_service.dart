@@ -412,22 +412,26 @@ class BaiduFoodService {
     }
     debugPrint('原始尺寸: ${img.width}x${img.height}');
 
+    // 步骤0：图像增强（自适应对比度 + 锐化 + 亮度调整）
+    final enhanced = _enhanceImage(img);
+    debugPrint('图像增强完成');
+
     // 步骤1：尺寸归一化，最大边缩放到 1024px
     imgLib.Image resized;
-    if (img.width > img.height) {
-      if (img.width > 1024) {
-        resized = imgLib.copyResize(img, width: 1024);
-        debugPrint('尺寸归一化: ${img.width}x${img.height} → ${resized.width}x${resized.height}');
+    if (enhanced.width > enhanced.height) {
+      if (enhanced.width > 1024) {
+        resized = imgLib.copyResize(enhanced, width: 1024);
+        debugPrint('尺寸归一化: ${enhanced.width}x${enhanced.height} → ${resized.width}x${resized.height}');
       } else {
-        resized = img;
+        resized = enhanced;
         debugPrint('尺寸无需归一化');
       }
     } else {
-      if (img.height > 1024) {
-        resized = imgLib.copyResize(img, height: 1024);
-        debugPrint('尺寸归一化: ${img.width}x${img.height} → ${resized.width}x${resized.height}');
+      if (enhanced.height > 1024) {
+        resized = imgLib.copyResize(enhanced, height: 1024);
+        debugPrint('尺寸归一化: ${enhanced.width}x${enhanced.height} → ${resized.width}x${resized.height}');
       } else {
-        resized = img;
+        resized = enhanced;
         debugPrint('尺寸无需归一化');
       }
     }
@@ -457,6 +461,9 @@ class BaiduFoodService {
   }
 
   /// 综合识别：智能分级识别
+  ///
+  /// 优先走后端代理（API Key 保存在后端 .env，无需编译时注入）。
+  /// 如果后端代理不可用，且本地已配置 API Key，则回退到直连百度 API。
   Future<List<BaiduDishItem>> recognizeFood(
     Uint8List imageBytes, {
     int topNum = 5,
@@ -466,7 +473,136 @@ class BaiduFoodService {
       throw ArgumentError('图片字节为空');
     }
 
-    debugPrint('=== 智能分级识别开始 ===');
+    debugPrint('=== 智能识别开始 ===');
+    debugPrint('图片大小: ${imageBytes.length} 字节');
+
+    // 优先走后端代理
+    if (ApiConfig.useBaiduProxy) {
+      try {
+        debugPrint('走后端代理: ${ApiConfig.baiduProxyUrl}');
+        final items = await _recognizeViaProxy(imageBytes);
+        if (items.isNotEmpty) {
+          debugPrint('后端代理成功，返回 ${items.length} 个结果');
+          return items;
+        }
+        debugPrint('后端代理返回空结果');
+      } catch (e) {
+        debugPrint('后端代理失败: $e');
+        // 如果本地也配置了 Key，回退到直连
+        if (!ApiConfig.hasBaiduCredentials) rethrow;
+        debugPrint('回退到直连百度 API');
+      }
+    }
+
+    // 回退：直连百度 API（需要编译时注入 Key）
+    if (!ApiConfig.hasBaiduCredentials) {
+      throw Exception('百度 API 未配置：既无后端代理，也无本地凭据');
+    }
+
+    return _recognizeFoodDirect(imageBytes,
+        topNum: topNum, filterThreshold: filterThreshold);
+  }
+
+  /// 通过后端代理识别（推荐方式）
+  Future<List<BaiduDishItem>> _recognizeViaProxy(Uint8List imageBytes) async {
+    // 图片预处理：图像增强 + 压缩
+    final compressed = _preprocessForProxy(imageBytes);
+    final base64Str = base64Encode(compressed);
+    debugPrint('后端代理图片 base64 长度: ${base64Str.length}');
+
+    final response = await http
+        .post(
+          Uri.parse(ApiConfig.baiduProxyUrl),
+          headers: const {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'image': base64Str,
+            'topNum': 15,
+            'filterThreshold': 0.1,
+          }),
+        )
+        .timeout(const Duration(seconds: 30));
+
+    debugPrint('后端代理响应状态码: ${response.statusCode}');
+
+    if (response.statusCode != 200) {
+      throw Exception('后端代理 HTTP 错误: ${response.statusCode} ${response.body}');
+    }
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    if (data['success'] != true) {
+      final err = data['error']?.toString() ?? '未知错误';
+      throw Exception('后端代理失败: $err');
+    }
+
+    final items = data['items'] as List? ?? [];
+    debugPrint('后端代理返回 ${items.length} 个结果');
+
+    final result = <BaiduDishItem>[];
+    for (final item in items) {
+      if (item is Map<String, dynamic>) {
+        final name = item['name']?.toString() ?? '';
+        // 过滤"非菜"、"非果蔬食材"等无效结果
+        if (name.isEmpty || name.startsWith('非')) continue;
+
+        final probRaw = item['probability'];
+        double prob = 0;
+        if (probRaw is num) {
+          prob = probRaw.toDouble();
+        } else {
+          prob = double.tryParse(probRaw?.toString() ?? '') ?? 0;
+        }
+
+        final calRaw = item['calorie'];
+        double calorie = 0;
+        if (calRaw != null) {
+          calorie = double.tryParse(calRaw.toString()) ?? 0;
+        }
+
+        result.add(BaiduDishItem(
+          name: name,
+          calorie: calorie,
+          probability: prob,
+          hasCalorie: calorie > 0,
+        ));
+      }
+    }
+
+    // 按置信度排序
+    result.sort((a, b) => b.probability.compareTo(a.probability));
+    return result;
+  }
+
+  /// 后端代理用的简单预处理：图像增强 + 压缩
+  Uint8List _preprocessForProxy(Uint8List imageBytes) {
+    final img = imgLib.decodeImage(imageBytes);
+    if (img == null) {
+      return imageBytes; // 解码失败，返回原始数据
+    }
+
+    // 图像增强
+    final enhanced = _enhanceImage(img);
+
+    // 尺寸归一化到最大 1280px
+    imgLib.Image resized = enhanced;
+    if (enhanced.width > 1280 || enhanced.height > 1280) {
+      if (enhanced.width > enhanced.height) {
+        resized = imgLib.copyResize(enhanced, width: 1280);
+      } else {
+        resized = imgLib.copyResize(enhanced, height: 1280);
+      }
+    }
+
+    // 压缩到 3MB 以下
+    return _compressToTarget(resized, targetBytes: 3 * 1024 * 1024);
+  }
+
+  /// 直连百度 API 的识别逻辑（需要编译时注入 Key）
+  Future<List<BaiduDishItem>> _recognizeFoodDirect(
+    Uint8List imageBytes, {
+    int topNum = 5,
+    double filterThreshold = 0.5,
+  }) async {
+    debugPrint('=== 直连百度 API 智能分级识别 ===');
 
     // 预处理
     final preprocessed = _preprocessImage(imageBytes);
@@ -739,6 +875,120 @@ class BaiduFoodService {
   }
 
   /// 自动裁剪边缘纯色/暗边区域
+  /// 图像增强：自适应对比度 + 锐化 + 亮度调整
+  ///
+  /// 针对食物识别场景优化：
+  /// 1. 自动亮度调整（过暗/过亮的图片）
+  /// 2. 对比度增强（突出食物纹理）
+  /// 3. 轻度锐化（提升边缘清晰度）
+  imgLib.Image _enhanceImage(imgLib.Image src) {
+    final w = src.width;
+    final h = src.height;
+
+    // 1. 计算平均亮度
+    int totalLuminance = 0;
+    int pixelCount = 0;
+    final step = (w * h > 10000) ? ((w * h) ~/ 10000) : 1;
+    for (int y = 0; y < h; y += step) {
+      for (int x = 0; x < w; x += step) {
+        final p = src.getPixel(x, y);
+        final r = p.r.toInt();
+        final g = p.g.toInt();
+        final b = p.b.toInt();
+        final lum = (0.299 * r + 0.587 * g + 0.114 * b).round();
+        totalLuminance += lum;
+        pixelCount++;
+      }
+    }
+    final avgLum = totalLuminance / pixelCount;
+    debugPrint('平均亮度: ${avgLum.toStringAsFixed(1)} (0-255)');
+
+    // 2. 亮度调整：太暗提亮，太亮压暗
+    double brightness = 0;
+    if (avgLum < 80) {
+      brightness = (80 - avgLum) * 0.5; // 过暗提亮
+      debugPrint('图片偏暗，增加亮度: ${brightness.toStringAsFixed(1)}');
+    } else if (avgLum > 200) {
+      brightness = (200 - avgLum) * 0.3; // 过亮压暗
+      debugPrint('图片偏亮，降低亮度: ${brightness.toStringAsFixed(1)}');
+    }
+
+    // 3. 对比度增强
+    double contrast = 1.15; // 轻微增强对比度
+    if (avgLum < 100 || avgLum > 220) {
+      contrast = 1.25; // 极端情况增强更多
+    }
+    debugPrint('对比度增强: ${contrast.toStringAsFixed(2)}x');
+
+    // 4. 应用亮度和对比度调整
+    final adjusted = imgLib.Image(width: w, height: h);
+    for (int y = 0; y < h; y++) {
+      for (int x = 0; x < w; x++) {
+        final p = src.getPixel(x, y);
+        var r = p.r.toDouble();
+        var g = p.g.toDouble();
+        var b = p.b.toDouble();
+
+        // 对比度调整（以128为中心）
+        r = ((r - 128) * contrast + 128 + brightness);
+        g = ((g - 128) * contrast + 128 + brightness);
+        b = ((b - 128) * contrast + 128 + brightness);
+
+        // 裁剪到 0-255
+        r = r.clamp(0, 255);
+        g = g.clamp(0, 255);
+        b = b.clamp(0, 255);
+
+        adjusted.setPixelRgb(x, y, r, g, b);
+      }
+    }
+
+    // 5. 轻度锐化（Unsharp Mask 简化版）
+    // 使用 3x3 卷积核做轻度锐化
+    final sharpened = imgLib.Image(width: w, height: h);
+    final kernel = [
+      0.0, -0.5, 0.0,
+      -0.5, 3.0, -0.5,
+      0.0, -0.5, 0.0,
+    ];
+    const kSize = 3;
+    const kHalf = kSize ~/ 2;
+
+    for (int y = 0; y < h; y++) {
+      for (int x = 0; x < w; x++) {
+        if (x < kHalf || x >= w - kHalf || y < kHalf || y >= h - kHalf) {
+          // 边界像素直接复制
+          final p = adjusted.getPixel(x, y);
+          sharpened.setPixel(x, y, p);
+          continue;
+        }
+
+        double r = 0, g = 0, b = 0;
+        for (int ky = 0; ky < kSize; ky++) {
+          for (int kx = 0; kx < kSize; kx++) {
+            final px = x + kx - kHalf;
+            final py = y + ky - kHalf;
+            final p = adjusted.getPixel(px, py);
+            final k = kernel[ky * kSize + kx];
+            r += p.r * k;
+            g += p.g * k;
+            b += p.b * k;
+          }
+        }
+
+        sharpened.setPixelRgb(
+          x, y,
+          r.clamp(0, 255),
+          g.clamp(0, 255),
+          b.clamp(0, 255),
+        );
+      }
+    }
+
+    debugPrint('图像增强完成（亮度+对比度+锐化）');
+    return sharpened;
+  }
+
   imgLib.Image _autoCropBorders(imgLib.Image img) {
     final w = img.width;
     final h = img.height;
