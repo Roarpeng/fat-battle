@@ -101,53 +101,18 @@ class GlmFoodService {
   /// 推荐长边尺寸（GLM-4.6V-Flash 视觉模型在 1024-1280px 范围识别效果最佳）
   static const _targetLongEdge = 1280;
 
-  /// 是否配置了 API Key
-  bool get isConfigured => ApiConfig.zhipuApiKey.isNotEmpty;
+  /// 是否可用：后端代理 或 直连 API Key
+  bool get isConfigured => ApiConfig.hasGlmConfig;
 
-  /// 食物识别系统提示词
+  /// 食物识别系统提示词（直连备用）
   static const String _systemPrompt = '''你是专业的食物识别和营养分析专家。请识别图片中的食物，返回结构化 JSON 结果。
 
 【重要】只输出 JSON，不要有任何其他文字、解释或代码块标记。
 
 【输出格式】
-{
-  "items": [
-    {
-      "name": "食物名称",
-      "calorie": 每100克卡路里数值,
-      "confidence": 置信度0-1,
-      "category": "食物类别",
-      "description": "简短描述"
-    }
-  ]
-}
+{"items":[{"name":"食物名称","calorie":每100克卡路里数值,"confidence":置信度0-1,"category":"食物类别","description":"简短描述"}]}
 
-【食物分类】
-主食、蔬菜、水果、肉类、蛋奶、零食、饮品、快餐、其他
-
-【卡路里参考（每100g）】
-主食类：米饭116、馒头221、面条109、饺子240、包子227、面包312、煎饼336
-蔬菜类：白菜17、西兰花36、番茄20、黄瓜16、胡萝卜37、土豆77、菠菜24
-水果类：苹果52、香蕉89、橙子47、葡萄69、西瓜30、草莓32、梨44
-肉类：猪肉143、牛肉125、鸡肉165、鱼肉113、羊肉203、鸭肉240
-蛋奶类：鸡蛋143、牛奶54、酸奶72、奶酪328、豆腐70
-零食类：薯片536、巧克力546、饼干433、蛋糕347、冰淇淋207
-饮品类：可乐43、果汁54、奶茶80、咖啡2、啤酒43
-快餐类：汉堡295、薯条298、披萨266、炸鸡240
-
-【置信度判定标准】
-0.9-1.0：非常确定，特征清晰明显
-0.7-0.89：比较确定，有一些不确定因素
-0.5-0.69：一般确定，可能是也可能不是
-0.3-0.49：不太确定，特征模糊
-<0.3：非常不确定，可能误判
-
-【要求】
-1. 识别图片中所有可辨识的食物
-2. 置信度低于 0.3 的不要返回
-3. calorie 填每100克的卡路里数值（千卡kcal）
-4. name 用中文
-5. category 从上面分类中选一个最贴切的''';
+【要求】name用中文；calorie为每100g千卡；置信度低于0.3不要返回；最多识别清晰可见的食物。''';
 
   /// 识别食物
   ///
@@ -168,173 +133,209 @@ class GlmFoodService {
       throw ArgumentError('图片过大，不能超过 10MB（当前 ${imageBytes.length} 字节）');
     }
     if (!isConfigured) {
-      throw Exception('GLM API Key 未配置');
+      throw Exception('GLM 未配置（需后端代理或 ZHIPU_API_KEY）');
     }
 
     debugPrint('=== GLM-4.6V-Flash 食物识别开始 ===');
     debugPrint('原始图片大小: ${imageBytes.length} 字节');
-    debugPrint('thinking 模式: $thinking');
-    debugPrint('API 端点: ${ApiConfig.glmApiUrl}');
-    debugPrint('模型: ${ApiConfig.glmVisionModel}');
+    debugPrint('直连模式: ${ApiConfig.zhipuApiKey.isNotEmpty}');
 
     final preprocessed = _preprocessImage(imageBytes);
     final base64Str = base64Encode(preprocessed);
     debugPrint('预处理后大小: ${preprocessed.length} 字节');
-    debugPrint('base64 长度: ${base64Str.length}');
 
-    try {
-      final userContent = [
-        {
-          'type': 'image_url',
-          'image_url': {
-            'url': 'data:image/jpeg;base64,$base64Str',
-          },
-        },
-        {
-          'type': 'text',
-          'text':
-              '请识别这张图片中的食物，返回最多 $topNum 个结果。只输出 JSON。',
-        },
-      ];
-
-      final requestBody = <String, dynamic>{
-        'model': ApiConfig.glmVisionModel,
-        'messages': [
-          {'role': 'system', 'content': _systemPrompt},
-          {'role': 'user', 'content': userContent},
-        ],
-        'temperature': 0.3,
-        'max_tokens': 2048,
-      };
-
-      if (thinking) {
-        requestBody['do_sample'] = true;
-      }
-
-      debugPrint('发送请求到 GLM API...');
-      final t0 = DateTime.now().millisecondsSinceEpoch;
-
-      final response = await http
-          .post(
-            Uri.parse(ApiConfig.glmApiUrl),
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': 'Bearer ${ApiConfig.zhipuApiKey}',
-            },
-            body: jsonEncode(requestBody),
-          )
-          .timeout(_timeout);
-
-      final elapsed = DateTime.now().millisecondsSinceEpoch - t0;
-      debugPrint('响应状态码: ${response.statusCode} (耗时 ${elapsed}ms)');
-
-      if (response.statusCode != 200) {
-        debugPrint('HTTP错误响应: ${response.body}');
-        throw Exception(
-            'GLM 识别 HTTP 错误: ${response.statusCode} ${response.body}');
-      }
-
-      final Map<String, dynamic> data;
-      try {
-        data = jsonDecode(response.body) as Map<String, dynamic>;
-      } catch (e) {
-        debugPrint('响应解析失败: $e');
-        throw Exception('GLM 响应解析失败: $e');
-      }
-
-      // 解析 usage 信息
-      final usage = data['usage'] as Map<String, dynamic>?;
-      if (usage != null) {
-        debugPrint(
-          'Token 用量: prompt=${usage['prompt_tokens']}, '
-          'completion=${usage['completion_tokens']}, '
-          'total=${usage['total_tokens']}',
-        );
-      }
-
-      // 提取内容
-      final choices = data['choices'];
-      if (choices is! List || choices.isEmpty) {
-        debugPrint('choices 为空或格式错误');
-        return const [];
-      }
-
-      final message = choices[0]['message'] as Map<String, dynamic>?;
-      final content = message?['content']?.toString() ?? '';
-      debugPrint('原始响应内容长度: ${content.length}');
-
-      if (content.isEmpty) {
-        debugPrint('响应内容为空');
-        return const [];
-      }
-
-      // 从内容中提取 JSON（兼容可能的 markdown 代码块包裹）
-      final jsonStr = _extractJson(content);
-      if (jsonStr == null) {
-        debugPrint('无法从响应中提取 JSON');
-        debugPrint('内容预览: ${content.substring(0, content.length > 200 ? 200 : content.length)}');
-        return const [];
-      }
-
-      final Map<String, dynamic> resultData;
-      try {
-        resultData = jsonDecode(jsonStr) as Map<String, dynamic>;
-      } catch (e) {
-        debugPrint('JSON 解析失败: $e');
-        return const [];
-      }
-
-      final resultList = resultData['items'];
-      if (resultList is! List) {
-        debugPrint('items 不是 List: ${resultList.runtimeType}');
-        return const [];
-      }
-
-      final items = <GlmFoodItem>[];
-      for (final item in resultList) {
-        if (item is Map<String, dynamic>) {
-          final foodItem = GlmFoodItem.fromJson(item);
-          // 置信度过滤：低于 0.3 的丢弃
-          if (foodItem.confidence >= 0.3) {
-            items.add(foodItem);
-          }
-        }
-      }
-
-      debugPrint('识别结果数量: ${items.length}');
-      for (var i = 0; i < items.length; i++) {
-        debugPrint('结果${i + 1}: ${items[i].name} '
-            '(置信度: ${items[i].confidence.toStringAsFixed(3)}, '
-            '卡路里: ${items[i].calorie} kcal/100g, '
-            '类别: ${items[i].category ?? 'N/A'})');
-      }
-
-      return items;
-    } on TimeoutException {
-      debugPrint('识别请求超时（${_timeout.inSeconds}s）');
-      throw Exception('GLM 识别请求超时');
-    } catch (e, stack) {
-      debugPrint('识别请求失败: $e');
-      debugPrint('堆栈: $stack');
-      rethrow;
+    // 当前阶段：优先 App 直连智谱；仅当无 Key 且显式配置了代理时才走代理
+    if (ApiConfig.zhipuApiKey.isNotEmpty) {
+      return _recognizeDirect(base64Str, topNum: topNum, thinking: thinking);
     }
+    if (ApiConfig.useGlmProxy) {
+      return _recognizeViaProxy(base64Str, topNum: topNum, thinking: thinking);
+    }
+    throw Exception('GLM 未配置（需 ZHIPU_API_KEY）');
+  }
+
+  Future<List<GlmFoodItem>> _recognizeViaProxy(
+    String base64Str, {
+    required int topNum,
+    required bool thinking,
+  }) async {
+    final url = '${ApiConfig.glmProxyBaseUrl}/recognize';
+    debugPrint('GLM 代理识别: $url');
+    final t0 = DateTime.now().millisecondsSinceEpoch;
+    final response = await http
+        .post(
+          Uri.parse(url),
+          headers: const {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'image': base64Str,
+            'topNum': topNum,
+            'thinking': thinking,
+          }),
+        )
+        .timeout(_timeout);
+    debugPrint(
+        '代理响应: ${response.statusCode} (${DateTime.now().millisecondsSinceEpoch - t0}ms)');
+
+    if (response.statusCode != 200) {
+      throw Exception('GLM 代理 HTTP ${response.statusCode}: ${response.body}');
+    }
+
+    final data = jsonDecode(response.body);
+    if (data is! Map) {
+      throw Exception('GLM 代理响应格式错误');
+    }
+    final map = Map<String, dynamic>.from(data);
+    if (map['success'] != true) {
+      throw Exception(map['error']?.toString() ?? 'GLM 代理失败');
+    }
+    return _parseItemsList(map['items'], topNum: topNum);
+  }
+
+  Future<List<GlmFoodItem>> _recognizeDirect(
+    String base64Str, {
+    required int topNum,
+    required bool thinking,
+  }) async {
+    if (ApiConfig.zhipuApiKey.isEmpty) {
+      throw Exception('GLM API Key 未配置');
+    }
+
+    debugPrint('API 端点: ${ApiConfig.glmApiUrl}');
+    debugPrint('模型: ${ApiConfig.glmVisionModel}');
+
+    final userContent = [
+      {
+        'type': 'image_url',
+        'image_url': {'url': 'data:image/jpeg;base64,$base64Str'},
+      },
+      {
+        'type': 'text',
+        'text': '请识别这张图片中的食物，返回最多 $topNum 个结果。只输出 JSON。',
+      },
+    ];
+
+    final requestBody = <String, dynamic>{
+      'model': ApiConfig.glmVisionModel,
+      'messages': [
+        {'role': 'system', 'content': _systemPrompt},
+        {'role': 'user', 'content': userContent},
+      ],
+      'temperature': 0.3,
+      'max_tokens': 2048,
+    };
+    if (thinking) {
+      requestBody['do_sample'] = true;
+    }
+
+    final t0 = DateTime.now().millisecondsSinceEpoch;
+    final response = await http
+        .post(
+          Uri.parse(ApiConfig.glmApiUrl),
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ${ApiConfig.zhipuApiKey}',
+          },
+          body: jsonEncode(requestBody),
+        )
+        .timeout(_timeout);
+
+    debugPrint(
+        '直连响应: ${response.statusCode} (${DateTime.now().millisecondsSinceEpoch - t0}ms)');
+
+    if (response.statusCode != 200) {
+      throw Exception('GLM 识别 HTTP 错误: ${response.statusCode} ${response.body}');
+    }
+
+    final data = jsonDecode(response.body);
+    if (data is! Map) throw Exception('GLM 响应解析失败');
+    final map = Map<String, dynamic>.from(data);
+
+    final usage = map['usage'];
+    if (usage is Map) {
+      debugPrint(
+        'Token 用量: prompt=${usage['prompt_tokens']}, '
+        'completion=${usage['completion_tokens']}, '
+        'total=${usage['total_tokens']}',
+      );
+    }
+
+    final choices = map['choices'];
+    if (choices is! List || choices.isEmpty) return const [];
+    final message = choices[0] is Map ? Map<String, dynamic>.from(choices[0] as Map)['message'] : null;
+    final content = message is Map ? message['content']?.toString() ?? '' : '';
+    if (content.isEmpty) return const [];
+
+    final jsonStr = _extractJson(content);
+    if (jsonStr == null) {
+      debugPrint('无法从响应中提取 JSON');
+      return const [];
+    }
+    final resultData = jsonDecode(jsonStr);
+    if (resultData is! Map) return const [];
+    return _parseItemsList(
+      Map<String, dynamic>.from(resultData)['items'],
+      topNum: topNum,
+    );
   }
 
   /// 文本搜索食物（纯文本模式，无需图片）
-  ///
-  /// 用于条码号查询、关键词搜索等场景，让 GLM 根据文字描述
-  /// 推断最可能的食物及其营养信息。
   Future<List<GlmFoodItem>> searchFoodByText(
     String query, {
     int topNum = 3,
   }) async {
     if (query.trim().isEmpty) return const [];
     if (!isConfigured) {
-      throw Exception('GLM API Key 未配置');
+      throw Exception('GLM 未配置（需后端代理或 ZHIPU_API_KEY）');
     }
 
-    debugPrint('=== GLM-4.6V-Flash 文本搜索食物 ===');
+    debugPrint('=== GLM 文本搜索食物 ===');
     debugPrint('查询词: $query');
+    debugPrint('直连模式: ${ApiConfig.zhipuApiKey.isNotEmpty}');
+
+    if (ApiConfig.zhipuApiKey.isNotEmpty) {
+      return _searchDirect(query, topNum: topNum);
+    }
+    if (ApiConfig.useGlmProxy) {
+      return _searchViaProxy(query, topNum: topNum);
+    }
+    throw Exception('GLM 未配置（需 ZHIPU_API_KEY）');
+  }
+
+  Future<List<GlmFoodItem>> _searchViaProxy(
+    String query, {
+    required int topNum,
+  }) async {
+    final url = '${ApiConfig.glmProxyBaseUrl}/search';
+    debugPrint('GLM 代理搜索: $url');
+    final response = await http
+        .post(
+          Uri.parse(url),
+          headers: const {'Content-Type': 'application/json'},
+          body: jsonEncode({'query': query, 'topNum': topNum}),
+        )
+        .timeout(const Duration(seconds: 30));
+
+    debugPrint('代理搜索响应: ${response.statusCode}');
+    if (response.statusCode != 200) {
+      throw Exception('GLM 代理搜索 HTTP ${response.statusCode}: ${response.body}');
+    }
+
+    final data = jsonDecode(response.body);
+    if (data is! Map) throw Exception('GLM 代理搜索响应格式错误');
+    final map = Map<String, dynamic>.from(data);
+    if (map['success'] != true) {
+      throw Exception(map['error']?.toString() ?? 'GLM 代理搜索失败');
+    }
+    return _parseItemsList(map['items'], topNum: topNum);
+  }
+
+  Future<List<GlmFoodItem>> _searchDirect(
+    String query, {
+    required int topNum,
+  }) async {
+    if (ApiConfig.zhipuApiKey.isEmpty) {
+      throw Exception('GLM API Key 未配置');
+    }
 
     final systemPrompt = '''你是一个食物搜索引擎。用户输入关键词，你必须搜索并返回最匹配的食物。
 
@@ -353,101 +354,83 @@ JSON格式：
 
 最多返回$topNum个结果，置信度低于0.3的不返回。''';
 
-    try {
-      final requestBody = <String, dynamic>{
-        'model': ApiConfig.glmTextModel,
-        'messages': [
-          {'role': 'system', 'content': systemPrompt},
-          {'role': 'user', 'content': '搜索：$query'},
-        ],
-        'temperature': 0.1,
-        'max_tokens': 1024,
-      };
+    final requestBody = <String, dynamic>{
+      'model': ApiConfig.glmTextModel,
+      'messages': [
+        {'role': 'system', 'content': systemPrompt},
+        {'role': 'user', 'content': '搜索：$query'},
+      ],
+      'temperature': 0.1,
+      'max_tokens': 1024,
+    };
 
-      debugPrint('发送文本搜索请求到 GLM API...');
-      final t0 = DateTime.now().millisecondsSinceEpoch;
+    final response = await http
+        .post(
+          Uri.parse(ApiConfig.glmApiUrl),
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ${ApiConfig.zhipuApiKey}',
+          },
+          body: jsonEncode(requestBody),
+        )
+        .timeout(const Duration(seconds: 30));
 
-      final response = await http
-          .post(
-            Uri.parse(ApiConfig.glmApiUrl),
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': 'Bearer ${ApiConfig.zhipuApiKey}',
-            },
-            body: jsonEncode(requestBody),
-          )
-          .timeout(const Duration(seconds: 30));
-
-      final elapsed = DateTime.now().millisecondsSinceEpoch - t0;
-      debugPrint('响应状态码: ${response.statusCode} (耗时 ${elapsed}ms)');
-
-      if (response.statusCode != 200) {
-        debugPrint('HTTP错误响应: ${response.body}');
-        throw Exception('GLM 文本搜索 HTTP 错误: ${response.statusCode}');
-      }
-
-      final Map<String, dynamic> data;
-      try {
-        data = jsonDecode(response.body) as Map<String, dynamic>;
-      } catch (e) {
-        debugPrint('响应解析失败: $e');
-        throw Exception('GLM 响应解析失败: $e');
-      }
-
-      final choices = data['choices'];
-      if (choices is! List || choices.isEmpty) {
-        return const [];
-      }
-
-      final message = choices[0]['message'] as Map<String, dynamic>?;
-      final content = message?['content']?.toString() ?? '';
-      debugPrint('原始响应内容长度: ${content.length}');
-
-      if (content.isEmpty) return const [];
-
-      final jsonStr = _extractJson(content);
-      if (jsonStr == null) {
-        debugPrint('无法从响应中提取 JSON');
-        return const [];
-      }
-
-      final Map<String, dynamic> resultData;
-      try {
-        resultData = jsonDecode(jsonStr) as Map<String, dynamic>;
-      } catch (e) {
-        debugPrint('JSON 解析失败: $e');
-        return const [];
-      }
-
-      final resultList = resultData['items'];
-      if (resultList is! List) return const [];
-
-      final items = <GlmFoodItem>[];
-      for (final item in resultList) {
-        if (item is Map<String, dynamic>) {
-          final foodItem = GlmFoodItem.fromJson(item);
-          if (foodItem.confidence >= 0.3) {
-            items.add(foodItem);
-          }
-        }
-      }
-
-      debugPrint('文本搜索结果数量: ${items.length}');
-      for (var i = 0; i < items.length; i++) {
-        debugPrint('结果${i + 1}: ${items[i].name} '
-            '(置信度: ${items[i].confidence.toStringAsFixed(3)}, '
-            '卡路里: ${items[i].calorie} kcal/100g)');
-      }
-
-      return items;
-    } on TimeoutException {
-      debugPrint('文本搜索请求超时');
-      throw Exception('GLM 文本搜索请求超时');
-    } catch (e, stack) {
-      debugPrint('文本搜索请求失败: $e');
-      debugPrint('堆栈: $stack');
-      rethrow;
+    if (response.statusCode != 200) {
+      throw Exception('GLM 文本搜索 HTTP 错误: ${response.statusCode}');
     }
+
+    final data = jsonDecode(response.body);
+    if (data is! Map) throw Exception('GLM 响应解析失败');
+    final map = Map<String, dynamic>.from(data);
+    final choices = map['choices'];
+    if (choices is! List || choices.isEmpty) return const [];
+    final first = choices[0];
+    final message = first is Map ? first['message'] : null;
+    final content = message is Map ? message['content']?.toString() ?? '' : '';
+    if (content.isEmpty) return const [];
+
+    final jsonStr = _extractJson(content);
+    if (jsonStr == null) return const [];
+    final resultData = jsonDecode(jsonStr);
+    if (resultData is! Map) return const [];
+    return _parseItemsList(
+      Map<String, dynamic>.from(resultData)['items'],
+      topNum: topNum,
+    );
+  }
+
+  List<GlmFoodItem> _parseItemsList(dynamic resultList, {required int topNum}) {
+    if (resultList is! List) return const [];
+    final items = <GlmFoodItem>[];
+    for (final item in resultList) {
+      if (item is! Map) continue;
+      final foodItem = GlmFoodItem.fromJson(Map<String, dynamic>.from(item));
+      if (foodItem.name.isEmpty) continue;
+      if (foodItem.confidence > 0 && foodItem.confidence < 0.3) continue;
+      // 代理/模型偶发省略 confidence：有名称则保留，默认置信度在 fromJson 为 0
+      if (foodItem.confidence == 0) {
+        items.add(GlmFoodItem(
+          name: foodItem.name,
+          calorie: foodItem.calorie,
+          confidence: 0.7,
+          hasCalorie: foodItem.hasCalorie,
+          category: foodItem.category,
+          description: foodItem.description,
+        ));
+      } else {
+        items.add(foodItem);
+      }
+      if (items.length >= topNum) break;
+    }
+    debugPrint('解析结果数量: ${items.length}');
+    for (var i = 0; i < items.length; i++) {
+      debugPrint(
+        '结果${i + 1}: ${items[i].name} '
+        '(置信度: ${items[i].confidence.toStringAsFixed(3)}, '
+        '卡路里: ${items[i].calorie} kcal/100g)',
+      );
+    }
+    return items;
   }
 
   /// 从响应文本中提取 JSON 对象

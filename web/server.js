@@ -242,6 +242,43 @@ async function handleGlmApi(req, res, urlPath) {
     return true
   }
 
+  if (urlPath === '/api/glm/search' && req.method === 'POST') {
+    try {
+      const payload = await readJsonBody(req)
+      const { query, topNum } = payload
+      if (!query || typeof query !== 'string' || !query.trim()) {
+        sendJson(res, 400, {
+          success: false,
+          error: '缺少 query 字段',
+          code: 'INVALID_QUERY',
+        })
+        return true
+      }
+
+      console.log(`[GLM] 文本搜索: query="${query}", topNum=${topNum}`)
+      const t0 = Date.now()
+      const result = await glmClient.searchFoodByText(query, { topNum })
+      console.log(
+        `[GLM] 搜索完成: ${result.items.length} 个结果, 耗时=${Date.now() - t0}ms`
+      )
+      sendJson(res, 200, {
+        success: true,
+        items: result.items,
+        source: 'glm',
+        model: result.model,
+        usage: result.usage,
+      })
+    } catch (err) {
+      console.error(`[GLM] 搜索失败:`, err?.message ?? err)
+      sendJson(res, 500, {
+        success: false,
+        error: err?.message ?? '搜索失败',
+        code: 'GLM_SEARCH_ERROR',
+      })
+    }
+    return true
+  }
+
   return false
 }
 

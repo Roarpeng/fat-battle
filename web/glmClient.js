@@ -217,4 +217,83 @@ export class GlmClient {
       usage: data.usage,
     }
   }
+
+  /**
+   * 文本搜索食物（纯文本模型）
+   * @param {string} query
+   * @param {object} [options]
+   * @param {number} [options.topNum]
+   */
+  async searchFoodByText(query, options = {}) {
+    if (!this.isConfigured()) {
+      throw new Error('GLM API Key 未配置（ZHIPU_API_KEY）')
+    }
+    const q = String(query ?? '').trim()
+    if (!q) {
+      return { success: true, items: [], model: process.env.GLM_TEXT_MODEL || 'glm-4-flash' }
+    }
+
+    const topNum = options.topNum ?? 5
+    const textModel = process.env.GLM_TEXT_MODEL || 'glm-4-flash'
+
+    const systemPrompt = `你是一个食物搜索引擎。用户输入关键词，你必须搜索并返回最匹配的食物。
+规则：
+1. 只输出JSON，禁止输出任何其他文字、解释、markdown标记
+2. 将用户输入视为食物搜索关键词
+3. 错别字自动纠正
+4. 无法匹配时返回 {"items": []}
+JSON格式：
+{"items":[{"name":"食物中文名","calorie":每100克卡路里数值,"confidence":0到1,"category":"主食/蔬菜/水果/肉类/蛋奶/零食/饮品/快餐/其他","description":"简短描述"}]}
+最多返回${topNum}个结果。`
+
+    const payload = {
+      model: textModel,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: `搜索：${q}` },
+      ],
+      temperature: 0.1,
+      max_tokens: 1024,
+    }
+
+    const resp = await fetch(`${this.baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${this.apiKey}`,
+      },
+      body: JSON.stringify(payload),
+    })
+
+    if (!resp.ok) {
+      const errorText = await resp.text()
+      throw new Error(`GLM 搜索 API 错误：HTTP ${resp.status} - ${errorText}`)
+    }
+
+    const data = await resp.json()
+    const content = data.choices?.[0]?.message?.content ?? ''
+    const parsed = this._extractJsonFromText(content)
+
+    let items = []
+    if (parsed && Array.isArray(parsed.items)) {
+      items = parsed.items
+        .map((item) => ({
+          name: String(item.name ?? ''),
+          calorie: Number(item.calorie ?? 0),
+          confidence: Number(item.confidence ?? 0.7),
+          has_calorie: Boolean(item.has_calorie ?? (item.calorie > 0)),
+          category: item.category ? String(item.category) : undefined,
+          description: item.description ? String(item.description) : undefined,
+        }))
+        .filter((item) => item.name.trim().length > 0 && item.confidence >= 0.3)
+        .slice(0, topNum)
+    }
+
+    return {
+      success: true,
+      items,
+      model: textModel,
+      usage: data.usage,
+    }
+  }
 }

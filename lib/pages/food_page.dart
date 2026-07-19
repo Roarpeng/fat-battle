@@ -13,6 +13,7 @@ import '../models/game_models.dart';
 import '../providers/game_provider.dart';
 import '../services/food_recognition_service_v2.dart';
 import '../services/baidu_food_service.dart';
+import '../widgets/city_food_recommend_bar.dart';
 
 class FoodPage extends ConsumerStatefulWidget {
   const FoodPage({super.key});
@@ -27,13 +28,6 @@ class _FoodPageState extends ConsumerState<FoodPage> {
   final Map<MealType, List<RecognizedFood>> _searchResults = {};
   final Map<MealType, Timer?> _searchTimers = {};
   final Map<MealType, bool> _searching = {};
-
-  static final List<QuickFood> _allFoods = [
-    ...QuickFoods.breakfast,
-    ...QuickFoods.lunch,
-    ...QuickFoods.dinner,
-    ...QuickFoods.snack,
-  ];
 
   @override
   void initState() {
@@ -981,42 +975,17 @@ class _FoodPageState extends ConsumerState<FoodPage> {
   }
 
   Widget _buildQuickTags(MealType meal, GameStateNotifier gameNotifier) {
-    final quickFoods = meal == MealType.breakfast
-        ? QuickFoods.breakfast
-        : meal == MealType.lunch
-            ? QuickFoods.lunch
-            : meal == MealType.dinner
-                ? QuickFoods.dinner
-                : QuickFoods.snack;
-
-    return Wrap(
-      spacing: 6,
-      runSpacing: 6,
-      children: quickFoods.map((food) {
-        return GestureDetector(
-          onTap: () {
-            gameNotifier.addFood(FoodItem(
-              name: food.name,
-              baseCal: food.cal,
-              size: FoodSize.medium,
-              totalCal: food.cal,
-              meal: meal,
-            ));
-          },
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-            decoration: BoxDecoration(
-              color: AppColors.bg2,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: AppColors.border),
-            ),
-            child: Text(
-              '${food.name} ${food.cal}',
-              style: const TextStyle(fontSize: 12),
-            ),
-          ),
-        );
-      }).toList(),
+    return CityFoodRecommendBar(
+      meal: meal,
+      onSelect: (food) {
+        gameNotifier.addFood(FoodItem(
+          name: food.name,
+          baseCal: food.cal,
+          size: FoodSize.medium,
+          totalCal: food.cal,
+          meal: meal,
+        ));
+      },
     );
   }
 }

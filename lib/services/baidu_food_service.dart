@@ -460,10 +460,9 @@ class BaiduFoodService {
     );
   }
 
-  /// 综合识别：智能分级识别
+  /// 综合识别：App 直连百度（当前阶段不依赖后端）
   ///
-  /// 优先走后端代理（API Key 保存在后端 .env，无需编译时注入）。
-  /// 如果后端代理不可用，且本地已配置 API Key，则回退到直连百度 API。
+  /// 仅当显式配置 [ApiConfig.baiduProxyUrl] 时才走代理。
   Future<List<BaiduDishItem>> recognizeFood(
     Uint8List imageBytes, {
     int topNum = 5,
@@ -475,32 +474,20 @@ class BaiduFoodService {
 
     debugPrint('=== 智能识别开始 ===');
     debugPrint('图片大小: ${imageBytes.length} 字节');
+    debugPrint('直连凭据: ${ApiConfig.hasBaiduCredentials}');
 
-    // 优先走后端代理
+    // 当前阶段：优先直连
+    if (ApiConfig.hasBaiduCredentials) {
+      return _recognizeFoodDirect(imageBytes,
+          topNum: topNum, filterThreshold: filterThreshold);
+    }
+
     if (ApiConfig.useBaiduProxy) {
-      try {
-        debugPrint('走后端代理: ${ApiConfig.baiduProxyUrl}');
-        final items = await _recognizeViaProxy(imageBytes);
-        if (items.isNotEmpty) {
-          debugPrint('后端代理成功，返回 ${items.length} 个结果');
-          return items;
-        }
-        debugPrint('后端代理返回空结果');
-      } catch (e) {
-        debugPrint('后端代理失败: $e');
-        // 如果本地也配置了 Key，回退到直连
-        if (!ApiConfig.hasBaiduCredentials) rethrow;
-        debugPrint('回退到直连百度 API');
-      }
+      debugPrint('无直连 Key，尝试代理: ${ApiConfig.baiduProxyUrl}');
+      return _recognizeViaProxy(imageBytes);
     }
 
-    // 回退：直连百度 API（需要编译时注入 Key）
-    if (!ApiConfig.hasBaiduCredentials) {
-      throw Exception('百度 API 未配置：既无后端代理，也无本地凭据');
-    }
-
-    return _recognizeFoodDirect(imageBytes,
-        topNum: topNum, filterThreshold: filterThreshold);
+    throw Exception('百度 API 未配置（需 BAIDU_API_KEY / BAIDU_SECRET_KEY）');
   }
 
   /// 通过后端代理识别（推荐方式）
