@@ -1,6 +1,7 @@
 import type { MonsterState, Difficulty } from '../game-types'
 import { generateMonster, updateMonsterPhase } from '../game-types'
 import { analyzeUserPerformance } from '../../lib/difficultyEngine'
+import { calculateShieldFromOvereat } from '../../core/damage'
 
 function calculateSkinLevel(totalDrops: number): number {
   return Math.min(10, 1 + Math.floor(totalDrops / 8))
@@ -98,14 +99,17 @@ export const createMonsterSlice = (set: any, get: any, _api?: any): MonsterSlice
   healMonster: () =>
     set((state: any) => ({ monster: { ...state.monster, hp: state.monster.maxHp } })),
 
-  /** 暴食增加怪物护盾：过量卡路里按比例转化为护盾值 */
+  /** 暴食增加怪物护盾：过量卡路里按 10:1 比例转化为护盾值 */
   addMonsterShield: (calories: number) =>
     set((state: any) => {
       if (calories <= 0) return {}
       const monster = state.monster
-      // 转化比例：每 1 过量卡路里 = 1 点护盾（可调整）
+      // 转化比例：每 10 过量卡路里 = 1 点护盾（与 core/damage.ts calculateShieldFromOvereat 一致）
+      // 设计理由：暴食惩罚但不至于过强——高卡路里数值不会让护盾条瞬间溢出
       // maxShield 用于护盾条百分比显示，随护盾增长动态调整
-      const newShield = monster.shield + calories
+      const shieldGain = calculateShieldFromOvereat(calories)
+      if (shieldGain <= 0) return {}
+      const newShield = monster.shield + shieldGain
       const newMaxShield = Math.max(monster.maxShield, newShield)
       return {
         monster: {

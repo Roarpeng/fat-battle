@@ -286,8 +286,8 @@ class _SetupPageState extends ConsumerState<SetupPage> {
                     options: CharacterStyle.values,
                     selected: _characterStyle,
                     onSelect: (v) => setState(() => _characterStyle = v),
-                    emojis: ['🐾', '⚔️', '🧙'],
-                    labels: ['可爱萌宠', '战斗勇士', '魔法师'],
+                    emojis: ['🐾', '⚔️', '🧙', '🗡️'],
+                    labels: ['可爱萌宠', '战斗勇士', '魔法师', '刺客'],
                   ),
                 ],
               ),
@@ -471,11 +471,17 @@ class _SetupPageState extends ConsumerState<SetupPage> {
     required List<String> emojis,
     List<String>? labels,
   }) {
+    assert(emojis.length >= options.length, 'emojis 数量不能少于 options 数量');
+    assert(labels == null || labels.length >= options.length, 'labels 数量不能少于 options 数量');
+    
     return Row(
       children: List.generate(options.length, (index) {
         final option = options[index];
         final isSelected = option == selected;
-        final label = labels != null ? labels[index] : (option as dynamic).name;
+        final emoji = index < emojis.length ? emojis[index] : '❓';
+        final label = labels != null
+            ? (index < labels.length ? labels[index] : '未知')
+            : (option as dynamic).name;
         
         return Expanded(
           child: GestureDetector(

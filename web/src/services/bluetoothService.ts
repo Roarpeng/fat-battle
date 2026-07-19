@@ -1,3 +1,5 @@
+import { withRetry, withTimeout, RetryTimeoutError, type RetryOptions } from './retry'
+
 export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error' | 'reconnecting'
 
 export interface ImuData {
@@ -19,11 +21,31 @@ export interface BluetoothServiceOptions {
   onDisconnect?: () => void
   autoReconnect?: boolean
   maxReconnectAttempts?: number
+  /** GATT 连接重试次数，默认 3 */
+  connectRetries?: number
+  /** 单次 GATT 连接超时(ms)，默认 10000 */
+  connectTimeoutMs?: number
+  /** GATT 连接重试初始延迟(ms)，默认 1000 */
+  connectRetryDelay?: number
+  /** 是否启用 GATT 连接重试，默认 true */
+  enableConnectRetry?: boolean
+}
+
+/** 蓝牙不可用错误（浏览器不支持或设备不可用） */
+export class BluetoothNotAvailableError extends Error {
+  constructor(message = '蓝牙不可用') {
+    super(message)
+    this.name = 'BluetoothNotAvailableError'
+    Object.setPrototypeOf(this, BluetoothNotAvailableError.prototype)
+  }
 }
 
 const DEFAULT_SERVICE_UUID = '4fafc201-1fb5-459e-8fcc-c5c9c331914b'
-const DEFAULT_MAX_RECONNECT_ATTEMPTS = 3
+const DEFAULT_MAX_RECONNECT_ATTEMPTS = 5
 const RECONNECT_DELAY_BASE = 1000
+const DEFAULT_CONNECT_RETRIES = 3
+const DEFAULT_CONNECT_TIMEOUT_MS = 10000
+const DEFAULT_CONNECT_RETRY_DELAY = 1000
 
 declare global {
   interface Navigator {
@@ -100,6 +122,10 @@ export class BluetoothService {
   private onDisconnectCallback?: () => void
   private autoReconnect: boolean
   private maxReconnectAttempts: number
+  private connectRetries: number
+  private connectTimeoutMs: number
+  private connectRetryDelay: number
+  private enableConnectRetry: boolean
   private reconnectAttempts: number = 0
   private reconnectTimer: number | null = null
   private manuallyDisconnected: boolean = false
@@ -120,6 +146,10 @@ export class BluetoothService {
     this.onDisconnectCallback = options.onDisconnect
     this.autoReconnect = options.autoReconnect ?? true
     this.maxReconnectAttempts = options.maxReconnectAttempts ?? DEFAULT_MAX_RECONNECT_ATTEMPTS
+    this.connectRetries = options.connectRetries ?? DEFAULT_CONNECT_RETRIES
+    this.connectTimeoutMs = options.connectTimeoutMs ?? DEFAULT_CONNECT_TIMEOUT_MS
+    this.connectRetryDelay = options.connectRetryDelay ?? DEFAULT_CONNECT_RETRY_DELAY
+    this.enableConnectRetry = options.enableConnectRetry ?? true
     this.boundHandleDisconnected = this.handleDisconnected.bind(this)
     this.boundHandleValueChanged = this.handleValueChanged.bind(this)
   }
@@ -289,17 +319,8 @@ export class BluetoothService {
     try {
       this.setStatus('reconnecting')
 
-      this.server = await this.device.gatt!.connect()
-      this.service = await this.server.getPrimaryService(this.serviceUUID)
-
-      const notifyChar = await this.findNotifyCharacteristic()
-      if (!notifyChar) {
-        throw new Error('未找到可用的特征值')
-      }
-
-      this.characteristic = notifyChar
-      await notifyChar.startNotifications()
-      notifyChar.addEventListener('characteristicvaluechanged', this.boundHandleValueChanged)
+      // 复用 establishGattConnection，享受重试与超时保护
+      await this.establishGattConnection()
 
       this.reconnectAttempts = 0
       this.setStatus('connected')
@@ -365,7 +386,9 @@ export class BluetoothService {
 
   async connect(): Promise<boolean> {
     if (!this.isSupported()) {
-      const error = new Error('当前浏览器不支持 Web Bluetooth API，请使用 Chrome 或 Edge 浏览器')
+      const error = new BluetoothNotAvailableError(
+        '当前浏览器不支持 Web Bluetooth API，请使用 Chrome 或 Edge 浏览器'
+      )
       this.emitError(error)
       this.setStatus('error')
       throw error
@@ -398,7 +421,46 @@ export class BluetoothService {
       this.device = device
       device.addEventListener('gattserverdisconnected', this.boundHandleDisconnected)
 
-      this.server = await device.gatt!.connect()
+      // GATT 连接 + 服务发现 + 特征值订阅，带重试与超时
+      await this.establishGattConnection()
+
+      this.dataBuffer = []
+      this.reconnectAttempts = 0
+      this.setStatus('connected')
+      return true
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err))
+
+      // 用户取消选择设备不视为错误
+      if (error.message.includes('User cancelled') || error.message.includes('取消')) {
+        this.setStatus('disconnected')
+      } else {
+        this.setStatus('error')
+        this.emitError(error)
+      }
+
+      this.cleanup()
+      this.device = null
+      return false
+    }
+  }
+
+  /**
+   * 建立 GATT 连接并完成服务发现与特征值订阅。
+   * - 内部使用 withRetry（线性退避，connectRetries 次）
+   * - 单次尝试受 connectTimeoutMs 超时保护
+   */
+  private async establishGattConnection(): Promise<void> {
+    if (!this.device?.gatt) {
+      throw new BluetoothNotAvailableError('设备不支持 GATT 连接')
+    }
+
+    const connectFn = async (): Promise<void> => {
+      // 每次重试前清理上一次残留状态
+      this.service = null
+      this.characteristic = null
+
+      this.server = await this.device!.gatt!.connect()
       this.service = await this.server.getPrimaryService(this.serviceUUID)
 
       const notifyChar = await this.findNotifyCharacteristic()
@@ -412,6 +474,7 @@ export class BluetoothService {
         await notifyChar.startNotifications()
         notifyChar.addEventListener('characteristicvaluechanged', this.boundHandleValueChanged)
       } catch (_) {
+        // 降级：通知订阅失败时尝试读取一次
         try {
           const value = await notifyChar.readValue()
           if (value) {
@@ -422,24 +485,29 @@ export class BluetoothService {
           // ignore
         }
       }
+    }
 
-      this.dataBuffer = []
-      this.reconnectAttempts = 0
-      this.setStatus('connected')
-      return true
-    } catch (err) {
-      const error = err instanceof Error ? err : new Error(String(err))
+    const retryOptions: RetryOptions = {
+      retries: this.connectRetries,
+      delay: this.connectRetryDelay,
+      backoff: 'linear',
+      factor: 1,
+      timeout: this.connectTimeoutMs,
+      shouldRetry: (err) => {
+        // 超时与网络类错误可重试，参数/权限错误不重试
+        if (err instanceof RetryTimeoutError) return true
+        const msg = (err.message || '').toLowerCase()
+        if (msg.includes('cancel') || msg.includes('取消')) return false
+        if (msg.includes('not found') || msg.includes('未找到')) return true
+        return true
+      },
+    }
 
-      if (error.message.includes('User cancelled') || error.message.includes('取消')) {
-        this.setStatus('disconnected')
-      } else {
-        this.setStatus('error')
-        this.emitError(error)
-      }
-
-      this.cleanup()
-      this.device = null
-      return false
+    if (this.enableConnectRetry) {
+      await withRetry(connectFn, retryOptions)
+    } else {
+      // 不启用重试时仍保留单次超时保护
+      await withTimeout(connectFn, this.connectTimeoutMs, '蓝牙连接超时')
     }
   }
 

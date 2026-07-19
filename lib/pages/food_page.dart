@@ -1,13 +1,18 @@
 import 'dart:async';
+import 'dart:typed_data';
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:camera/camera.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
 import '../constants/app_constants.dart';
 import '../models/game_models.dart';
 import '../providers/game_provider.dart';
-import '../services/food_recognition_service.dart';
+import '../services/food_recognition_service_v2.dart';
+import '../services/baidu_food_service.dart';
 
 class FoodPage extends ConsumerStatefulWidget {
   const FoodPage({super.key});
@@ -84,7 +89,7 @@ class _FoodPageState extends ConsumerState<FoodPage> {
   Future<void> _doSearch(String query, MealType meal) async {
     setState(() => _searching[meal] = true);
     try {
-      final results = await FoodRecognitionService().searchByText(query);
+      final results = await FoodRecognitionServiceV2().searchByText(query);
       if (mounted) {
         setState(() {
           _searchResults[meal] = results;
@@ -98,20 +103,28 @@ class _FoodPageState extends ConsumerState<FoodPage> {
     }
   }
 
-  void _startBarcodeScan() {
+  Future<void> _startBarcodeScan() async {
+    final status = await Permission.camera.request();
+    if (!status.isGranted) {
+      _showToast('请授予摄像头权限');
+      return;
+    }
+    if (!mounted) return;
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (ctx) => _BarcodeScannerPage(
           onDetected: (barcode) async {
             Navigator.of(ctx).pop();
             _showLoading('正在查询食物信息...');
-            final results = await FoodRecognitionService().lookupByBarcode(barcode);
-            Navigator.of(context).pop();
-            if (results.isEmpty) {
-              _showToast('未找到该条形码对应的食物');
-              return;
+            final results = await FoodRecognitionServiceV2().lookupByBarcode(barcode);
+            if (mounted) {
+              Navigator.of(context).pop();
+              if (results.isEmpty) {
+                _showToast('未找到该条形码对应的食物');
+                return;
+              }
+              _showFoodConfirmDialog(results, '扫码识别结果');
             }
-            _showFoodConfirmDialog(results, '扫码识别结果');
           },
         ),
       ),
@@ -135,14 +148,85 @@ class _FoodPageState extends ConsumerState<FoodPage> {
     _showLoading('正在识别食物...');
     try {
       final bytes = await result.readAsBytes();
-      final recogResults = await FoodRecognitionService().recognizeByImage(bytes);
-      if (mounted) {
-        Navigator.of(context).pop();
-        if (recogResults.isEmpty) {
-          _showToast('未识别到食物');
-          return;
+      final compressed = await _compressImage(bytes);
+
+      // 调试信息
+      final debugInfo = StringBuffer();
+      debugInfo.writeln('=== 调试信息 ===');
+      debugInfo.writeln('原始图片: ${bytes.length} 字节');
+      debugInfo.writeln('压缩后: ${compressed.length} 字节');
+      final isJpg = compressed.length >= 2 &&
+          compressed[0] == 0xFF && compressed[1] == 0xD8;
+      debugInfo.writeln('JPG格式: $isJpg');
+      debugInfo.writeln('百度已配置: ${BaiduFoodService().isConfigured()}');
+
+      // 保存图片到Download目录便于调试
+      try {
+        final savePath = '/sdcard/Download/fatbattle_test.jpg';
+        final savedFile = File(savePath);
+        await savedFile.writeAsBytes(compressed, flush: true);
+        debugInfo.writeln('图片已保存: $savePath');
+      } catch (e) {
+        debugInfo.writeln('保存失败: $e');
+      }
+
+      // 直接调用百度API获取原始响应
+      try {
+        final dishes = await BaiduFoodService().recognizeFood(
+          compressed,
+          topNum: 10,
+          filterThreshold: 0.01,
+        );
+
+        // 过滤掉"非菜"（百度API在识别不出食物时返回的特殊结果）
+        final validDishes = dishes.where((d) => d.name != '非菜').toList();
+
+        debugInfo.writeln('\n=== 百度API响应 ===');
+        debugInfo.writeln('返回结果数: ${dishes.length}');
+        debugInfo.writeln('有效结果数(排除非菜): ${validDishes.length}');
+        for (var i = 0; i < dishes.length; i++) {
+          debugInfo.writeln('${i+1}. ${dishes[i].name} '
+              '(概率:${dishes[i].probability.toStringAsFixed(4)}, '
+              '卡路里:${dishes[i].calorie})');
         }
-        _showFoodConfirmDialog(recogResults, '拍照识别结果');
+
+        if (mounted) {
+          Navigator.of(context).pop();
+          if (validDishes.isEmpty) {
+            // 所有结果都是"非菜"，说明图片不是食物
+            _showDebugDialog(
+              '未识别到食物',
+              '所有识别服务均未识别出食物。\n\n'
+              '请尝试：\n'
+              '1. 拍一盘做好的菜（如炒菜、米饭）\n'
+              '2. 拍水果（如苹果、香蕉）\n'
+              '3. 确保食物占画面主体，对焦清晰\n'
+              '4. 或点「搜索」按钮，输入食物名称\n\n'
+              '$debugInfo'
+            );
+            return;
+          }
+          validDishes.sort((a, b) => b.probability.compareTo(a.probability));
+          final displayDishes = validDishes.take(8).toList();
+          final recogResults = displayDishes.map((dish) => RecognizedFood(
+            name: dish.name,
+            calories: dish.calorie.round(),
+            source: '百度',
+            thumbUrl: dish.baikeImageUrl,
+          )).toList();
+          _showFoodConfirmDialog(
+            recogResults,
+            '拍照识别结果',
+            topDishes: displayDishes,
+          );
+        }
+      } catch (e) {
+        debugInfo.writeln('\n=== 百度API错误 ===');
+        debugInfo.writeln('错误: $e');
+        if (mounted) {
+          Navigator.of(context).pop();
+          _showDebugDialog('百度API调用失败', debugInfo.toString());
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -152,14 +236,195 @@ class _FoodPageState extends ConsumerState<FoodPage> {
     }
   }
 
-  void _showFoodConfirmDialog(List<RecognizedFood> foods, String title) {
+  void _showDebugDialog(String title, String content) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(title),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(
+            child: SelectableText(
+              content,
+              style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('关闭'),
+          ),
+          TextButton(
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: content));
+              Navigator.of(ctx).pop();
+            },
+            child: const Text('复制'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<Uint8List> _compressImage(Uint8List bytes) async {
+    const maxSize = 3 * 1024 * 1024;
+    final isJpg = bytes.length >= 2 && bytes[0] == 0xFF && bytes[1] == 0xD8;
+
+    if (isJpg && bytes.length <= maxSize) return bytes;
+
+    try {
+      final compressed = await FlutterImageCompress.compressWithList(
+        bytes,
+        quality: 70,
+        minHeight: 1024,
+        minWidth: 1024,
+        format: CompressFormat.jpeg,
+      );
+      return compressed.length > maxSize
+          ? await FlutterImageCompress.compressWithList(
+              bytes,
+              quality: 50,
+              minHeight: 720,
+              minWidth: 720,
+              format: CompressFormat.jpeg,
+            )
+          : compressed;
+    } catch (_) {
+      return bytes;
+    }
+  }
+
+  void _showSearchDialog() {
+    final meal = _getCurrentMeal();
+    final searchController = TextEditingController();
+    List<RecognizedFood> results = [];
+    bool searching = false;
+    Timer? debounce;
+
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, sb) {
+            void doSearch(String query) {
+              debounce?.cancel();
+              if (query.trim().isEmpty) {
+                sb(() {
+                  results = [];
+                  searching = false;
+                });
+                return;
+              }
+              debounce = Timer(const Duration(milliseconds: 400), () async {
+                sb(() => searching = true);
+                try {
+                  final list = await FoodRecognitionServiceV2().searchByText(query);
+                  if (context.mounted) {
+                    sb(() {
+                      results = list;
+                      searching = false;
+                    });
+                  }
+                } catch (_) {
+                  if (context.mounted) {
+                    sb(() => searching = false);
+                  }
+                }
+              });
+            }
+
+            return AlertDialog(
+              title: const Text('🔍 搜索食物'),
+              content: SizedBox(
+                width: 300,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                      controller: searchController,
+                      autofocus: true,
+                      decoration: InputDecoration(
+                        hintText: '输入食物名称',
+                        prefixIcon: const Icon(Icons.search),
+                        suffixIcon: searching
+                            ? const Padding(
+                                padding: EdgeInsets.all(12),
+                                child: SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                ),
+                              )
+                            : null,
+                      ),
+                      onChanged: doSearch,
+                    ),
+                    const SizedBox(height: 12),
+                    if (results.isEmpty && !searching && searchController.text.isNotEmpty)
+                      const Padding(
+                        padding: EdgeInsets.all(16),
+                        child: Text('未找到相关食物', style: TextStyle(color: Colors.grey)),
+                      )
+                    else
+                      Flexible(
+                        child: ListView.builder(
+                          shrinkWrap: true,
+                          itemCount: results.length,
+                          itemBuilder: (_, i) {
+                            final food = results[i];
+                            return ListTile(
+                              dense: true,
+                              title: Text(food.name, style: const TextStyle(fontSize: 14)),
+                              subtitle: Text(
+                                '${food.calories} kcal · ${food.source}',
+                                style: TextStyle(fontSize: 11, color: AppColors.text2),
+                              ),
+                              trailing: Text('${food.calories}', style: TextStyle(color: AppColors.gold, fontWeight: FontWeight.bold)),
+                              onTap: () {
+                                final gameNotifier = ref.read(gameStateProvider.notifier);
+                                gameNotifier.addFood(food.toFoodItem(meal));
+                                Navigator.of(ctx).pop();
+                                _showToast('已添加 ${food.name} 到${meal.name}');
+                              },
+                            );
+                          },
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  child: const Text('关闭'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    ).then((_) {
+      debounce?.cancel();
+      searchController.dispose();
+    });
+  }
+
+  void _showFoodConfirmDialog(
+    List<RecognizedFood> foods,
+    String title, {
+    List<dynamic>? topDishes,
+  }) {
     final selected = <String, RecognizedFood>{};
     final portions = <String, FoodSize>{};
     for (final f in foods) {
-      selected[f.name] = f;
       portions[f.name] = FoodSize.medium;
     }
+    if (foods.isNotEmpty) {
+      selected[foods.first.name] = foods.first;
+    }
     final meal = _getCurrentMeal();
+    bool expanded = false;
 
     showDialog(
       context: context,
@@ -170,10 +435,14 @@ class _FoodPageState extends ConsumerState<FoodPage> {
             final size = portions[entry.key] ?? FoodSize.medium;
             totalCal += (entry.value.calories * size.multiplier).round();
           }
+
+          final showCount = expanded ? foods.length : (foods.length > 1 ? 1 : foods.length);
+          final hasMore = foods.length > 1;
+
           return AlertDialog(
             title: Text('🍽️ $title'),
             content: ConstrainedBox(
-              constraints: const BoxConstraints(maxHeight: 400),
+              constraints: const BoxConstraints(maxHeight: 450),
               child: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -184,10 +453,16 @@ class _FoodPageState extends ConsumerState<FoodPage> {
                       style: TextStyle(fontSize: 13, color: Colors.grey[600]),
                     ),
                     const SizedBox(height: 12),
-                    ...foods.map((food) {
+                    ...foods.asMap().entries.take(showCount).map((entry) {
+                      final idx = entry.key;
+                      final food = entry.value;
                       final checked = selected.containsKey(food.name);
                       final size = portions[food.name] ?? FoodSize.medium;
                       final cal = (food.calories * size.multiplier).round();
+                      double? probability;
+                      if (topDishes != null && idx < topDishes.length) {
+                        probability = topDishes[idx].probability as double;
+                      }
                       return Container(
                         margin: const EdgeInsets.only(bottom: 8),
                         padding: const EdgeInsets.all(8),
@@ -196,12 +471,42 @@ class _FoodPageState extends ConsumerState<FoodPage> {
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             CheckboxListTile(
-                              title: Text(food.name, style: const TextStyle(fontSize: 14)),
-                              subtitle: Text(
-                                '${food.calories} kcal/份 · ${food.source}',
-                                style: TextStyle(fontSize: 11, color: AppColors.text2),
+                              title: Text(food.name, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+                              subtitle: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    '${food.calories} kcal/份',
+                                    style: TextStyle(fontSize: 12, color: AppColors.text2),
+                                  ),
+                                  if (probability != null) ...[
+                                    const SizedBox(height: 6),
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: ClipRRect(
+                                            borderRadius: BorderRadius.circular(3),
+                                            child: LinearProgressIndicator(
+                                              value: probability.clamp(0.0, 1.0),
+                                              backgroundColor: AppColors.border,
+                                              valueColor: const AlwaysStoppedAnimation<Color>(AppColors.green),
+                                              minHeight: 6,
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          '${(probability * 100).toStringAsFixed(1)}%',
+                                          style: TextStyle(fontSize: 11, color: AppColors.green, fontWeight: FontWeight.bold),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ],
                               ),
                               value: checked,
                               dense: true,
@@ -259,6 +564,28 @@ class _FoodPageState extends ConsumerState<FoodPage> {
                         ),
                       );
                     }).toList(),
+                    if (hasMore)
+                      Center(
+                        child: TextButton(
+                          onPressed: () {
+                            expanded = !expanded;
+                            sb(() {});
+                          },
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                expanded ? '收起' : '展开更多 (${foods.length - 1}个)',
+                                style: const TextStyle(fontSize: 13),
+                              ),
+                              Icon(
+                                expanded ? Icons.expand_less : Icons.expand_more,
+                                size: 18,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
                     const SizedBox(height: 8),
                     Container(
                       padding: const EdgeInsets.all(10),
@@ -396,13 +723,7 @@ class _FoodPageState extends ConsumerState<FoodPage> {
                     label: '搜索食物',
                     sub: '名称查询',
                     color: AppColors.green,
-                    onTap: () {
-                      final meal = _getCurrentMeal();
-                      Scrollable.ensureVisible(
-                        context.findRenderObject()!,
-                        duration: const Duration(milliseconds: 300),
-                      );
-                    },
+                    onTap: _showSearchDialog,
                   ),
                 ),
               ],
@@ -784,7 +1105,7 @@ class _TakePicturePageState extends State<_TakePicturePage> {
       (c) => c.lensDirection == CameraLensDirection.back,
       orElse: () => widget.cameras.first,
     );
-    _controller = CameraController(cam, ResolutionPreset.medium, enableAudio: false);
+    _controller = CameraController(cam, ResolutionPreset.high, enableAudio: false);
     await _controller!.initialize();
     if (mounted) {
       setState(() => _isReady = true);

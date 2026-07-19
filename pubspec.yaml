@@ -32,7 +32,8 @@ dependencies:
   google_mlkit_commons: ^0.11.1
 
   # TensorFlow Lite - MoveNet 姿态估计（离线推理）
-  tflite_flutter: ^0.11.0
+  # 升级到 0.12.1：0.11.0 依赖的 tensorflow-lite 2.11.0 在 AGP 9.0 下有 namespace 冲突
+  tflite_flutter: ^0.12.1
 
   # 图表
   fl_chart: ^0.70.2
@@ -54,6 +55,13 @@ dependencies:
 
   # 网络请求（食物识别 API 调用）
   http: ^1.2.2
+
+  # 加密哈希（API 签名计算需要 md5）
+  crypto: ^3.0.3
+
+  # 图片压缩（确保百度API图片不超过4MB）
+  flutter_image_compress: ^2.1.0
+  image: ^4.0.0
 
   # 条形码扫描
   mobile_scanner: ^5.1.1

@@ -9,6 +9,7 @@ import '../providers/game_provider.dart';
 import '../services/game_algorithm.dart';
 import '../services/ble_service.dart';
 import '../services/motion_recognition.dart';
+import '../services/pose_detection_service.dart';
 
 /// 锻炼页面
 class ExercisePage extends ConsumerStatefulWidget {
@@ -24,7 +25,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
   String _exerciseMode = 'manual'; // 'manual' | 'camera' | 'imu'
   
   final MotionRecognitionService _motionService = MotionRecognitionService();
-  final CameraMotionDetector _cameraDetector = CameraMotionDetector();
+  final PoseDetectionService _cameraDetector = PoseDetectionService();
   final ScrollController _logScrollController = ScrollController();
   
   bool _isDetecting = false;
@@ -38,7 +39,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
   int _cameraRepCount = 0;
   String _cameraFeedback = '准备开始';
   double _motionLevel = 0;
-  double _sensitivity = 15.0;
+  double _sensitivity = 0.5;
   DateTime? _cameraStartTime;
   
   @override
@@ -526,6 +527,16 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
               '已选择: ${exercise.emoji} ${exercise.name}',
               style: const TextStyle(fontWeight: FontWeight.bold),
             ),
+            const SizedBox(height: 8),
+            Text(
+              '💡 请将手机后置摄像头对准身体侧面',
+              style: TextStyle(fontSize: 12, color: AppColors.text2),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '保持全身入镜，距离手机 2-3 米',
+              style: TextStyle(fontSize: 12, color: AppColors.text2),
+            ),
             const SizedBox(height: 12),
             ElevatedButton(
               onPressed: _startDetection,
@@ -673,7 +684,16 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
               child: _cameraReady && _cameraDetector.controller != null
                   ? ClipRRect(
                       borderRadius: BorderRadius.circular(12),
-                      child: CameraPreview(_cameraDetector.controller!),
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          Transform.scale(
+                            scaleX: -1.0,
+                            child: CameraPreview(_cameraDetector.controller!),
+                          ),
+                          _buildActionGuideOverlay(),
+                        ],
+                      ),
                     )
                   : Center(
                       child: Column(
@@ -785,17 +805,17 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
                         style: TextStyle(color: AppColors.text2, fontSize: 12),
                       ),
                       Text(
-                        _sensitivity.toStringAsFixed(1),
+                        _sensitivity.toStringAsFixed(2),
                         style: TextStyle(color: AppColors.text2, fontSize: 12),
                       ),
                     ],
                   ),
                   Slider(
                     value: _sensitivity,
-                    min: 5.0,
-                    max: 50.0,
-                    divisions: 90,
-                    label: _sensitivity.toStringAsFixed(1),
+                    min: 0.1,
+                    max: 1.0,
+                    divisions: 9,
+                    label: _sensitivity.toStringAsFixed(2),
                     onChanged: (value) {
                       setState(() {
                         _sensitivity = value;
@@ -838,10 +858,8 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
   
   /// 运动强度指示器
   Widget _buildMotionIndicator() {
-    final threshold = _cameraDetector.motionThreshold;
-    final maxLevel = threshold > 0 ? threshold : 30.0;
-    final normalizedLevel = (_motionLevel / maxLevel).clamp(0.0, 1.0);
-    final isAboveThreshold = _motionLevel > threshold;
+    final normalizedLevel = _motionLevel.clamp(0.0, 1.0);
+    final isAboveThreshold = _motionLevel > 0.3;
     final levelColor = isAboveThreshold ? AppColors.green : AppColors.text2;
 
     return Column(
@@ -851,11 +869,11 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(
-              '阈值: ${threshold.toStringAsFixed(1)}',
+              '灵敏度: ${_sensitivity.toStringAsFixed(2)}',
               style: TextStyle(color: AppColors.text2, fontSize: 12),
             ),
             Text(
-              _motionLevel.toStringAsFixed(1),
+              _motionLevel.toStringAsFixed(2),
               style: TextStyle(color: levelColor, fontSize: 12),
             ),
           ],
@@ -1121,6 +1139,85 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
         return '个开合跳';
       default:
         return '次';
+    }
+  }
+
+  /// 动作引导框覆盖层
+  Widget _buildActionGuideOverlay() {
+    final exercise = _selectedExercise != null ? Exercises.all[_selectedExercise!] : null;
+    if (exercise == null) return const SizedBox();
+
+    return Padding(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        children: [
+          // 顶部提示
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: Colors.black54,
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Text(
+              _getActionTip(exercise.type),
+              style: const TextStyle(color: Colors.white, fontSize: 12),
+            ),
+          ),
+          const Spacer(),
+          // 底部动作示意图
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Colors.black54,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _getActionEmoji(exercise.type),
+                const SizedBox(width: 8),
+                Text(
+                  '${exercise.emoji} ${exercise.name}',
+                  style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _getActionTip(String exerciseType) {
+    switch (exerciseType) {
+      case 'pushup':
+        return '💡 侧身入镜，保持手肘与肩膀成三角形';
+      case 'squat':
+        return '💡 正面入镜，下蹲时膝盖不超过脚尖';
+      case 'jumping_jack':
+        return '💡 正面入镜，手臂上举过头，双脚开合';
+      case 'hiit':
+      case 'jumprope':
+        return '💡 正面入镜，快速跳跃，手脚配合';
+      default:
+        return '💡 保持全身入镜，距离手机 2-3 米';
+    }
+  }
+
+  Widget _getActionEmoji(String exerciseType) {
+    switch (exerciseType) {
+      case 'pushup':
+        return const Text('🏋️', style: TextStyle(fontSize: 24));
+      case 'squat':
+        return const Text('🦵', style: TextStyle(fontSize: 24));
+      case 'jumping_jack':
+        return const Text('⏭️', style: TextStyle(fontSize: 24));
+      case 'hiit':
+        return const Text('🔥', style: TextStyle(fontSize: 24));
+      case 'jumprope':
+        return const Text('🪢', style: TextStyle(fontSize: 24));
+      default:
+        return const Text('🏃', style: TextStyle(fontSize: 24));
     }
   }
   

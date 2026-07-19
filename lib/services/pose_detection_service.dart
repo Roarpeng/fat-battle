@@ -11,7 +11,7 @@ import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
 /// 使用 MoveNet 模型在端侧实时推理人体 33 个关键点，
 /// 通过关键点角度/位置变化检测深蹲、俯卧撑、开合跳等动作。
 ///
-/// API 设计与 [CameraMotionDetector] 对齐，便于在 UI 中替换。
+/// 使用后置摄像头，用户需要侧身对着镜头做动作。
 class PoseDetectionService {
   // ===== 摄像头相关 =====
   CameraController? _controller;
@@ -21,41 +21,34 @@ class PoseDetectionService {
 
   // ===== 姿态检测器 =====
   late final PoseDetector _poseDetector;
-  bool _isBusy = false; // 防止推理任务堆积
+  bool _isBusy = false;
 
   // ===== 计数与状态 =====
   int _repCount = 0;
   String _currentExercise = '';
-  String _motionState = 'up'; // 'up' | 'down' | 'open' | 'closed' ...
+  String _motionState = 'up';
   DateTime _lastRepTime = DateTime.now();
 
   // ===== 帧率/节流控制 =====
-  final int _frameSkip = 1; // 每隔 N 帧处理一次（1 = 处理每帧）
+  final int _frameSkip = 0;
   int _frameCounter = 0;
-  final int _debounceMs = 300; // 计数去抖动
+  final int _debounceMs = 500;
 
   // ===== 灵敏度（用户可调，0.0~1.0，1.0 = 最灵敏） =====
-  double _sensitivity = 0.5;
+  double _sensitivity = 0.7;
 
-  // ===== 关键点平滑（EMA 低通滤波，减少抖动） =====
-  static const double _emaAlpha = 0.4;
+  // ===== 关键点平滑（EMA 低通滤波） =====
+  static const double _emaAlpha = 0.5;
   final Map<PoseLandmarkType, Point3D> _smoothedLandmarks = {};
 
-  // ===== 运动强度（用于卡路里/动画） =====
+  // ===== 运动强度 =====
   double _motionLevel = 0;
   DateTime _lastFrameTime = DateTime.now();
 
   // ===== 回调 =====
-  /// 完成一次动作时回调（计数 + 运动名）
   Function(int count, String exercise)? onRepDetected;
-
-  /// 文字反馈
   Function(String feedback)? onFeedback;
-
-  /// 运动强度等级（0.0 ~ 1.0）
   Function(double level)? onMotionUpdate;
-
-  /// 关键点流（可选，供调试或绘制骨架使用）
   Function(Map<PoseLandmarkType, Point3D>? landmarks)? onPoseUpdate;
 
   // ===== Getters =====
@@ -67,14 +60,14 @@ class PoseDetectionService {
   double get sensitivity => _sensitivity;
   double get motionLevel => _motionLevel;
 
-  /// 初始化摄像头（默认前置摄像头，低分辨率以保证 FPS）
+  /// 初始化摄像头（使用前置摄像头，用户可以看到自己的姿态）
   Future<void> initialize() async {
     if (_isInitialized) return;
 
     _poseDetector = PoseDetector(
       options: PoseDetectorOptions(
-        mode: PoseDetectionMode.stream, // 流式模式，针对实时摄像头优化
-        model: PoseDetectionModel.base, // base = MoveNet Lightning，速度优先
+        mode: PoseDetectionMode.stream,
+        model: PoseDetectionModel.base,
       ),
     );
 
@@ -91,11 +84,11 @@ class PoseDetectionService {
 
       _controller = CameraController(
         frontCamera,
-        ResolutionPreset.low,
+        ResolutionPreset.medium,
         enableAudio: false,
         imageFormatGroup: Platform.isAndroid
-            ? ImageFormatGroup.yuv420 // Android: YUV_420_888
-            : ImageFormatGroup.bgra8888, // iOS: BGRA
+            ? ImageFormatGroup.yuv420
+            : ImageFormatGroup.bgra8888,
       );
 
       await _controller!.initialize();
@@ -148,29 +141,27 @@ class PoseDetectionService {
   }
 
   /// 将 CameraImage 转换为 ML Kit 可识别的 InputImage
-  ///
-  /// 集成要点：
-  /// - Android: camera 包提供 YUV_420_888（3 平面 Y/U/V），
-  ///   而 google_mlkit_commons 的 [InputImage.fromBytes] 不支持多平面参数，
-  ///   因此需先转换为 NV21 单缓冲格式再传入。
-  /// - iOS: BGRA8888 单平面，可直接传递。
-  /// - 通过 [InputImageMetadata.rotation] 修正传感器方向；
-  ///   前置摄像头需要镜像补偿。
   InputImage? _toInputImage(CameraImage image) {
     try {
       final camera = _controller!.description;
       final sensorOrientation = camera.sensorOrientation;
       final isFront = camera.lensDirection == CameraLensDirection.front;
-      // 竖屏使用，前置摄像头需要镜像补偿
-      final rotation = InputImageRotationValue.fromRawValue(
-            isFront ? (360 - sensorOrientation) % 360 : sensorOrientation,
-          ) ??
+
+      int rotationInt;
+      if (Platform.isAndroid) {
+        rotationInt = isFront
+            ? (360 - sensorOrientation) % 360
+            : sensorOrientation;
+      } else {
+        rotationInt = isFront ? sensorOrientation : sensorOrientation;
+      }
+
+      final rotation = InputImageRotationValue.fromRawValue(rotationInt) ??
           InputImageRotation.rotation0deg;
 
       final size = Size(image.width.toDouble(), image.height.toDouble());
 
       if (Platform.isIOS) {
-        // iOS: BGRA8888 单平面
         final plane = image.planes.first;
         return InputImage.fromBytes(
           bytes: plane.bytes,
@@ -183,7 +174,6 @@ class PoseDetectionService {
         );
       }
 
-      // Android: YUV_420_888 -> NV21
       final nv21 = _yuv420ToNv21(image);
       return InputImage.fromBytes(
         bytes: nv21,
@@ -201,12 +191,6 @@ class PoseDetectionService {
   }
 
   /// 将 Android CameraImage (YUV_420_888) 转换为 NV21 单缓冲格式
-  ///
-  /// NV21 布局：
-  /// - Y 平面：width * height 字节
-  /// - VU 交错平面：(width/2) * (height/2) * 2 字节（VUVU... 排列）
-  ///
-  /// 该格式布局固定（无 padding），ML Kit 原生端可从宽高直接推导步长。
   Uint8List _yuv420ToNv21(CameraImage image) {
     final width = image.width;
     final height = image.height;
@@ -231,7 +215,7 @@ class PoseDetectionService {
 
     // 2. 交错拷贝 V、U（NV21 = VU 对）
     final uvRowStride = uPlane.bytesPerRow;
-    final uvPixelStride = uPlane.bytesPerPixel ?? 2;
+    final uvPixelStride = uPlane.bytesPerPixel ?? 1;
     final halfHeight = height ~/ 2;
     final halfWidth = width ~/ 2;
     int uvIndex = ySize;
@@ -249,13 +233,14 @@ class PoseDetectionService {
 
   /// 执行姿态推理并分析
   Future<void> _runDetection(InputImage inputImage) async {
-    final frameStart = DateTime.now();
-
     try {
       final poses = await _poseDetector.processImage(inputImage);
       if (poses.isEmpty) {
         onPoseUpdate?.call(null);
-        _updateMotionLevel(0);
+        _motionLevel = 0;
+        onMotionUpdate?.call(0);
+        onFeedback?.call('请将全身入镜');
+        _isBusy = false;
         return;
       }
 
@@ -268,20 +253,25 @@ class PoseDetectionService {
     } catch (e) {
       debugPrint('PoseDetection 推理失败: $e');
     } finally {
-      // 计算帧耗时，估算运动强度
-      final elapsed = DateTime.now().difference(frameStart);
-      _updateMotionLevel(elapsed.inMicroseconds > 0 ? 1.0 : 0.0);
+      _lastFrameTime = DateTime.now();
       _isBusy = false;
     }
   }
 
   /// 对关键点应用 EMA 平滑，抑制抖动
+  /// 前置摄像头需要镜像翻转 X 坐标
   Map<PoseLandmarkType, Point3D> _applyEmaSmoothing(
     Map<PoseLandmarkType, PoseLandmark> landmarks,
   ) {
     final result = <PoseLandmarkType, Point3D>{};
+    final isFront = _controller!.description.lensDirection == CameraLensDirection.front;
+    
     landmarks.forEach((type, lm) {
-      final curr = Point3D(lm.x, lm.y, lm.z);
+      var x = lm.x;
+      if (isFront) {
+        x = 1.0 - x;
+      }
+      final curr = Point3D(x, lm.y, lm.z);
       final prev = _smoothedLandmarks[type];
       final smoothed = prev == null
           ? curr
@@ -342,10 +332,8 @@ class PoseDetectionService {
     final angleR = rightOk ? _angle(hipR, kneeR, ankleR) : 180.0;
     final angle = (angleL + angleR) / 2;
 
-    // 灵敏度越高，蹲下阈值越大（更易触发）
-    // 0.0 -> 110° ; 1.0 -> 150°
-    final downThreshold = 110.0 + _sensitivity * 40.0;
-    final upThreshold = downThreshold + 35.0; // 站起阈值更高，形成滞回
+    final downThreshold = 100.0 + _sensitivity * 50.0;
+    final upThreshold = downThreshold + 30.0;
 
     _updateMotionLevelByAngle(180.0 - angle, 90.0);
 
@@ -400,10 +388,8 @@ class PoseDetectionService {
     final angleR = rightOk ? _angle(shoulderR, elbowR, wristR) : 180.0;
     final angle = (angleL + angleR) / 2;
 
-    // 灵敏度越高，下压阈值越大
-    // 0.0 -> 90° ; 1.0 -> 130°
-    final downThreshold = 90.0 + _sensitivity * 40.0;
-    final upThreshold = downThreshold + 35.0;
+    final downThreshold = 80.0 + _sensitivity * 50.0;
+    final upThreshold = downThreshold + 30.0;
 
     _updateMotionLevelByAngle(180.0 - angle, 100.0);
 
