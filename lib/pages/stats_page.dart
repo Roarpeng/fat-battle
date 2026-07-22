@@ -171,6 +171,10 @@ class _StatsPageState extends ConsumerState<StatsPage> {
             _buildProgressGallery(gameState, gameNotifier),
             const SizedBox(height: 16),
 
+            // 运动趋势
+            _buildExerciseTrends(gameState),
+            const SizedBox(height: 16),
+
             // 记录体重
             Card(
               child: Padding(
@@ -435,6 +439,66 @@ class _StatsPageState extends ConsumerState<StatsPage> {
     );
   }
   
+  /// 运动趋势
+  Widget _buildExerciseTrends(GameState gs) {
+    final today = DateTime.now().toDateString();
+    final todayExercises = gs.exercises.where((e) => e.date == today).toList();
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('🏋️ 运动趋势', style: TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 12),
+            if (todayExercises.isEmpty)
+              Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: Text(
+                    '今日还没有运动记录，去锤炼一下吧！',
+                    style: TextStyle(color: AppColors.text2),
+                  ),
+                ),
+              )
+            else
+              ..._buildExerciseTypeList(todayExercises),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 按类型汇总运动记录
+  List<Widget> _buildExerciseTypeList(List<ExerciseRecord> exercises) {
+    final grouped = <String, Map<String, dynamic>>{};
+    for (final e in exercises) {
+      if (!grouped.containsKey(e.name)) {
+        grouped[e.name] = {'emoji': e.emoji, 'count': 0, 'duration': 0};
+      }
+      grouped[e.name]!['count'] = (grouped[e.name]!['count'] as int) + 1;
+      grouped[e.name]!['duration'] = (grouped[e.name]!['duration'] as int) + e.duration;
+    }
+
+    final sorted = grouped.entries.toList()
+      ..sort((a, b) => (b.value['duration'] as int).compareTo(a.value['duration'] as int));
+    final top3 = sorted.take(3).toList();
+
+    return top3.map((entry) {
+      final name = entry.key;
+      final emoji = entry.value['emoji'] as String;
+      final count = entry.value['count'] as int;
+      final duration = entry.value['duration'] as int;
+      return ListTile(
+        leading: Text(emoji, style: const TextStyle(fontSize: 24)),
+        title: Text(name),
+        subtitle: Text('${count}次 · ${duration}分钟'),
+        trailing: Text('${duration}min', style: TextStyle(color: AppColors.gold, fontWeight: FontWeight.bold)),
+      );
+    }).toList();
+  }
+
   /// 体重趋势图（简化版）
   Widget _buildWeightChart(List<WeightRecord> records) {
     // 计算移动平均

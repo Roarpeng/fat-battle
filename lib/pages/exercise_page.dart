@@ -10,6 +10,8 @@ import '../services/game_algorithm.dart';
 import '../services/ble_service.dart';
 import '../services/motion_recognition.dart';
 import '../services/pose_detection_service.dart';
+import '../services/exercise_game_logic.dart';
+import '../widgets/exercise/pose_overlay.dart';
 
 /// 锻炼页面
 class ExercisePage extends ConsumerStatefulWidget {
@@ -26,6 +28,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
   
   final MotionRecognitionService _motionService = MotionRecognitionService();
   final PoseDetectionService _cameraDetector = PoseDetectionService();
+  final ExerciseGameLogic _gameLogic = ExerciseGameLogic();
   final ScrollController _logScrollController = ScrollController();
   
   bool _isDetecting = false;
@@ -41,6 +44,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
   double _motionLevel = 0;
   double _sensitivity = 0.5;
   DateTime? _cameraStartTime;
+  Map<String, Map<String, double>>? _currentLandmarks;
   
   @override
   void initState() {
@@ -74,6 +78,38 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
       if (mounted) {
         setState(() {
           _motionLevel = level;
+        });
+      }
+    };
+    _cameraDetector.onPoseUpdate = (landmarks) {
+      if (landmarks != null && mounted) {
+        final converted = <String, Map<String, double>>{};
+        landmarks.forEach((type, pt) {
+          converted[type.name] = {'x': pt.x, 'y': pt.y, 'z': pt.z};
+        });
+        setState(() {
+          _currentLandmarks = converted;
+        });
+      }
+    };
+
+    // 游戏逻辑回调
+    _gameLogic.onComboChanged = (combo, multiplier) {
+      if (mounted) setState(() {});
+    };
+    _gameLogic.onStaminaChanged = (stamina, depleted) {
+      if (mounted) setState(() {});
+    };
+    _gameLogic.onPauseChanged = (paused) {
+      if (mounted) setState(() {});
+    };
+    _gameLogic.onPrepareProgress = (progress) {
+      if (mounted) setState(() {});
+    };
+    _gameLogic.onQualityScored = (quality, grade) {
+      if (mounted) {
+        setState(() {
+          _cameraFeedback = '⭐ $grade (${quality}分) $_cameraFeedback';
         });
       }
     };
@@ -691,6 +727,14 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
                             scaleX: -1.0,
                             child: CameraPreview(_cameraDetector.controller!),
                           ),
+                          // 骨骼叠加层
+                          if (_cameraDetecting && _currentLandmarks != null)
+                            Positioned.fill(
+                              child: PoseOverlay(
+                                landmarks: _currentLandmarks,
+                                size: const Size(double.infinity, 240),
+                              ),
+                            ),
                           _buildActionGuideOverlay(),
                         ],
                       ),
@@ -718,6 +762,80 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
               _buildMotionIndicator(),
               const SizedBox(height: 12),
             ],
+            // 游戏HUD：连击 + 体力
+            if (_cameraDetecting) ...[
+              if (_gameLogic.comboCount >= 2)
+                Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: AppColors.gold.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    '🔥 ${_gameLogic.comboCount}连击 · x${_gameLogic.comboMultiplier.toStringAsFixed(1)}',
+                    style: TextStyle(color: AppColors.gold, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              if (_gameLogic.isPreparing)
+                Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  child: Column(
+                    children: [
+                      Text('🎬 准备中...', style: TextStyle(color: AppColors.purple, fontSize: 13)),
+                      const SizedBox(height: 4),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: LinearProgressIndicator(
+                          value: _gameLogic.prepareProgress,
+                          backgroundColor: AppColors.border,
+                          valueColor: const AlwaysStoppedAnimation<Color>(AppColors.purple),
+                          minHeight: 4,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              if (_gameLogic.isPaused)
+                Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: AppColors.red.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: const Text('⏸️ 已暂停', style: TextStyle(color: AppColors.red, fontWeight: FontWeight.bold)),
+                ),
+              // 体力条
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Row(
+                  children: [
+                    const Text('⚡', style: TextStyle(fontSize: 12)),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(3),
+                        child: LinearProgressIndicator(
+                          value: _gameLogic.stamina / ExerciseGameLogic.maxStamina,
+                          backgroundColor: AppColors.border,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            _gameLogic.staminaDepleted ? AppColors.red : AppColors.green,
+                          ),
+                          minHeight: 6,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      '${_gameLogic.stamina.toInt()}',
+                      style: TextStyle(fontSize: 11, color: AppColors.text2),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+
             if (_cameraDetecting || _cameraRepCount > 0) ...[
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceAround,
@@ -940,6 +1058,8 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
       _cameraStartTime = DateTime.now();
     });
     
+    _gameLogic.reset();
+    _gameLogic.startPrepare();
     _cameraDetector.startDetection(exercise.type);
     _showToast('开始检测 ${exercise.name}');
     _startCameraTimer();

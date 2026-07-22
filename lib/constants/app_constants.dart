@@ -121,6 +121,11 @@ class Exercises {
     ExerciseType(name: 'HIIT', emoji: '🔥', calPerMin: 14, type: 'hiit'),
     ExerciseType(name: '跳绳', emoji: '⏭️', calPerMin: 12, type: 'jumprope'),
     ExerciseType(name: '力量训练', emoji: '🏋️', calPerMin: 7, type: 'strength'),
+    ExerciseType(name: '高抬腿', emoji: '🦿', calPerMin: 9, type: 'highknee', supportCamera: true),
+    ExerciseType(name: '平板支撑', emoji: '🧘', calPerMin: 3, type: 'plank', supportCamera: true),
+    ExerciseType(name: '波比跳', emoji: '💥', calPerMin: 14, type: 'burpee', supportCamera: true),
+    ExerciseType(name: '弓步蹲', emoji: '🦵', calPerMin: 7, type: 'lunge', supportCamera: true),
+    ExerciseType(name: '登山跑', emoji: '⛰️', calPerMin: 10, type: 'mountainclimber', supportCamera: true),
   ];
 }
 
