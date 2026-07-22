@@ -21,19 +21,19 @@ void main() async {
     overrides: [
       sharedPreferencesProvider.overrideWithValue(prefs),
     ],
-    child: const FatBattleApp(),
+    child: const BodyStudioApp(),
   ));
 }
 
-class FatBattleApp extends ConsumerWidget {
-  const FatBattleApp({super.key});
-  
+class BodyStudioApp extends ConsumerWidget {
+  const BodyStudioApp({super.key});
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final gameState = ref.watch(gameStateProvider);
-    
+
     return MaterialApp(
-      title: '减肥大作战',
+      title: '塑身工坊',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         useMaterial3: true,
@@ -119,7 +119,7 @@ class _MainPageState extends ConsumerState<MainPage> {
           NavigationDestination(
             icon: Icon(Icons.home_outlined),
             selectedIcon: Icon(Icons.home),
-            label: '战斗',
+            label: '工坊',
           ),
           NavigationDestination(
             icon: Icon(Icons.restaurant_outlined),
@@ -129,12 +129,12 @@ class _MainPageState extends ConsumerState<MainPage> {
           NavigationDestination(
             icon: Icon(Icons.fitness_center_outlined),
             selectedIcon: Icon(Icons.fitness_center),
-            label: '锻炼',
+            label: '锤炼',
           ),
           NavigationDestination(
             icon: Icon(Icons.bar_chart_outlined),
             selectedIcon: Icon(Icons.bar_chart),
-            label: '统计',
+            label: '进度',
           ),
           NavigationDestination(
             icon: Icon(Icons.settings_outlined),

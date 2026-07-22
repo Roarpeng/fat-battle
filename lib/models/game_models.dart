@@ -420,6 +420,39 @@ class WeightRecord {
   });
 }
 
+// 身体变化照片
+class ProgressPhoto {
+  final String id;
+  final String date;
+  final String photoPath;   // 本地文件路径
+  final double weight;      // 拍照时的体重
+  final String? note;       // 备注
+
+  const ProgressPhoto({
+    this.id = '',
+    this.date = '',
+    this.photoPath = '',
+    this.weight = 0,
+    this.note,
+  });
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'date': date,
+    'photoPath': photoPath,
+    'weight': weight,
+    'note': note,
+  };
+
+  factory ProgressPhoto.fromJson(Map<String, dynamic> json) => ProgressPhoto(
+    id: json['id'] ?? '',
+    date: json['date'] ?? '',
+    photoPath: json['photoPath'] ?? '',
+    weight: (json['weight'] ?? 0).toDouble(),
+    note: json['note'],
+  );
+}
+
 // 周数据
 class WeekData {
   final int day;

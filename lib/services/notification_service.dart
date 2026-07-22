@@ -100,7 +100,7 @@ class NotificationService {
     const AndroidNotificationDetails androidNotificationDetails =
         AndroidNotificationDetails(
       'fat_battle_channel',
-      '减肥大作战',
+      '塑身工坊',
       channelDescription: '减肥大作战游戏通知',
       importance: Importance.max,
       priority: Priority.high,

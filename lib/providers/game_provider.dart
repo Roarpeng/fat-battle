@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/game_models.dart';
@@ -8,13 +9,28 @@ import '../services/notification_service.dart';
 import '../services/voice_service.dart';
 
 /// 游戏状态Provider
+///
+/// 持久化策略：
+/// - SharedPreferences 在 main() 中已通过 [SharedPreferences.getInstance()] 预初始化，
+///   内存缓存就绪后 getString/setString 均为同步操作。
+/// - 构造函数中立即调用 [_initSync] 同步加载存档，避免 Future 未 await 导致空状态。
+/// - 所有 mutate 方法在修改 state 后立即 await [_saveGame]，确保写入完成。
 class GameStateNotifier extends StateNotifier<GameState> {
   final SharedPreferences? prefs;
   final NotificationService? notificationService;
   int _notificationIdCounter = 0;
-  
+
   GameStateNotifier(this.prefs, {this.notificationService}) : super(GameState()) {
-    _loadGame();
+    _initSync();
+  }
+
+  /// 同步初始化：从 SharedPreferences 内存缓存加载存档
+  void _initSync() {
+    try {
+      _loadGameSync();
+    } catch (e) {
+      debugPrint('[塑身工坊] 初始化加载失败: $e，使用默认状态');
+    }
   }
   
   Future<void> _sendNotification(String title, String body, {NotificationType type = NotificationType.system}) async {
@@ -48,36 +64,68 @@ class GameStateNotifier extends StateNotifier<GameState> {
     }
   }
   
-  /// 从本地存储加载游戏
-  Future<void> _loadGame() async {
-    if (prefs == null) return;
-    
-    final saved = prefs!.getString('fat_battle_game');
-    if (saved != null) {
-      try {
-        final json = jsonDecode(saved) as Map<String, dynamic>;
-        state = GameState.fromJson(json);
-        _checkDailyReset();
-      } catch (e) {
-        // 解析失败，使用默认状态
+  /// 从 SharedPreferences 内存缓存同步加载游戏状态
+  ///
+  /// 依赖 main() 中已完成的 [SharedPreferences.getInstance()] 调用，
+  /// getString 直接从内存缓存读取，无需 await。
+  void _loadGameSync() {
+    // SharedPreferences 实例在 main() 中已通过 override 注入
+    if (this.prefs == null) {
+      debugPrint('[塑身工坊] ⚠️ SharedPreferences 未注入，无法加载存档');
+      return;
+    }
+
+    final saved = this.prefs!.getString('fat_battle_game');
+    if (saved == null || saved.isEmpty) {
+      debugPrint('[塑身工坊] 📭 未找到存档，使用默认状态');
+      return;
+    }
+
+    try {
+      final json = jsonDecode(saved) as Map<String, dynamic>;
+      if (json.isEmpty) {
+        debugPrint('[塑身工坊] 📭 存档为空 JSON，使用默认状态');
+        return;
       }
+      final loaded = GameState.fromJson(json);
+      state = loaded;
+      debugPrint('[塑身工坊] ✅ 存档加载成功: 第${loaded.day}天, ${loaded.kills}杀, ${loaded.streak}连, 🪙${loaded.coins}');
+      _checkDailyReset();
+    } catch (e, stack) {
+      debugPrint('[塑身工坊] ❌ 存档解析失败: $e');
+      debugPrint('[塑身工坊] 📋 堆栈: $stack');
+      // 保留原始 JSON 以便手动恢复
+      debugPrint('[塑身工坊] 💾 原始存档前200字符: ${saved.length > 200 ? '${saved.substring(0, 200)}...' : saved}');
     }
   }
   
-  /// 保存游戏到本地存储
+  /// 保存游戏到本地存储（异步，确保写入完成）
   Future<void> _saveGame() async {
     if (prefs == null) return;
-    
+
     await prefs!.setString('fat_battle_game', jsonEncode(state.toJson()));
+  }
+
+  /// 同步保存（立即写入内存缓存，磁盘写入由平台异步完成）
+  ///
+  /// 用于每日重置等关键场景，确保状态不会因 async gap 丢失。
+  void _saveGameSync() {
+    if (prefs == null) return;
+    try {
+      prefs!.setString('fat_battle_game', jsonEncode(state.toJson()));
+    } catch (e) {
+      debugPrint('[塑身工坊] ❌ 同步保存失败: $e');
+    }
   }
   
   /// 检查是否需要每日重置
   void _checkDailyReset() {
     final today = DateTime.now().toDateString();
     if (state.lastDate != today) {
+      debugPrint('[塑身工坊] 🔄 新的一天！昨天: ${state.lastDate}, 今天: $today');
       // 昨天是否完成
       final yesterdayCompleted = state.monster.hp <= 0;
-      
+
       if (yesterdayCompleted) {
         state = state.copyWith(
           streak: state.streak + 1,
@@ -86,7 +134,7 @@ class GameStateNotifier extends StateNotifier<GameState> {
       } else if (state.status == GameStatus.playing) {
         state = state.copyWith(streak: 0);
       }
-      
+
       // 保存昨日数据
       final weekData = List<WeekData>.from(state.weekData);
       weekData.add(WeekData(
@@ -97,12 +145,12 @@ class GameStateNotifier extends StateNotifier<GameState> {
         damage: state.todayDamage,
         completed: yesterdayCompleted,
       ));
-      
+
       // 只保留最近7天
       if (weekData.length > 7) {
         weekData.removeRange(0, weekData.length - 7);
       }
-      
+
       // 新的一天
       state = state.copyWith(
         day: state.day + 1,
@@ -115,11 +163,13 @@ class GameStateNotifier extends StateNotifier<GameState> {
         status: GameStatus.playing,
         lastDate: today,
         weekData: weekData,
+        waterCups: 0, // 每日重置饮水杯数
       );
-      
+
       // 生成新怪物
       _spawnMonster();
-      _saveGame();
+      // 立即同步保存（不依赖 await，确保写入完成）
+      _saveGameSync();
     }
   }
   
@@ -560,6 +610,45 @@ class GameStateNotifier extends StateNotifier<GameState> {
     await _saveGame();
   }
   
+  /// 添加饮水记录（一杯约200ml）
+  Future<void> addWaterCup() async {
+    if (state.waterCups >= 20) return; // 最多20杯
+    state = state.copyWith(waterCups: state.waterCups + 1);
+    await _saveGame();
+  }
+
+  /// 移除饮水记录
+  Future<void> removeWaterCup() async {
+    if (state.waterCups <= 0) return;
+    state = state.copyWith(waterCups: state.waterCups - 1);
+    await _saveGame();
+  }
+
+  /// 设置饮水目标
+  Future<void> setWaterGoal(int cups) async {
+    state = state.copyWith(waterGoal: cups.clamp(4, 16));
+    await _saveGame();
+  }
+
+  /// 添加身体变化照片
+  Future<void> addProgressPhoto(ProgressPhoto photo) async {
+    final photos = List<ProgressPhoto>.from(state.progressPhotos);
+    photos.insert(0, photo); // 最新的排前面
+    // 最多保留50张
+    if (photos.length > 50) {
+      photos.removeRange(50, photos.length);
+    }
+    state = state.copyWith(progressPhotos: photos);
+    await _saveGame();
+  }
+
+  /// 删除身体变化照片
+  Future<void> removeProgressPhoto(String photoId) async {
+    final photos = state.progressPhotos.where((p) => p.id != photoId).toList();
+    state = state.copyWith(progressPhotos: photos);
+    await _saveGame();
+  }
+
   /// 重置游戏
   Future<void> resetGame() async {
     state = GameState();
@@ -601,7 +690,14 @@ class GameState {
   final bool voiceEnabled;
   final bool maintenanceMode;
   final String reminderFrequency;
-  
+
+  // 饮水追踪
+  final int waterCups; // 今日已饮水杯数
+  final int waterGoal; // 每日饮水目标杯数
+
+  // 身体变化相册
+  final List<ProgressPhoto> progressPhotos;
+
   const GameState({
     this.user = const User(),
     this.monster = const Monster(),
@@ -633,6 +729,9 @@ class GameState {
     this.voiceEnabled = true,
     this.maintenanceMode = false,
     this.reminderFrequency = 'normal',
+    this.waterCups = 0,
+    this.waterGoal = 8,
+    this.progressPhotos = const [],
   });
   
   GameState copyWith({
@@ -666,6 +765,9 @@ class GameState {
     bool? voiceEnabled,
     bool? maintenanceMode,
     String? reminderFrequency,
+    int? waterCups,
+    int? waterGoal,
+    List<ProgressPhoto>? progressPhotos,
   }) {
     return GameState(
       user: user ?? this.user,
@@ -698,6 +800,9 @@ class GameState {
       voiceEnabled: voiceEnabled ?? this.voiceEnabled,
       maintenanceMode: maintenanceMode ?? this.maintenanceMode,
       reminderFrequency: reminderFrequency ?? this.reminderFrequency,
+      waterCups: waterCups ?? this.waterCups,
+      waterGoal: waterGoal ?? this.waterGoal,
+      progressPhotos: progressPhotos ?? this.progressPhotos,
     );
   }
   
@@ -767,6 +872,9 @@ class GameState {
       'voiceEnabled': voiceEnabled,
       'maintenanceMode': maintenanceMode,
       'reminderFrequency': reminderFrequency,
+      'waterCups': waterCups,
+      'waterGoal': waterGoal,
+      'progressPhotos': progressPhotos.map((p) => p.toJson()).toList(),
     };
   }
   
@@ -846,6 +954,11 @@ class GameState {
       voiceEnabled: json['voiceEnabled'] ?? true,
       maintenanceMode: json['maintenanceMode'] ?? false,
       reminderFrequency: json['reminderFrequency'] ?? 'normal',
+      waterCups: json['waterCups'] ?? 0,
+      waterGoal: json['waterGoal'] ?? 8,
+      progressPhotos: (json['progressPhotos'] as List?)
+          ?.map((p) => ProgressPhoto.fromJson(p as Map<String, dynamic>))
+          .toList() ?? [],
     );
   }
   
@@ -862,7 +975,14 @@ extension DateTimeExt on DateTime {
 }
 
 /// Provider定义
+
+/// SharedPreferences 实例 Provider
+///
+/// 在 main() 中被 [overrideWithValue] 覆盖为已初始化的实例。
+/// 默认工厂作为 fallback：直接调用 [SharedPreferences.getInstance()]，
+/// 因为 main() 中已 await 过，内存缓存已就绪。
 final sharedPreferencesProvider = Provider<SharedPreferences?>((ref) {
+  // 返回 null 作为 fallback；main() 中的 override 会提供真实实例
   return null;
 });
 
@@ -872,19 +992,24 @@ final gameStateProvider = StateNotifierProvider<GameStateNotifier, GameState>((r
   try {
     prefs = ref.watch(sharedPreferencesProvider);
     notificationService = ref.watch(notificationServiceProvider);
-    // 异步初始化，失败不影响主流程
+    if (prefs == null) {
+      debugPrint('[塑身工坊] ⚠️ SharedPreferences 未通过 override 注入，尝试直接获取');
+      // 同步获取已缓存的实例（main() 已 await getInstance()）
+      prefs = SharedPreferences.getInstance() as SharedPreferences?;
+    }
+    // 异步初始化通知服务，失败不影响主流程
     () async {
       try {
         await notificationService?.init();
       } catch (_) {}
     }();
   } catch (e) {
-    // ignore
+    debugPrint('[塑身工坊] ❌ Provider 初始化异常: $e');
   }
   return GameStateNotifier(prefs, notificationService: notificationService);
 });
 
-/// 初始化SharedPreferences的FutureProvider
+/// 初始化SharedPreferences的FutureProvider（供需要异步等待的场景使用）
 final sharedPreferencesInitProvider = FutureProvider<SharedPreferences>((ref) async {
   return await SharedPreferences.getInstance();
 });

@@ -1,5 +1,5 @@
 name: fat_battle
-description: "减肥大作战 - 用游戏的方式打赢脂肪战争"
+description: "塑身工坊 - 你的身体是你精心雕琢的作品"
 publish_to: 'none'
 version: 1.0.0+1
 
@@ -70,6 +70,15 @@ dependencies:
 
   # 条形码扫描
   mobile_scanner: ^5.1.1
+
+  # 图片选择（身体变化相册）
+  image_picker: ^1.1.2
+
+  # 文件系统（相册照片存储 / 数据导出）
+  path_provider: ^2.1.4
+
+  # 分享功能（成就卡片 / 数据导出）
+  share_plus: ^10.1.4
 
 dev_dependencies:
   flutter_test:

@@ -4,10 +4,10 @@ import '../constants/app_constants.dart';
 import '../providers/game_provider.dart';
 import 'setup_page.dart';
 
-/// 欢迎页面
+/// 欢迎页面 — 塑身工坊
 class WelcomePage extends StatelessWidget {
   const WelcomePage({super.key});
-  
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -23,20 +23,20 @@ class WelcomePage extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // Logo
+            // Logo — 雕刻锤，象征精雕细琢
             const Text(
-              '⚔️',
+              '🔨',
               style: TextStyle(fontSize: 80),
             ),
             const SizedBox(height: 20),
-            
+
             // 标题
             ShaderMask(
               shaderCallback: (bounds) => LinearGradient(
                 colors: [AppColors.red, AppColors.gold],
               ).createShader(bounds),
               child: const Text(
-                '减肥大作战',
+                '塑身工坊',
                 style: TextStyle(
                   fontSize: 32,
                   fontWeight: FontWeight.bold,
@@ -45,10 +45,10 @@ class WelcomePage extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 8),
-            
-            // 副标题
+
+            // 副标题 — 核心概念
             Text(
-              '用游戏的方式，打赢这场脂肪战争',
+              '你的身体，是你精心雕琢的作品',
               style: TextStyle(
                 fontSize: 16,
                 color: AppColors.text2,

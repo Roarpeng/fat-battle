@@ -277,7 +277,7 @@ class FoodRecognitionService {
     try {
       final response = await http.get(
         Uri.parse('$_offBaseUrl/product/$cleanBarcode.json'),
-        headers: {'User-Agent': 'FatBattle/1.0 (https://github.com/fat-battle; contact@fatbattle.app)'},
+        headers: {'User-Agent': 'BodyStudio/1.0 (塑身工坊)'},
       ).timeout(const Duration(seconds: 10));
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);

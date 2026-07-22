@@ -21,25 +21,25 @@ class _HomePageState extends ConsumerState<HomePage> {
   
   String _getStatusMessage(GameState gs) {
     if (gs.status == GameStatus.won) {
-      return '今日任务完成 🎉 明天继续保持';
+      return '今日雕琢完成 🎉 明天继续精进';
     }
     if (gs.status == GameStatus.lost) {
-      return '今日体力已用完，好好休息';
+      return '今日精力已用完，好好休养';
     }
     if (gs.monster.hasShield) {
-      return '它套了层壳，去走走就能破防';
+      return '它披上了护甲，去走走吧';
     }
     if (gs.remainingCal >= 0) {
-      return '再消耗 ${(gs.monster.hp * 0.8).toInt()} kcal 就能击败它';
+      return '再消耗 ${(gs.monster.hp * 0.8).toInt()} kcal 就能攻克它';
     } else {
-      return '超出 ${-gs.remainingCal} kcal，动一动就好';
+      return '超出 ${-gs.remainingCal} kcal，锤炼一下就好';
     }
   }
   
   String _getCalorieDisplay(GameState gs) {
     final remaining = gs.remainingCal;
     if (remaining >= 0) {
-      return '今日还能吃 $remaining kcal';
+      return '今日还能摄入 $remaining kcal';
     } else {
       return '已超出 ${-remaining} kcal';
     }
@@ -61,11 +61,11 @@ class _HomePageState extends ConsumerState<HomePage> {
     }
     
     final hour = DateTime.now().hour;
-    String greeting = '今天也加油';
-    if (hour < 6) greeting = '夜深了，早点休息';
-    else if (hour < 12) greeting = '早上好';
-    else if (hour < 18) greeting = '下午好';
-    else greeting = '晚上好';
+    String greeting = '今天继续雕琢';
+    if (hour < 6) greeting = '夜深了，匠人该休息了';
+    else if (hour < 12) greeting = '早安，匠人';
+    else if (hour < 18) greeting = '午后好，继续打磨';
+    else greeting = '晚间工坊时间';
     
     return Scaffold(
       body: SafeArea(
@@ -136,8 +136,13 @@ class _HomePageState extends ConsumerState<HomePage> {
                         color: _getCalorieColor(gameState),
                       ),
                     ),
-                    const SizedBox(height: 48),
-                    
+                    const SizedBox(height: 20),
+
+                    // 饮水追踪
+                    _buildWaterTracker(gameState, gameNotifier),
+
+                    const SizedBox(height: 24),
+
                     // 怪物
                     GestureDetector(
                       onTap: () => _tapMonster(),
@@ -228,6 +233,67 @@ class _HomePageState extends ConsumerState<HomePage> {
     );
   }
   
+  Widget _buildWaterTracker(GameState gs, GameStateNotifier notifier) {
+    final cups = gs.waterCups;
+    final goal = gs.waterGoal;
+    final progress = goal > 0 ? (cups / goal).clamp(0.0, 1.0) : 0.0;
+    final remaining = (goal - cups).clamp(0, goal);
+
+    return GestureDetector(
+      onTap: () => notifier.addWaterCup(),
+      onLongPress: () => notifier.removeWaterCup(),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        decoration: BoxDecoration(
+          color: AppColors.card,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Row(
+          children: [
+            const Text('💧', style: TextStyle(fontSize: 20)),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        '饮水 $cups/$goal 杯',
+                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                      ),
+                      const Spacer(),
+                      Text(
+                        remaining > 0 ? '还差 $remaining 杯' : '✅ 达标！',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: remaining > 0 ? AppColors.text2 : AppColors.green,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: LinearProgressIndicator(
+                      value: progress,
+                      backgroundColor: AppColors.border,
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        progress >= 1.0 ? AppColors.green : AppColors.purple,
+                      ),
+                      minHeight: 6,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildActionButton({
     required String emoji,
     required String label,
@@ -283,7 +349,7 @@ class _HomePageState extends ConsumerState<HomePage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  '今日任务完成',
+                  '今日雕琢完成',
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.bold,
@@ -291,7 +357,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                   ),
                 ),
                 Text(
-                  '明日继续保持',
+                  '明日继续精雕细琢',
                   style: TextStyle(color: AppColors.text2, fontSize: 12),
                 ),
               ],
@@ -324,7 +390,7 @@ class _HomePageState extends ConsumerState<HomePage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  '今日体力已用完',
+                  '今日精力已耗尽',
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.bold,
@@ -332,7 +398,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                   ),
                 ),
                 Text(
-                  '好好休息，明天满血归来',
+                  '好好休养，明天满血归来',
                   style: TextStyle(color: AppColors.text2, fontSize: 12),
                 ),
               ],

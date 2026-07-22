@@ -13,6 +13,7 @@ import '../models/game_models.dart';
 import '../providers/game_provider.dart';
 import '../services/food_recognition_service_v2.dart';
 import '../services/baidu_food_service.dart';
+import '../services/food_preference_service.dart';
 import '../widgets/city_food_recommend_bar.dart';
 
 class FoodPage extends ConsumerStatefulWidget {
@@ -28,6 +29,7 @@ class _FoodPageState extends ConsumerState<FoodPage> {
   final Map<MealType, List<RecognizedFood>> _searchResults = {};
   final Map<MealType, Timer?> _searchTimers = {};
   final Map<MealType, bool> _searching = {};
+  late final FoodPreferenceService _foodPrefService;
 
   @override
   void initState() {
@@ -42,6 +44,7 @@ class _FoodPageState extends ConsumerState<FoodPage> {
       _searchResults[meal] = [];
       _searching[meal] = false;
     }
+    _foodPrefService = FoodPreferenceService();
   }
 
   @override
@@ -612,6 +615,8 @@ class _FoodPageState extends ConsumerState<FoodPage> {
                         for (final entry in selected.entries) {
                           final size = portions[entry.key] ?? FoodSize.medium;
                           gameNotifier.addFood(entry.value.toFoodItem(meal, size: size));
+                          // 同步到快捷选择栏的近期食物
+                          _foodPrefService.recordFoodAdded(entry.key);
                         }
                         _showToast('已记录${selected.length}种食物到${meal.name}');
                       },
@@ -959,6 +964,8 @@ class _FoodPageState extends ConsumerState<FoodPage> {
                   meal: meal,
                 );
                 gameNotifier.addFood(food);
+                // 同步到快捷选择栏
+                _foodPrefService.recordFoodAdded(name);
                 nameController.clear();
                 calController.clear();
                 setState(() => _searchResults[meal] = []);

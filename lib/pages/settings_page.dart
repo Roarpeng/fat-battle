@@ -1,5 +1,10 @@
+import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import '../constants/app_constants.dart';
 import '../providers/game_provider.dart';
 import '../services/voice_service.dart';
@@ -239,6 +244,87 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             ),
             const SizedBox(height: 16),
             
+            // 成就分享卡片
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('🏆 成就分享', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                    const SizedBox(height: 4),
+                    Text(
+                      '将你的雕刻成就分享给朋友',
+                      style: TextStyle(color: AppColors.text2, fontSize: 12),
+                    ),
+                    const SizedBox(height: 12),
+                    _buildAchievementCard(gameState),
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: () => _shareAchievementCard(gameState),
+                        icon: const Icon(Icons.share, size: 18),
+                        label: const Text('分享成就卡片'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.gold,
+                          foregroundColor: Colors.black,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // 数据导出/备份
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('💾 数据管理', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                    const SizedBox(height: 4),
+                    Text(
+                      '导出数据备份或从备份恢复',
+                      style: TextStyle(color: AppColors.text2, fontSize: 12),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            onPressed: () => _exportData(gameState),
+                            icon: const Icon(Icons.file_download, size: 18),
+                            label: const Text('导出备份'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.green,
+                              foregroundColor: Colors.white,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () => _importData(context),
+                            icon: const Icon(Icons.file_upload, size: 18),
+                            label: const Text('导入备份'),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: AppColors.purple,
+                              side: const BorderSide(color: AppColors.purple),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+
             // 重置游戏
             Card(
               child: Padding(
@@ -286,6 +372,159 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     );
   }
   
+  /// 成就卡片预览
+  Widget _buildAchievementCard(GameState gs) {
+    final unlocked = Achievements.all.where((a) => gs.achievements.contains(a.id)).toList();
+    final total = Achievements.all.length;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [AppColors.bg2, AppColors.bg3],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.gold.withOpacity(0.3)),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              const Text('🔨 塑身工坊', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+              const Spacer(),
+              Text('第${gs.day}天', style: TextStyle(color: AppColors.text2, fontSize: 11)),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '🏆 $unlocked/$total 成就解锁',
+            style: TextStyle(color: AppColors.gold, fontWeight: FontWeight.bold, fontSize: 16),
+          ),
+          const SizedBox(height: 4),
+          if (unlocked.isNotEmpty)
+            Wrap(
+              spacing: 4,
+              children: unlocked.take(6).map((a) =>
+                Text(a.emoji, style: const TextStyle(fontSize: 16)),
+              ).toList(),
+            ),
+          const SizedBox(height: 6),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              _miniStat('🐉', '${gs.kills}杀'),
+              const SizedBox(width: 16),
+              _miniStat('🔥', '${gs.streak}连'),
+              const SizedBox(width: 16),
+              _miniStat('🪙', '${gs.coins}'),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _miniStat(String emoji, String text) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(emoji, style: const TextStyle(fontSize: 11)),
+        const SizedBox(width: 2),
+        Text(text, style: TextStyle(color: AppColors.text, fontSize: 11, fontWeight: FontWeight.w600)),
+      ],
+    );
+  }
+
+  /// 分享成就卡片
+  Future<void> _shareAchievementCard(GameState gs) async {
+    final unlocked = Achievements.all.where((a) => gs.achievements.contains(a.id)).toList();
+    final body = StringBuffer();
+    body.writeln('🔨 塑身工坊 — 我的雕刻报告');
+    body.writeln('━━━━━━━━━━━━━━');
+    body.writeln('📅 已坚持 ${gs.day} 天');
+    body.writeln('🐉 击败怪物 ${gs.kills} 只');
+    body.writeln('🔥 连续打卡 ${gs.streak} 天');
+    body.writeln('🪙 累计金币 ${gs.coins}');
+    body.writeln('⚖️ 当前体重 ${gs.user.weight.toStringAsFixed(1)}kg');
+    body.writeln('🏆 成就解锁 ${unlocked.length}/${Achievements.all.length}');
+    if (unlocked.isNotEmpty) {
+      body.writeln('    ${unlocked.map((a) => a.emoji + a.name).join(' · ')}');
+    }
+    body.writeln('━━━━━━━━━━━━━━');
+    body.writeln('你的身体，是你精心雕琢的作品。');
+
+    try {
+      await Share.share(body.toString());
+    } catch (_) {
+      await Clipboard.setData(ClipboardData(text: body.toString()));
+      _showToast('已复制到剪贴板，去分享吧！');
+    }
+  }
+
+  /// 导出数据备份
+  Future<void> _exportData(GameState gs) async {
+    try {
+      final json = jsonEncode(gs.toJson());
+      final dir = await getApplicationDocumentsDirectory();
+      final file = File('${dir.path}/body_studio_backup_${DateTime.now().toDateString()}.json');
+      await file.writeAsString(json, flush: true);
+
+      // 复制到剪贴板并通过分享发送
+      await Clipboard.setData(ClipboardData(text: json));
+      _showToast('备份已保存到: ${file.path}\nJSON 已复制到剪贴板');
+    } catch (e) {
+      _showToast('导出失败: $e');
+    }
+  }
+
+  /// 导入数据备份
+  Future<void> _importData(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('导入备份'),
+        content: const Text('导入备份将覆盖当前所有进度，确定继续吗？\n\n请从剪贴板粘贴备份数据。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('继续'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      final clipboardData = await Clipboard.getData(Clipboard.kTextPlain);
+      final text = clipboardData?.text;
+      if (text == null || text.isEmpty) {
+        _showToast('剪贴板为空，请先复制备份数据');
+        return;
+      }
+
+      final json = jsonDecode(text) as Map<String, dynamic>;
+      final restored = GameState.fromJson(json);
+
+      if (!mounted) return;
+      // 直接写入 SharedPreferences 让下次启动生效
+      final prefs = ref.read(sharedPreferencesProvider);
+      if (prefs != null) {
+        await prefs.setString('fat_battle_game', jsonEncode(restored.toJson()));
+      }
+
+      _showToast('备份已导入！请重新打开应用');
+    } catch (e) {
+      _showToast('导入失败: 数据格式不正确\n$e');
+    }
+  }
+
   /// 设置项
   Widget _buildSettingItem({
     required String icon,
