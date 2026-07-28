@@ -90,6 +90,12 @@ class TfliteMotionService {
   /// 运动强度更新（0.0 - 1.0），用于 UI 强度条
   Function(double level)? onMotionUpdate;
 
+  /// 关键点更新（COCO 命名，与 [PoseOverlay] 兼容）
+  Function(Map<String, Map<String, double>>? landmarks)? onPoseUpdate;
+
+  /// 模型加载失败时的错误信息
+  String? _modelLoadError;
+
   // ---- Getter ----
   CameraController? get controller => _controller;
   bool get isInitialized => _isInitialized;
@@ -98,6 +104,9 @@ class TfliteMotionService {
   String get currentExercise => _currentExercise;
   double get lastInferenceMs => _lastInferenceMs;
   bool get modelLoaded => _interpreter != null;
+  String? get modelLoadError => _modelLoadError;
+  double get sensitivity =>
+      ((_debounceMs - 200) / 800).clamp(0.0, 1.0);
 
   /// 配置硬件加速。需要在 [initialize] 之前调用。
   ///
@@ -108,19 +117,23 @@ class TfliteMotionService {
     _useNnApi = useNnApi;
   }
 
-  /// 初始化摄像头与 TFLite 模型
-  Future<void> initialize() async {
-    if (_isInitialized) return;
+  /// 初始化摄像头与 TFLite 模型。
+  ///
+  /// 返回 `true` 表示模型与摄像头均就绪；模型缺失时返回 `false`。
+  Future<bool> initialize() async {
+    if (_isInitialized) return modelLoaded && _controller != null;
 
     // 1. 加载模型（即使摄像头不可用也允许加载模型做单帧推理）
     await _loadModel();
+    if (!modelLoaded) {
+      return false;
+    }
 
     // 2. 初始化摄像头
     try {
       _cameras = await availableCameras();
       if (_cameras == null || _cameras!.isEmpty) {
-        // 没有摄像头不抛出，允许仅模型推理模式
-        return;
+        throw Exception('没有找到摄像头');
       }
 
       final frontCamera = _cameras!.firstWhere(
@@ -137,14 +150,16 @@ class TfliteMotionService {
 
       await _controller!.initialize();
       _isInitialized = true;
-    } catch (_) {
-      // 摄像头初始化失败不阻断，模型仍可用
-      _isInitialized = _interpreter != null;
+      return true;
+    } catch (e) {
+      _isInitialized = false;
+      rethrow;
     }
   }
 
   /// 从 assets 加载 MoveNet tflite 模型
   Future<void> _loadModel() async {
+    _modelLoadError = null;
     try {
       final options = InterpreterOptions();
 
@@ -167,10 +182,12 @@ class TfliteMotionService {
         options: options,
       );
     } on FileSystemException {
-      // 模型文件缺失：降级为无模型模式，后续推理会被跳过
       _interpreter = null;
-    } catch (_) {
+      _modelLoadError =
+          '未找到模型 $kModelAsset，请运行 download_models.ps1 下载';
+    } catch (e) {
       _interpreter = null;
+      _modelLoadError = '模型加载失败: $e';
     }
   }
 
@@ -231,12 +248,16 @@ class TfliteMotionService {
           _poseBuffer.removeAt(0);
         }
 
+        onPoseUpdate?.call(_poseToLandmarkMap(pose));
+
         // 4. 计算运动强度并回调
         final motionLevel = _calculateMotionLevel();
         onMotionUpdate?.call(motionLevel);
 
         // 5. 分类动作并计数
         _analyzeExercise(pose);
+      } else {
+        onPoseUpdate?.call(null);
       }
     } finally {
       _isProcessing = false;
@@ -702,6 +723,41 @@ class TfliteMotionService {
   /// 设置灵敏度（0.0 = 高灵敏度短防抖，1.0 = 低灵敏度长防抖）
   void setSensitivity(double sensitivity) {
     _debounceMs = (200 + sensitivity * 800).round().clamp(200, 1000);
+  }
+
+  /// 将 MoveNet 17 点转为 [PoseOverlay] 可用的 COCO 命名坐标
+  Map<String, Map<String, double>> _poseToLandmarkMap(Pose pose) {
+    const names = [
+      'nose',
+      'leftEye',
+      'rightEye',
+      'leftEar',
+      'rightEar',
+      'leftShoulder',
+      'rightShoulder',
+      'leftElbow',
+      'rightElbow',
+      'leftWrist',
+      'rightWrist',
+      'leftHip',
+      'rightHip',
+      'leftKnee',
+      'rightKnee',
+      'leftAnkle',
+      'rightAnkle',
+    ];
+
+    final result = <String, Map<String, double>>{};
+    for (var i = 0; i < names.length && i < pose.keypoints.length; i++) {
+      final kp = pose.keypoints[i];
+      if (kp.confidence < _kMinConfidence) continue;
+      result[names[i]] = {
+        'x': kp.x,
+        'y': kp.y,
+        'z': kp.confidence,
+      };
+    }
+    return result;
   }
 
   /// 释放资源

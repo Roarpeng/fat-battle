@@ -1,4 +1,13 @@
+import 'dart:convert';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import 'game_provider.dart' show sharedPreferencesProvider;
+
+/// SharedPreferences key for companion snapshot.
+const _companionPrefsKey = 'fat_battle_companion';
 
 /// 战斗宠物类型
 enum CompanionMood {
@@ -118,6 +127,40 @@ class CompanionPet {
       owned: owned ?? this.owned,
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'defId': defId,
+        'name': name,
+        'emoji': emoji,
+        'level': level,
+        'xp': xp,
+        'xpToNext': xpToNext,
+        'mood': mood.index,
+        'hunger': hunger,
+        'energy': energy,
+        'skinLevel': skinLevel,
+        'dialogueLevel': dialogueLevel,
+        'owned': owned,
+      };
+
+  factory CompanionPet.fromJson(Map<String, dynamic> json) {
+    final moodIdx = (json['mood'] as num?)?.toInt() ?? 1;
+    return CompanionPet(
+      defId: json['defId'] as String? ?? 'cat',
+      name: json['name'] as String? ?? '小猫崽',
+      emoji: json['emoji'] as String? ?? '🐱',
+      level: (json['level'] as num?)?.toInt() ?? 1,
+      xp: (json['xp'] as num?)?.toInt() ?? 0,
+      xpToNext: (json['xpToNext'] as num?)?.toInt() ?? 100,
+      mood: CompanionMood.values[
+          moodIdx.clamp(0, CompanionMood.values.length - 1)],
+      hunger: (json['hunger'] as num?)?.toInt() ?? 50,
+      energy: (json['energy'] as num?)?.toInt() ?? 100,
+      skinLevel: (json['skinLevel'] as num?)?.toInt() ?? 1,
+      dialogueLevel: (json['dialogueLevel'] as num?)?.toInt() ?? 1,
+      owned: json['owned'] as bool? ?? false,
+    );
+  }
 }
 
 /// 战斗宠物状态
@@ -143,6 +186,9 @@ class CompanionState {
   const CompanionState({
     this.pets = const [
       CompanionPet(defId: 'cat', name: '小猫崽', emoji: '🐱', owned: true),
+      CompanionPet(defId: 'dog', name: '忠诚犬', emoji: '🐶', owned: false),
+      CompanionPet(defId: 'dragon', name: '幼龙', emoji: '🐲', owned: false),
+      CompanionPet(defId: 'owl', name: '智慧猫头鹰', emoji: '🦉', owned: false),
     ],
     this.activeIndex = 0,
     this.monsterDrops = 0,
@@ -173,17 +219,68 @@ class CompanionState {
     }
     return pets[activeIndex];
   }
+
+  Map<String, dynamic> toJson() => {
+        'pets': pets.map((p) => p.toJson()).toList(),
+        'activeIndex': activeIndex,
+        'monsterDrops': monsterDrops,
+        'pendingDrops': pendingDrops,
+        'lastActiveDate': lastActiveDate,
+      };
+
+  factory CompanionState.fromJson(Map<String, dynamic> json) {
+    final petsRaw = json['pets'] as List?;
+    final pets = petsRaw
+            ?.whereType<Map>()
+            .map((e) => CompanionPet.fromJson(Map<String, dynamic>.from(e)))
+            .toList() ??
+        const CompanionState().pets;
+    return CompanionState(
+      pets: pets,
+      activeIndex: (json['activeIndex'] as num?)?.toInt() ?? 0,
+      monsterDrops: (json['monsterDrops'] as num?)?.toInt() ?? 0,
+      pendingDrops: (json['pendingDrops'] as num?)?.toInt() ?? 0,
+      lastActiveDate: json['lastActiveDate'] as String? ?? '',
+    );
+  }
 }
 
-/// 战斗宠物 Notifier
+/// 战斗宠物 Notifier（带 SharedPreferences 持久化）
 class CompanionNotifier extends StateNotifier<CompanionState> {
-  CompanionNotifier() : super(const CompanionState());
+  CompanionNotifier(this.prefs) : super(const CompanionState()) {
+    _loadSync();
+  }
+
+  final SharedPreferences? prefs;
+
+  void _loadSync() {
+    if (prefs == null) return;
+    try {
+      final raw = prefs!.getString(_companionPrefsKey);
+      if (raw == null || raw.isEmpty) return;
+      state = CompanionState.fromJson(
+        jsonDecode(raw) as Map<String, dynamic>,
+      );
+    } catch (e) {
+      debugPrint('[companion] 加载失败: $e');
+    }
+  }
+
+  Future<void> _persist() async {
+    if (prefs == null) return;
+    try {
+      await prefs!.setString(_companionPrefsKey, jsonEncode(state.toJson()));
+    } catch (e) {
+      debugPrint('[companion] 保存失败: $e');
+    }
+  }
 
   /// 切换激活宠物
   void switchPet(int index) {
     if (index < 0 || index >= state.pets.length) return;
     if (!state.pets[index].owned) return;
     state = state.copyWith(activeIndex: index);
+    _persist();
   }
 
   /// 解锁新宠物
@@ -196,6 +293,7 @@ class CompanionNotifier extends StateNotifier<CompanionState> {
       pets[idx] = pets[idx].copyWith(owned: true);
     }
     state = state.copyWith(pets: pets);
+    _persist();
   }
 
   /// 喂食宠物（消耗饮食卡路里）
@@ -215,6 +313,7 @@ class CompanionNotifier extends StateNotifier<CompanionState> {
       pets: pets,
       lastActiveDate: _todayStr(),
     );
+    _persist();
   }
 
   /// 与宠物一起锻炼（获得经验）
@@ -236,6 +335,7 @@ class CompanionNotifier extends StateNotifier<CompanionState> {
       pets: pets,
       lastActiveDate: _todayStr(),
     );
+    _persist();
   }
 
   /// 抚摸宠物（心情变开心）
@@ -248,6 +348,7 @@ class CompanionNotifier extends StateNotifier<CompanionState> {
       pets: pets,
       lastActiveDate: _todayStr(),
     );
+    _persist();
   }
 
   /// 更新宠物心情
@@ -262,12 +363,14 @@ class CompanionNotifier extends StateNotifier<CompanionState> {
       ),
     );
     state = state.copyWith(pets: pets, lastActiveDate: _todayStr());
+    _persist();
   }
 
   /// 添加待领取掉落
   void addPendingDrops(int drops) {
     if (drops <= 0) return;
     state = state.copyWith(pendingDrops: state.pendingDrops + drops);
+    _persist();
   }
 
   /// 领取所有掉落，升级皮肤和对话等级
@@ -292,11 +395,13 @@ class CompanionNotifier extends StateNotifier<CompanionState> {
       pendingDrops: 0,
       lastActiveDate: _todayStr(),
     );
+    _persist();
   }
 
   /// 重置
   void reset() {
     state = const CompanionState();
+    _persist();
   }
 
   CompanionPet _checkLevelUp(CompanionPet pet) {
@@ -328,5 +433,5 @@ class CompanionNotifier extends StateNotifier<CompanionState> {
 /// 战斗宠物 Provider
 final companionProvider =
     StateNotifierProvider<CompanionNotifier, CompanionState>((ref) {
-  return CompanionNotifier();
+  return CompanionNotifier(ref.watch(sharedPreferencesProvider));
 });

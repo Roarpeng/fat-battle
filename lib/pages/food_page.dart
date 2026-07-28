@@ -2,34 +2,52 @@ import 'dart:async';
 import 'dart:typed_data';
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:camera/camera.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import '../constants/app_constants.dart';
+import '../config/api_config.dart';
 import '../models/game_models.dart';
 import '../providers/game_provider.dart';
 import '../services/food_recognition_service_v2.dart';
-import '../services/baidu_food_service.dart';
 import '../services/food_preference_service.dart';
 import '../widgets/city_food_recommend_bar.dart';
+import '../widgets/home/mini_monster_header.dart';
 
 class FoodPage extends ConsumerStatefulWidget {
-  const FoodPage({super.key});
+  /// 从舞台 push 进入时显示迷你怪血条
+  final bool showMonsterHeader;
+
+  const FoodPage({super.key, this.showMonsterHeader = false});
 
   @override
   ConsumerState<FoodPage> createState() => _FoodPageState();
 }
 
 class _FoodPageState extends ConsumerState<FoodPage> {
+  TextStyle get _displayStyle => GoogleFonts.fraunces(
+        color: AppColors.text,
+        fontWeight: FontWeight.w600,
+      );
+
+  TextStyle get _bodyStyle => GoogleFonts.figtree(color: AppColors.text);
+
+  TextStyle get _mutedStyle =>
+      GoogleFonts.figtree(color: AppColors.text2, fontSize: 13);
+
   late final Map<MealType, TextEditingController> _foodNameControllers;
   late final Map<MealType, TextEditingController> _foodCalControllers;
   final Map<MealType, List<RecognizedFood>> _searchResults = {};
   final Map<MealType, Timer?> _searchTimers = {};
   final Map<MealType, bool> _searching = {};
   late final FoodPreferenceService _foodPrefService;
+  final FoodRecognitionServiceV2 _foodService = FoodRecognitionServiceV2();
+  final Map<MealType, GlobalKey<CityFoodRecommendBarState>> _recommendBarKeys = {
+    for (final meal in MealType.values) meal: GlobalKey<CityFoodRecommendBarState>(),
+  };
 
   @override
   void initState() {
@@ -69,6 +87,15 @@ class _FoodPageState extends ConsumerState<FoodPage> {
     return MealType.snack;
   }
 
+  IconData _mealIcon(MealType meal) {
+    return switch (meal) {
+      MealType.breakfast => Icons.wb_sunny_outlined,
+      MealType.lunch => Icons.lunch_dining_outlined,
+      MealType.dinner => Icons.nights_stay_outlined,
+      MealType.snack => Icons.cookie_outlined,
+    };
+  }
+
   void _onSearchChanged(String query, MealType meal) {
     _searchTimers[meal]?.cancel();
     if (query.trim().isEmpty) {
@@ -86,24 +113,37 @@ class _FoodPageState extends ConsumerState<FoodPage> {
   Future<void> _doSearch(String query, MealType meal) async {
     setState(() => _searching[meal] = true);
     try {
-      final results = await FoodRecognitionServiceV2().searchByText(query);
+      final result = await _foodService.searchByTextDetailed(query);
       if (mounted) {
         setState(() {
-          _searchResults[meal] = results;
+          _searchResults[meal] = result.items;
           _searching[meal] = false;
         });
+        if (result.isEmpty) {
+          _showSnack(
+            result.emptyMessage.isNotEmpty
+                ? '未找到「$query」\n${result.emptyMessage}'
+                : '未找到「$query」',
+            isError: true,
+          );
+        }
       }
     } catch (e) {
       if (mounted) {
         setState(() => _searching[meal] = false);
+        _showSnack('搜索失败: $e', isError: true);
       }
     }
+  }
+
+  void _notifyRecommendBarRefresh(MealType meal) {
+    _recommendBarKeys[meal]?.currentState?.refreshRecent();
   }
 
   Future<void> _startBarcodeScan() async {
     final status = await Permission.camera.request();
     if (!status.isGranted) {
-      _showToast('请授予摄像头权限');
+      _showSnack('请授予摄像头权限', isError: true);
       return;
     }
     if (!mounted) return;
@@ -113,14 +153,29 @@ class _FoodPageState extends ConsumerState<FoodPage> {
           onDetected: (barcode) async {
             Navigator.of(ctx).pop();
             _showLoading('正在查询食物信息...');
-            final results = await FoodRecognitionServiceV2().lookupByBarcode(barcode);
-            if (mounted) {
+            try {
+              final result = await _foodService.lookupByBarcodeDetailed(barcode);
+              if (!mounted) return;
               Navigator.of(context).pop();
-              if (results.isEmpty) {
-                _showToast('未找到该条形码对应的食物');
+              if (result.isEmpty) {
+                _showSnack(
+                  '未找到条形码 $barcode 对应的食物\n${result.emptyMessage}',
+                  isError: true,
+                  duration: const Duration(seconds: 5),
+                );
                 return;
               }
-              _showFoodConfirmDialog(results, '扫码识别结果');
+              _showFoodConfirmDialog(result.items, '扫码识别结果');
+            } catch (e) {
+              if (mounted) {
+                Navigator.of(context).pop();
+                _showSnack('条码查询失败: $e', isError: true);
+              }
+            }
+          },
+          onScanError: (message) {
+            if (mounted) {
+              _showSnack(message, isError: true);
             }
           },
         ),
@@ -129,12 +184,21 @@ class _FoodPageState extends ConsumerState<FoodPage> {
   }
 
   Future<void> _startImageRecognition() async {
+    if (!_foodService.hasAnyVisionConfig) {
+      final proceed = await _confirmProceedWithoutVision();
+      if (!proceed || !mounted) return;
+    }
+
     final status = await Permission.camera.request();
     if (!status.isGranted) {
-      _showToast('请授予摄像头权限');
+      _showSnack('请授予摄像头权限', isError: true);
       return;
     }
     final cameras = await availableCameras();
+    if (cameras.isEmpty) {
+      _showSnack('未检测到可用摄像头', isError: true);
+      return;
+    }
     if (!mounted) return;
     final result = await Navigator.of(context).push<XFile>(
       MaterialPageRoute(
@@ -146,108 +210,130 @@ class _FoodPageState extends ConsumerState<FoodPage> {
     try {
       final bytes = await result.readAsBytes();
       final compressed = await _compressImage(bytes);
+      final tmpFile = File(
+        '${Directory.systemTemp.path}/fatbattle_photo_${DateTime.now().microsecondsSinceEpoch}.jpg',
+      );
+      await tmpFile.writeAsBytes(compressed, flush: true);
 
-      // 调试信息
-      final debugInfo = StringBuffer();
-      debugInfo.writeln('=== 调试信息 ===');
-      debugInfo.writeln('原始图片: ${bytes.length} 字节');
-      debugInfo.writeln('压缩后: ${compressed.length} 字节');
-      final isJpg = compressed.length >= 2 &&
-          compressed[0] == 0xFF && compressed[1] == 0xD8;
-      debugInfo.writeln('JPG格式: $isJpg');
-      debugInfo.writeln('百度已配置: ${BaiduFoodService().isConfigured()}');
-
-      // 保存图片到Download目录便于调试
       try {
-        final savePath = '/sdcard/Download/fatbattle_test.jpg';
-        final savedFile = File(savePath);
-        await savedFile.writeAsBytes(compressed, flush: true);
-        debugInfo.writeln('图片已保存: $savePath');
-      } catch (e) {
-        debugInfo.writeln('保存失败: $e');
-      }
-
-      // 使用 V2 服务（GLM-4.6V-Flash 优先，百度兜底）
-      try {
-        final tmpFile = File('${Directory.systemTemp.path}/fatbattle_photo_${DateTime.now().microsecondsSinceEpoch}.jpg');
-        await tmpFile.writeAsBytes(compressed, flush: true);
-
-        final recogResult = await FoodRecognitionServiceV2().recognize(tmpFile);
-        debugInfo.writeln('\n=== 识别结果 ===');
-        debugInfo.writeln('识别源: ${recogResult.source}');
-        debugInfo.writeln('结果数量: ${recogResult.items.length}');
-        for (var i = 0; i < recogResult.items.length; i++) {
-          final item = recogResult.items[i];
-          debugInfo.writeln('${i + 1}. ${item.name} '
-              '(卡路里:${item.calories} kcal/100g, 来源:${item.source})');
-        }
-
+        final recogResult = await _foodService.recognize(tmpFile);
         try {
           await tmpFile.delete();
         } catch (_) {}
 
-        if (mounted) {
-          Navigator.of(context).pop();
-          if (recogResult.items.isEmpty) {
-            _showDebugDialog(
-              '未识别到食物',
-              '所有识别服务均未识别出食物。\n\n'
-              '请尝试：\n'
-              '1. 拍一盘做好的菜（如炒菜、米饭）\n'
-              '2. 拍水果（如苹果、香蕉）\n'
-              '3. 确保食物占画面主体，对焦清晰\n'
-              '4. 或点「搜索」按钮，输入食物名称\n\n'
-              '$debugInfo'
-            );
-            return;
-          }
-          final displayItems = recogResult.items.take(8).toList();
-          _showFoodConfirmDialog(
-            displayItems,
-            '拍照识别结果',
+        if (!mounted) return;
+        Navigator.of(context).pop();
+
+        if (recogResult.items.isEmpty) {
+          _showRecognitionFailureDialog(
+            title: '未识别到食物',
+            message: _buildRecognitionFailureMessage(recogResult),
           );
+          return;
         }
+
+        if (recogResult.source == 'local') {
+          _showSnack(
+            '在线识别不可用，已展示本地推荐候选（${recogResult.sourceLabel}）',
+            isError: false,
+            duration: const Duration(seconds: 4),
+          );
+        } else {
+          _showSnack('识别来源：${recogResult.sourceLabel}', duration: const Duration(seconds: 2));
+        }
+
+        _showFoodConfirmDialog(
+          recogResult.items.take(8).toList(),
+          '拍照识别结果 · ${recogResult.sourceLabel}',
+        );
       } catch (e) {
-        debugInfo.writeln('\n=== 识别错误 ===');
-        debugInfo.writeln('错误: $e');
         if (mounted) {
           Navigator.of(context).pop();
-          _showDebugDialog('识别失败', debugInfo.toString());
+          _showRecognitionFailureDialog(
+            title: '识别失败',
+            message: '拍照识别出错：$e',
+          );
         }
       }
     } catch (e) {
       if (mounted) {
         Navigator.of(context).pop();
-        _showToast('识别失败: $e');
+        _showSnack('识别失败: $e', isError: true);
       }
     }
   }
 
-  void _showDebugDialog(String title, String content) {
+  Future<bool> _confirmProceedWithoutVision() async {
+    return await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            backgroundColor: AppColors.card,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+              side: const BorderSide(color: AppColors.border),
+            ),
+            title: Text('在线识别未配置', style: _displayStyle.copyWith(fontSize: 18)),
+            content: Text(ApiConfig.foodVisionConfigHint, style: _bodyStyle),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: Text('取消', style: _bodyStyle.copyWith(color: AppColors.text2)),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('继续（本地推荐）'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+  }
+
+  String _buildRecognitionFailureMessage(FoodRecognitionResult result) {
+    final buffer = StringBuffer('所有识别源均未识别出食物。\n\n');
+    if (result.attemptedSources.isNotEmpty) {
+      buffer.writeln('已尝试：${result.attemptedSources.join(' → ')}');
+    }
+    if (result.failures.isNotEmpty) {
+      buffer.writeln(result.failures.join('\n'));
+    }
+    buffer.writeln('\n请尝试：');
+    buffer.writeln('1. 拍一盘做好的菜，确保食物占画面主体');
+    buffer.writeln('2. 使用「搜索食物」输入名称');
+    buffer.writeln('3. 包装食品可使用「扫码识别」');
+    if (!ApiConfig.hasAnyFoodVisionConfig) {
+      buffer.writeln('\n${ApiConfig.foodVisionConfigHint}');
+    }
+    return buffer.toString();
+  }
+
+  void _showRecognitionFailureDialog({
+    required String title,
+    required String message,
+  }) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(title),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: SingleChildScrollView(
-            child: SelectableText(
-              content,
-              style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
-            ),
-          ),
+        backgroundColor: AppColors.card,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: const BorderSide(color: AppColors.border),
+        ),
+        title: Text(title, style: _displayStyle.copyWith(fontSize: 18)),
+        content: SingleChildScrollView(
+          child: Text(message, style: _bodyStyle),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('关闭'),
+            child: Text('关闭', style: _bodyStyle.copyWith(color: AppColors.text2)),
           ),
           TextButton(
             onPressed: () {
-              Clipboard.setData(ClipboardData(text: content));
               Navigator.of(ctx).pop();
+              _showSearchDialog();
             },
-            child: const Text('复制'),
+            child: Text('去搜索', style: _bodyStyle.copyWith(color: AppColors.copper)),
           ),
         ],
       ),
@@ -283,7 +369,6 @@ class _FoodPageState extends ConsumerState<FoodPage> {
   }
 
   void _showSearchDialog() {
-    final meal = _getCurrentMeal();
     final searchController = TextEditingController();
     List<RecognizedFood> results = [];
     bool searching = false;
@@ -306,12 +391,30 @@ class _FoodPageState extends ConsumerState<FoodPage> {
               debounce = Timer(const Duration(milliseconds: 400), () async {
                 sb(() => searching = true);
                 try {
-                  final list = await FoodRecognitionServiceV2().searchByText(query);
+                  final queryResult = await _foodService.searchByTextDetailed(query);
                   if (context.mounted) {
                     sb(() {
-                      results = list;
+                      results = queryResult.items;
                       searching = false;
                     });
+                    if (queryResult.isEmpty) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            queryResult.emptyMessage.isNotEmpty
+                                ? '未找到相关食物\n${queryResult.emptyMessage}'
+                                : '未找到相关食物',
+                            style: _bodyStyle,
+                          ),
+                          backgroundColor: AppColors.bg3,
+                          behavior: SnackBarBehavior.floating,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          duration: const Duration(seconds: 4),
+                        ),
+                      );
+                    }
                   }
                 } catch (e) {
                   debugPrint('搜索失败: $e');
@@ -322,8 +425,12 @@ class _FoodPageState extends ConsumerState<FoodPage> {
                     });
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
-                        content: Text('搜索失败: $e'),
-                        backgroundColor: Colors.red,
+                        content: Text('搜索失败: $e', style: _bodyStyle),
+                        backgroundColor: AppColors.ember,
+                        behavior: SnackBarBehavior.floating,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
                         duration: const Duration(seconds: 3),
                       ),
                     );
@@ -333,7 +440,18 @@ class _FoodPageState extends ConsumerState<FoodPage> {
             }
 
             return AlertDialog(
-              title: const Text('🔍 搜索食物'),
+              backgroundColor: AppColors.card,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+                side: const BorderSide(color: AppColors.border),
+              ),
+              title: Row(
+                children: [
+                  Icon(Icons.search, color: AppColors.copper, size: 20),
+                  const SizedBox(width: 8),
+                  Text('搜索食物', style: _displayStyle.copyWith(fontSize: 18)),
+                ],
+              ),
               content: SizedBox(
                 width: 300,
                 child: Column(
@@ -342,16 +460,21 @@ class _FoodPageState extends ConsumerState<FoodPage> {
                     TextField(
                       controller: searchController,
                       autofocus: true,
+                      style: _bodyStyle,
                       decoration: InputDecoration(
                         hintText: '输入食物名称',
-                        prefixIcon: const Icon(Icons.search),
+                        hintStyle: _mutedStyle,
+                        prefixIcon: Icon(Icons.search, color: AppColors.copper),
                         suffixIcon: searching
-                            ? const Padding(
-                                padding: EdgeInsets.all(12),
+                            ? Padding(
+                                padding: const EdgeInsets.all(12),
                                 child: SizedBox(
                                   width: 16,
                                   height: 16,
-                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: AppColors.copper,
+                                  ),
                                 ),
                               )
                             : null,
@@ -360,9 +483,9 @@ class _FoodPageState extends ConsumerState<FoodPage> {
                     ),
                     const SizedBox(height: 12),
                     if (results.isEmpty && !searching && searchController.text.isNotEmpty)
-                      const Padding(
-                        padding: EdgeInsets.all(16),
-                        child: Text('未找到相关食物', style: TextStyle(color: Colors.grey)),
+                      Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Text('未找到相关食物', style: _mutedStyle),
                       )
                     else
                       Flexible(
@@ -373,12 +496,21 @@ class _FoodPageState extends ConsumerState<FoodPage> {
                             final food = results[i];
                             return ListTile(
                               dense: true,
-                              title: Text(food.name, style: const TextStyle(fontSize: 14)),
+                              title: Text(
+                                food.name,
+                                style: _bodyStyle.copyWith(fontSize: 14),
+                              ),
                               subtitle: Text(
                                 '${food.calories} kcal · ${food.source}',
-                                style: TextStyle(fontSize: 11, color: AppColors.text2),
+                                style: _mutedStyle.copyWith(fontSize: 11),
                               ),
-                              trailing: Text('${food.calories}', style: TextStyle(color: AppColors.gold, fontWeight: FontWeight.bold)),
+                              trailing: Text(
+                                '${food.calories}',
+                                style: _bodyStyle.copyWith(
+                                  color: AppColors.copper,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
                               onTap: () {
                                 Navigator.of(ctx).pop();
                                 _showFoodConfirmDialog([food], '搜索结果');
@@ -393,7 +525,7 @@ class _FoodPageState extends ConsumerState<FoodPage> {
               actions: [
                 TextButton(
                   onPressed: () => Navigator.of(ctx).pop(),
-                  child: const Text('关闭'),
+                  child: Text('关闭', style: _bodyStyle.copyWith(color: AppColors.text2)),
                 ),
               ],
             );
@@ -436,7 +568,20 @@ class _FoodPageState extends ConsumerState<FoodPage> {
           final hasMore = foods.length > 1;
 
           return AlertDialog(
-            title: Text('🍽️ $title'),
+            backgroundColor: AppColors.card,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+              side: const BorderSide(color: AppColors.border),
+            ),
+            title: Row(
+              children: [
+                Icon(Icons.restaurant_outlined, color: AppColors.copper, size: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(title, style: _displayStyle.copyWith(fontSize: 17)),
+                ),
+              ],
+            ),
             content: ConstrainedBox(
               constraints: const BoxConstraints(maxHeight: 450),
               child: SingleChildScrollView(
@@ -446,7 +591,7 @@ class _FoodPageState extends ConsumerState<FoodPage> {
                   children: [
                     Text(
                       '请确认并勾选要记录的食物：',
-                      style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+                      style: _mutedStyle,
                     ),
                     const SizedBox(height: 12),
                     ...foods.asMap().entries.take(showCount).map((entry) {
@@ -464,20 +609,27 @@ class _FoodPageState extends ConsumerState<FoodPage> {
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
                           color: AppColors.bg2,
-                          borderRadius: BorderRadius.circular(8),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: AppColors.border),
                         ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             CheckboxListTile(
-                              title: Text(food.name, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+                              title: Text(
+                                food.name,
+                                style: _bodyStyle.copyWith(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
                               subtitle: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   const SizedBox(height: 4),
                                   Text(
                                     '${food.calories} kcal/份',
-                                    style: TextStyle(fontSize: 12, color: AppColors.text2),
+                                    style: _mutedStyle.copyWith(fontSize: 12),
                                   ),
                                   if (probability != null) ...[
                                     const SizedBox(height: 6),
@@ -489,7 +641,9 @@ class _FoodPageState extends ConsumerState<FoodPage> {
                                             child: LinearProgressIndicator(
                                               value: probability.clamp(0.0, 1.0),
                                               backgroundColor: AppColors.border,
-                                              valueColor: const AlwaysStoppedAnimation<Color>(AppColors.green),
+                                              valueColor: AlwaysStoppedAnimation<Color>(
+                                                AppColors.copper.withValues(alpha: 0.85),
+                                              ),
                                               minHeight: 6,
                                             ),
                                           ),
@@ -497,7 +651,11 @@ class _FoodPageState extends ConsumerState<FoodPage> {
                                         const SizedBox(width: 8),
                                         Text(
                                           '${(probability * 100).toStringAsFixed(1)}%',
-                                          style: TextStyle(fontSize: 11, color: AppColors.green, fontWeight: FontWeight.bold),
+                                          style: _bodyStyle.copyWith(
+                                            fontSize: 11,
+                                            color: AppColors.copper,
+                                            fontWeight: FontWeight.bold,
+                                          ),
                                         ),
                                       ],
                                     ),
@@ -522,7 +680,7 @@ class _FoodPageState extends ConsumerState<FoodPage> {
                                 padding: const EdgeInsets.only(left: 48),
                                 child: Row(
                                   children: [
-                                    Text('份量:', style: TextStyle(fontSize: 12, color: AppColors.text2)),
+                                    Text('份量:', style: _mutedStyle.copyWith(fontSize: 12)),
                                     const SizedBox(width: 8),
                                     ...FoodSize.values.map((s) {
                                       final isSel = size == s;
@@ -535,24 +693,33 @@ class _FoodPageState extends ConsumerState<FoodPage> {
                                           margin: const EdgeInsets.only(right: 6),
                                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
                                           decoration: BoxDecoration(
-                                            color: isSel ? AppColors.green.withOpacity(0.15) : Colors.transparent,
+                                            color: isSel
+                                                ? AppColors.copper.withValues(alpha: 0.15)
+                                                : Colors.transparent,
                                             borderRadius: BorderRadius.circular(12),
                                             border: Border.all(
-                                              color: isSel ? AppColors.green : AppColors.border,
+                                              color: isSel ? AppColors.copper : AppColors.border,
                                             ),
                                           ),
                                           child: Text(
                                             s.name,
-                                            style: TextStyle(
+                                            style: _bodyStyle.copyWith(
                                               fontSize: 12,
-                                              color: isSel ? AppColors.green : AppColors.text,
+                                              color: isSel ? AppColors.copper : AppColors.text,
                                             ),
                                           ),
                                         ),
                                       );
                                     }),
                                     const Spacer(),
-                                    Text('$cal kcal', style: TextStyle(color: AppColors.gold, fontSize: 13, fontWeight: FontWeight.bold)),
+                                    Text(
+                                      '$cal kcal',
+                                      style: _bodyStyle.copyWith(
+                                        color: AppColors.copper,
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
                                   ],
                                 ),
                               ),
@@ -572,11 +739,15 @@ class _FoodPageState extends ConsumerState<FoodPage> {
                             children: [
                               Text(
                                 expanded ? '收起' : '展开更多 (${foods.length - 1}个)',
-                                style: const TextStyle(fontSize: 13),
+                                style: _bodyStyle.copyWith(
+                                  fontSize: 13,
+                                  color: AppColors.copper,
+                                ),
                               ),
                               Icon(
                                 expanded ? Icons.expand_less : Icons.expand_more,
                                 size: 18,
+                                color: AppColors.copper,
                               ),
                             ],
                           ),
@@ -586,14 +757,23 @@ class _FoodPageState extends ConsumerState<FoodPage> {
                     Container(
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
-                        color: AppColors.gold.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(8),
+                        color: AppColors.copper.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: AppColors.copper.withValues(alpha: 0.25),
+                        ),
                       ),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text('总计:', style: TextStyle(fontWeight: FontWeight.bold)),
-                          Text('$totalCal 千卡', style: TextStyle(color: AppColors.gold, fontWeight: FontWeight.bold, fontSize: 16)),
+                          Text('总计:', style: _displayStyle.copyWith(fontSize: 15)),
+                          Text(
+                            '$totalCal 千卡',
+                            style: _displayStyle.copyWith(
+                              color: AppColors.copper,
+                              fontSize: 16,
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -604,7 +784,7 @@ class _FoodPageState extends ConsumerState<FoodPage> {
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(ctx),
-                child: const Text('取消'),
+                child: Text('取消', style: _bodyStyle.copyWith(color: AppColors.text2)),
               ),
               ElevatedButton(
                 onPressed: selected.isEmpty
@@ -615,10 +795,10 @@ class _FoodPageState extends ConsumerState<FoodPage> {
                         for (final entry in selected.entries) {
                           final size = portions[entry.key] ?? FoodSize.medium;
                           gameNotifier.addFood(entry.value.toFoodItem(meal, size: size));
-                          // 同步到快捷选择栏的近期食物
                           _foodPrefService.recordFoodAdded(entry.key);
                         }
-                        _showToast('已记录${selected.length}种食物到${meal.name}');
+                        _notifyRecommendBarRefresh(meal);
+                        _showSnack('已记录${selected.length}种食物到${meal.name}');
                       },
                 child: const Text('确认记录'),
               ),
@@ -634,23 +814,34 @@ class _FoodPageState extends ConsumerState<FoodPage> {
       context: context,
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.card,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: const BorderSide(color: AppColors.border),
+        ),
         content: Row(
           children: [
-            const CircularProgressIndicator(),
+            CircularProgressIndicator(color: AppColors.copper, strokeWidth: 2.5),
             const SizedBox(width: 16),
-            Text(message),
+            Expanded(child: Text(message, style: _bodyStyle)),
           ],
         ),
       ),
     );
   }
 
-  void _showToast(String message) {
+  void _showSnack(
+    String message, {
+    bool isError = false,
+    Duration duration = const Duration(seconds: 3),
+  }) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(message),
-        backgroundColor: AppColors.card,
+        content: Text(message, style: _bodyStyle),
+        backgroundColor: isError ? AppColors.ember : AppColors.bg3,
         behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        duration: duration,
       ),
     );
   }
@@ -662,8 +853,14 @@ class _FoodPageState extends ConsumerState<FoodPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('🍽️ 饮食记录'),
+        title: const Text('饮食'),
         centerTitle: true,
+        bottom: widget.showMonsterHeader
+            ? const PreferredSize(
+                preferredSize: Size.fromHeight(72),
+                child: MiniMonsterHeader(),
+              )
+            : null,
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
@@ -682,45 +879,68 @@ class _FoodPageState extends ConsumerState<FoodPage> {
   }
 
   Widget _buildRecognitionArea() {
-    return Card(
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.card,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: AppColors.copper.withValues(alpha: 0.55),
+          width: 1.2,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.ember.withValues(alpha: 0.12),
+            blurRadius: 16,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              '📷 智能识别',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            Row(
+              children: [
+                Icon(Icons.restaurant_menu_outlined, color: AppColors.copper, size: 20),
+                const SizedBox(width: 8),
+                Text('智能识别', style: _displayStyle.copyWith(fontSize: 17)),
+              ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 4),
+            Text(
+              '扫码、拍照或搜索，快速记录今日饮食',
+              style: _mutedStyle.copyWith(fontSize: 12),
+            ),
+            const SizedBox(height: 14),
             Row(
               children: [
                 Expanded(
                   child: _buildRecogButton(
-                    icon: '🔍',
+                    icon: Icons.qr_code_scanner_outlined,
                     label: '扫码识别',
                     sub: '包装食品',
-                    color: AppColors.purple,
+                    accent: AppColors.copper,
                     onTap: _startBarcodeScan,
                   ),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
                   child: _buildRecogButton(
-                    icon: '📷',
+                    icon: Icons.photo_camera_outlined,
                     label: '拍照识别',
                     sub: '菜肴/水果',
-                    color: AppColors.red,
+                    accent: AppColors.ember,
                     onTap: _startImageRecognition,
                   ),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
                   child: _buildRecogButton(
-                    icon: '🔤',
+                    icon: Icons.search_outlined,
                     label: '搜索食物',
                     sub: '名称查询',
-                    color: AppColors.green,
+                    accent: AppColors.green,
                     onTap: _showSearchDialog,
                   ),
                 ),
@@ -733,27 +953,42 @@ class _FoodPageState extends ConsumerState<FoodPage> {
   }
 
   Widget _buildRecogButton({
-    required String icon,
+    required IconData icon,
     required String label,
     required String sub,
-    required Color color,
+    required Color accent,
     required VoidCallback onTap,
   }) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 14),
+        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 6),
         decoration: BoxDecoration(
-          color: color.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: color.withOpacity(0.3)),
+          color: AppColors.bg2,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: accent.withValues(alpha: 0.35)),
         ),
         child: Column(
           children: [
-            Text(icon, style: const TextStyle(fontSize: 28)),
-            const SizedBox(height: 4),
-            Text(label, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: color)),
-            Text(sub, style: TextStyle(fontSize: 11, color: AppColors.text2)),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: accent.withValues(alpha: 0.12),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, color: accent, size: 22),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              label,
+              style: _bodyStyle.copyWith(
+                fontWeight: FontWeight.w700,
+                fontSize: 13,
+                color: accent,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            Text(sub, style: _mutedStyle.copyWith(fontSize: 11), textAlign: TextAlign.center),
           ],
         ),
       ),
@@ -777,13 +1012,19 @@ class _FoodPageState extends ConsumerState<FoodPage> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  '${meal.emoji} ${meal.name}',
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                Row(
+                  children: [
+                    Icon(_mealIcon(meal), color: AppColors.copper, size: 18),
+                    const SizedBox(width: 8),
+                    Text(meal.name, style: _displayStyle.copyWith(fontSize: 15)),
+                  ],
                 ),
                 Text(
                   '$mealCal 千卡',
-                  style: TextStyle(color: AppColors.gold),
+                  style: _bodyStyle.copyWith(
+                    color: AppColors.copper,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ],
             ),
@@ -794,7 +1035,13 @@ class _FoodPageState extends ConsumerState<FoodPage> {
                 ? Center(
                     child: Padding(
                       padding: const EdgeInsets.all(10),
-                      child: Text('📭 还没有记录', style: TextStyle(color: AppColors.text2)),
+                      child: Column(
+                        children: [
+                          Icon(Icons.inventory_2_outlined, color: AppColors.text2, size: 28),
+                          const SizedBox(height: 6),
+                          Text('还没有记录', style: _mutedStyle),
+                        ],
+                      ),
                     ),
                   )
                 : Column(
@@ -811,6 +1058,16 @@ class _FoodPageState extends ConsumerState<FoodPage> {
           ),
           if (_searchResults[meal] != null && _searchResults[meal]!.isNotEmpty)
             _buildSearchResults(meal, gameNotifier),
+          if ((_searching[meal] ?? false) == false &&
+              _foodNameControllers[meal]!.text.trim().isNotEmpty &&
+              (_searchResults[meal]?.isEmpty ?? true))
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Text(
+                '未找到「${_foodNameControllers[meal]!.text.trim()}」，可手动输入千卡后添加',
+                style: _mutedStyle.copyWith(fontSize: 12),
+              ),
+            ),
           Padding(
             padding: const EdgeInsets.all(12),
             child: _buildQuickTags(meal, gameNotifier),
@@ -826,18 +1083,28 @@ class _FoodPageState extends ConsumerState<FoodPage> {
       margin: const EdgeInsets.symmetric(horizontal: 12),
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
-        color: AppColors.green.withOpacity(0.05),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppColors.green.withOpacity(0.2)),
+        color: AppColors.copper.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.copper.withValues(alpha: 0.22)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
             padding: const EdgeInsets.only(left: 4, bottom: 4),
-            child: Text(
-              '🔍 搜索结果（点击确认）',
-              style: TextStyle(fontSize: 12, color: AppColors.green, fontWeight: FontWeight.bold),
+            child: Row(
+              children: [
+                Icon(Icons.search, size: 14, color: AppColors.copper),
+                const SizedBox(width: 4),
+                Text(
+                  '搜索结果（点击确认）',
+                  style: _bodyStyle.copyWith(
+                    fontSize: 12,
+                    color: AppColors.copper,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
             ),
           ),
           ...results.take(5).map((food) {
@@ -853,16 +1120,21 @@ class _FoodPageState extends ConsumerState<FoodPage> {
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                 margin: const EdgeInsets.only(bottom: 2),
                 decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(6),
+                  color: AppColors.bg2,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: AppColors.border),
                 ),
                 child: Row(
                   children: [
-                    Text(food.name, style: const TextStyle(fontSize: 13)),
-                    const Spacer(),
-                    Text('${food.calories} kcal', style: TextStyle(color: AppColors.gold, fontSize: 12)),
+                    Expanded(
+                      child: Text(food.name, style: _bodyStyle.copyWith(fontSize: 13)),
+                    ),
+                    Text(
+                      '${food.calories} kcal',
+                      style: _bodyStyle.copyWith(color: AppColors.copper, fontSize: 12),
+                    ),
                     const SizedBox(width: 6),
-                    Text(food.source, style: TextStyle(fontSize: 10, color: AppColors.text2)),
+                    Text(food.source, style: _mutedStyle.copyWith(fontSize: 10)),
                   ],
                 ),
               ),
@@ -879,18 +1151,25 @@ class _FoodPageState extends ConsumerState<FoodPage> {
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: AppColors.bg2,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.border),
       ),
       child: Row(
         children: [
-          Expanded(child: Text(food.name)),
-          Text(food.size.name, style: TextStyle(color: AppColors.text2)),
+          Expanded(child: Text(food.name, style: _bodyStyle)),
+          Text(food.size.name, style: _mutedStyle),
           const SizedBox(width: 8),
-          Text('${food.totalCal}千卡', style: TextStyle(color: AppColors.gold)),
-          const SizedBox(width: 8),
-          GestureDetector(
-            onTap: () => gameNotifier.removeFood(meal, index),
-            child: const Text('✕', style: TextStyle(color: AppColors.red)),
+          Text(
+            '${food.totalCal}千卡',
+            style: _bodyStyle.copyWith(color: AppColors.copper, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(width: 4),
+          IconButton(
+            onPressed: () => gameNotifier.removeFood(meal, index),
+            icon: Icon(Icons.close, color: AppColors.ember, size: 18),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+            visualDensity: VisualDensity.compact,
           ),
         ],
       ),
@@ -964,8 +1243,8 @@ class _FoodPageState extends ConsumerState<FoodPage> {
                   meal: meal,
                 );
                 gameNotifier.addFood(food);
-                // 同步到快捷选择栏
                 _foodPrefService.recordFoodAdded(name);
+                _notifyRecommendBarRefresh(meal);
                 nameController.clear();
                 calController.clear();
                 setState(() => _searchResults[meal] = []);
@@ -983,6 +1262,7 @@ class _FoodPageState extends ConsumerState<FoodPage> {
 
   Widget _buildQuickTags(MealType meal, GameStateNotifier gameNotifier) {
     return CityFoodRecommendBar(
+      key: _recommendBarKeys[meal],
       meal: meal,
       onSelect: (food) {
         gameNotifier.addFood(FoodItem(
@@ -992,14 +1272,20 @@ class _FoodPageState extends ConsumerState<FoodPage> {
           totalCal: food.cal,
           meal: meal,
         ));
+        _showSnack('已添加 ${food.name} 到${meal.name}');
       },
     );
   }
 }
 
 class _BarcodeScannerPage extends StatefulWidget {
-  final Function(String) onDetected;
-  const _BarcodeScannerPage({required this.onDetected});
+  final Future<void> Function(String) onDetected;
+  final void Function(String message)? onScanError;
+
+  const _BarcodeScannerPage({
+    required this.onDetected,
+    this.onScanError,
+  });
 
   @override
   State<_BarcodeScannerPage> createState() => _BarcodeScannerPageState();
@@ -1007,28 +1293,54 @@ class _BarcodeScannerPage extends StatefulWidget {
 
 class _BarcodeScannerPageState extends State<_BarcodeScannerPage> {
   bool _detected = false;
+  String? _errorMessage;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('📷 扫描条形码'),
+        title: Text('扫描条形码', style: GoogleFonts.fraunces(fontWeight: FontWeight.w600)),
         centerTitle: true,
       ),
       body: Stack(
         children: [
           MobileScanner(
+            errorBuilder: (context, error, child) {
+              final msg = '摄像头不可用：${error.errorCode.name}';
+              widget.onScanError?.call(msg);
+              return Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Text(msg, textAlign: TextAlign.center),
+                ),
+              );
+            },
             onDetect: (capture) {
               if (_detected) return;
               final barcodes = capture.barcodes;
+              if (barcodes.isEmpty) return;
+
+              String? code;
               for (final barcode in barcodes) {
-                final code = barcode.rawValue;
-                if (code != null && code.isNotEmpty) {
-                  _detected = true;
-                  widget.onDetected(code);
+                final raw = barcode.rawValue?.trim();
+                if (raw != null && raw.isNotEmpty) {
+                  code = raw;
                   break;
                 }
               }
+
+              if (code == null) {
+                setState(() {
+                  _errorMessage = '无法读取条形码，请对准包装条码重试';
+                });
+                return;
+              }
+
+              _detected = true;
+              widget.onDetected(code).catchError((Object e) {
+                _detected = false;
+                widget.onScanError?.call('扫码处理失败: $e');
+              });
             },
           ),
           Positioned(
@@ -1039,12 +1351,14 @@ class _BarcodeScannerPageState extends State<_BarcodeScannerPage> {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                 decoration: BoxDecoration(
-                  color: Colors.black54,
+                  color: AppColors.bg3.withValues(alpha: 0.85),
                   borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: AppColors.copper.withValues(alpha: 0.35)),
                 ),
-                child: const Text(
-                  '将条形码对准扫描框',
-                  style: TextStyle(color: Colors.white, fontSize: 14),
+                child: Text(
+                  _errorMessage ?? '将条形码对准扫描框',
+                  style: GoogleFonts.figtree(color: AppColors.text, fontSize: 14),
+                  textAlign: TextAlign.center,
                 ),
               ),
             ),
@@ -1102,7 +1416,12 @@ class _TakePicturePageState extends State<_TakePicturePage> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('拍照失败: $e')),
+          SnackBar(
+            content: Text('拍照失败: $e', style: GoogleFonts.figtree(color: AppColors.text)),
+            backgroundColor: AppColors.ember,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
         );
       }
     }
@@ -1112,7 +1431,7 @@ class _TakePicturePageState extends State<_TakePicturePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('📷 拍摄食物'),
+        title: Text('拍摄食物', style: GoogleFonts.fraunces(fontWeight: FontWeight.w600)),
         centerTitle: true,
       ),
       body: _isReady && _controller != null
@@ -1131,10 +1450,10 @@ class _TakePicturePageState extends State<_TakePicturePage> {
                         height: 70,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: Colors.white,
-                          border: Border.all(color: AppColors.green, width: 4),
+                          color: AppColors.text,
+                          border: Border.all(color: AppColors.copper, width: 4),
                         ),
-                        child: const Icon(Icons.camera_alt, color: AppColors.green, size: 32),
+                        child: Icon(Icons.camera_alt, color: AppColors.ember, size: 32),
                       ),
                     ),
                   ),

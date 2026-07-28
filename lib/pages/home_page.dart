@@ -1,425 +1,352 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:google_fonts/google_fonts.dart';
+
 import '../constants/app_constants.dart';
 import '../models/game_models.dart';
 import '../providers/game_provider.dart';
+import '../services/ble_service.dart';
+import '../widgets/home/forge_background.dart';
+import '../widgets/home/monster_stage_avatar.dart';
+import '../widgets/home/stage_action_button.dart';
 import '../widgets/hp_bar.dart';
 import '../widgets/hub_status_dot.dart';
-import '../services/ble_service.dart';
+import 'exercise_page.dart';
+import 'food_page.dart';
+import 'settings_page.dart';
 
+/// 方案 A：首页即舞台
 class HomePage extends ConsumerStatefulWidget {
   final void Function(int index)? onTabSwitch;
 
   const HomePage({super.key, this.onTabSwitch});
-  
+
   @override
   ConsumerState<HomePage> createState() => _HomePageState();
 }
 
 class _HomePageState extends ConsumerState<HomePage> {
-  bool _isShaking = false;
-  
-  String _getStatusMessage(GameState gs) {
-    if (gs.status == GameStatus.won) {
-      return '今日雕琢完成 🎉 明天继续精进';
-    }
-    if (gs.status == GameStatus.lost) {
-      return '今日精力已用完，好好休养';
-    }
-    if (gs.monster.hasShield) {
-      return '它披上了护甲，去走走吧';
-    }
-    if (gs.remainingCal >= 0) {
-      return '再消耗 ${(gs.monster.hp * 0.8).toInt()} kcal 就能攻克它';
-    } else {
-      return '超出 ${-gs.remainingCal} kcal，锤炼一下就好';
-    }
-  }
-  
-  String _getCalorieDisplay(GameState gs) {
-    final remaining = gs.remainingCal;
-    if (remaining >= 0) {
-      return '今日还能摄入 $remaining kcal';
-    } else {
-      return '已超出 ${-remaining} kcal';
-    }
-  }
-  
-  Color _getCalorieColor(GameState gs) {
-    if (gs.remainingCal >= 500) return AppColors.green;
-    if (gs.remainingCal >= 0) return AppColors.gold;
-    return AppColors.red;
-  }
-  
+  bool _hitFlash = false;
+  String? _floatLabel;
+  Color _floatColor = AppColors.ember;
+
   @override
   Widget build(BuildContext context) {
     final gameState = ref.watch(gameStateProvider);
-    final gameNotifier = ref.read(gameStateProvider.notifier);
-    
+    final notifier = ref.read(gameStateProvider.notifier);
+
+    ref.listen<GameState>(gameStateProvider, (prev, next) {
+      if (prev == null) return;
+      _reactToCombat(prev, next);
+    });
+
     if (!gameState.hasGame) {
       return const Center(child: Text('请先创建角色'));
     }
-    
-    final hour = DateTime.now().hour;
-    String greeting = '今天继续雕琢';
-    if (hour < 6) greeting = '夜深了，匠人该休息了';
-    else if (hour < 12) greeting = '早安，匠人';
-    else if (hour < 18) greeting = '午后好，继续打磨';
-    else greeting = '晚间工坊时间';
-    
-    return Scaffold(
-      body: SafeArea(
+
+    final mealCount =
+        gameState.meals.values.fold<int>(0, (n, list) => n + list.length);
+    final exerciseCount = gameState.exercises.length;
+
+    return ForgeBackground(
+      child: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
           child: Column(
             children: [
-              // 顶部：状态行（Hub状态点 + 天数 + 金币）
-              Row(
-                children: [
-                  Consumer(
-                    builder: (context, ref, child) {
-                      final bleState = ref.watch(bleConnectionStateProvider);
-                      
-                      HubStatus status = HubStatus.disconnected;
-                      String tooltip = '点击连接腰部Hub';
-                      
-                      bleState.whenData((data) {
-                        if (data.isConnected) {
-                          status = HubStatus.connected;
-                          tooltip = '腰部Hub已连接 - ${data.name}';
-                        }
-                      });
-                      
-                      return HubStatusDot(
-                        status: status,
-                        size: 8,
-                        tooltip: tooltip,
-                        onTap: () => _showHubBottomSheet(context),
-                      );
-                    },
-                  ),
-                  const Spacer(),
-                  Text(
-                    '第 ${gameState.day} 天',
-                    style: TextStyle(color: AppColors.text2, fontSize: 13),
-                  ),
-                  const SizedBox(width: 16),
-                  Text(
-                    '🪙 ${gameState.coins}',
-                    style: TextStyle(
-                      color: AppColors.gold,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-              
-              // 中部：问候 + 卡路里余额 + 怪物 + 血条 + 状态文案
+              _buildTopBar(gameState),
               Expanded(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(
-                      greeting,
-                      style: TextStyle(
-                        fontSize: 16,
-                        color: AppColors.text2,
+                      gameState.monster.name,
+                      style: GoogleFonts.fraunces(
+                        fontSize: 28,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.text,
+                        height: 1.1,
                       ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      _statusLine(gameState),
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.figtree(
+                        fontSize: 14,
+                        color: AppColors.text2,
+                        height: 1.35,
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    Stack(
+                      alignment: Alignment.center,
+                      clipBehavior: Clip.none,
+                      children: [
+                        MonsterStageAvatar(
+                          monster: gameState.monster,
+                          hitFlash: _hitFlash,
+                          onTap: () {
+                            setState(() => _hitFlash = true);
+                            Future.delayed(const Duration(milliseconds: 120),
+                                () {
+                              if (mounted) setState(() => _hitFlash = false);
+                            });
+                          },
+                        ),
+                        if (_floatLabel != null)
+                          Positioned(
+                            top: 8,
+                            child: IgnorePointer(
+                              child: AnimatedOpacity(
+                                opacity: _floatLabel == null ? 0 : 1,
+                                duration: const Duration(milliseconds: 200),
+                                child: Text(
+                                  _floatLabel!,
+                                  style: GoogleFonts.fraunces(
+                                    fontSize: 28,
+                                    fontWeight: FontWeight.w700,
+                                    color: _floatColor,
+                                    shadows: [
+                                      Shadow(
+                                        color: Colors.black.withValues(alpha: 0.55),
+                                        blurRadius: 8,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
                     const SizedBox(height: 8),
-                    Text(
-                      _getCalorieDisplay(gameState),
-                      style: TextStyle(
-                        fontSize: 28,
-                        fontWeight: FontWeight.bold,
-                        color: _getCalorieColor(gameState),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-
-                    // 饮水追踪
-                    _buildWaterTracker(gameState, gameNotifier),
-
-                    const SizedBox(height: 24),
-
-                    // 怪物
-                    GestureDetector(
-                      onTap: () => _tapMonster(),
-                      child: AnimatedScale(
-                        scale: _isShaking ? 0.92 : 1.0,
-                        duration: const Duration(milliseconds: 100),
-                        child: Text(
-                          gameState.monster.emoji,
-                          style: TextStyle(fontSize: 96),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      gameState.monster.name,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    Text(
-                      'Lv.${gameState.monster.level}${gameState.monster.isBoss ? ' 👑' : ''}',
-                      style: TextStyle(color: AppColors.text2, fontSize: 12),
-                    ),
-                    const SizedBox(height: 20),
-                    
-                    // 怪物血条（含护盾）
                     Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      padding: const EdgeInsets.symmetric(horizontal: 28),
                       child: HpBar(
                         current: gameState.monster.hp,
                         max: gameState.monster.maxHp,
-                        color: AppColors.red,
+                        color: AppColors.ember,
                         shield: gameState.monster.shield,
+                        shieldColor: AppColors.shield,
                         height: 14,
                       ),
                     ),
-                    const SizedBox(height: 16),
-                    
-                    // 状态文案（正向反馈）
-                    Text(
-                      _getStatusMessage(gameState),
-                      style: TextStyle(
-                        color: AppColors.text2,
-                        fontSize: 14,
-                      ),
-                    ),
                   ],
                 ),
               ),
-              
-              // 底部：3个入口按钮
-              Padding(
-                padding: const EdgeInsets.only(bottom: 24),
-                child: Row(
-                  children: [
-                    _buildActionButton(
-                      emoji: '🍽️',
-                      label: '饮食',
-                      onTap: () => widget.onTabSwitch?.call(1),
-                    ),
-                    const SizedBox(width: 12),
-                    _buildActionButton(
-                      emoji: '🏋️',
-                      label: '锻炼',
-                      onTap: () => widget.onTabSwitch?.call(2),
-                      isPrimary: true,
-                    ),
-                    const SizedBox(width: 12),
-                    _buildActionButton(
-                      emoji: '⚖️',
-                      label: '称重',
-                      onTap: () => widget.onTabSwitch?.call(3),
-                    ),
-                  ],
-                ),
-              ),
-              
-              // 胜利/失败轻提示（非弹窗，静默展示）
               if (gameState.status == GameStatus.won)
-                _buildWinBanner(gameNotifier),
+                _banner(
+                  title: '今日雕琢完成',
+                  subtitle: '炉火温着，明日再战',
+                  color: AppColors.green,
+                  actionLabel: '再来一次',
+                  onAction: () => notifier.startNewChallenge(),
+                ),
               if (gameState.status == GameStatus.lost)
-                _buildLoseBanner(),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-  
-  Widget _buildWaterTracker(GameState gs, GameStateNotifier notifier) {
-    final cups = gs.waterCups;
-    final goal = gs.waterGoal;
-    final progress = goal > 0 ? (cups / goal).clamp(0.0, 1.0) : 0.0;
-    final remaining = (goal - cups).clamp(0, goal);
-
-    return GestureDetector(
-      onTap: () => notifier.addWaterCup(),
-      onLongPress: () => notifier.removeWaterCup(),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        decoration: BoxDecoration(
-          color: AppColors.card,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppColors.border),
-        ),
-        child: Row(
-          children: [
-            const Text('💧', style: TextStyle(fontSize: 20)),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                _banner(
+                  title: '今日精力耗尽',
+                  subtitle: '好好休养，明天满血归来',
+                  color: AppColors.shield,
+                ),
+              const SizedBox(height: 10),
+              Row(
                 children: [
-                  Row(
-                    children: [
-                      Text(
-                        '饮水 $cups/$goal 杯',
-                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-                      ),
-                      const Spacer(),
-                      Text(
-                        remaining > 0 ? '还差 $remaining 杯' : '✅ 达标！',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: remaining > 0 ? AppColors.text2 : AppColors.green,
-                        ),
-                      ),
-                    ],
+                  StageActionButton(
+                    icon: Icons.restaurant_rounded,
+                    label: '饮食',
+                    subtitle: mealCount > 0 ? '今日已记 $mealCount 餐' : '记录一餐',
+                    tone: StageActionTone.food,
+                    onTap: () => _openFood(),
                   ),
-                  const SizedBox(height: 4),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(4),
-                    child: LinearProgressIndicator(
-                      value: progress,
-                      backgroundColor: AppColors.border,
-                      valueColor: AlwaysStoppedAnimation<Color>(
-                        progress >= 1.0 ? AppColors.green : AppColors.purple,
-                      ),
-                      minHeight: 6,
-                    ),
+                  const SizedBox(width: 12),
+                  StageActionButton(
+                    icon: Icons.fitness_center_rounded,
+                    label: '锤炼',
+                    subtitle:
+                        exerciseCount > 0 ? '今日已练 $exerciseCount 次' : '开练攻击',
+                    tone: StageActionTone.forge,
+                    onTap: () => _openExercise(),
                   ),
                 ],
               ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildActionButton({
-    required String emoji,
-    required String label,
-    required VoidCallback onTap,
-    bool isPrimary = false,
-  }) {
-    return Expanded(
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          decoration: BoxDecoration(
-            color: isPrimary ? AppColors.green : AppColors.card,
-            borderRadius: BorderRadius.circular(16),
-            border: isPrimary
-                ? null
-                : Border.all(color: AppColors.border),
-          ),
-          child: Column(
-            children: [
-              Text(emoji, style: const TextStyle(fontSize: 28)),
-              const SizedBox(height: 6),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                  color: isPrimary ? Colors.white : AppColors.text,
-                ),
-              ),
             ],
           ),
         ),
       ),
     );
   }
-  
-  Widget _buildWinBanner(GameStateNotifier notifier) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      decoration: BoxDecoration(
-        color: AppColors.green.withOpacity(0.15),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.green.withOpacity(0.4)),
-      ),
-      child: Row(
-        children: [
-          const Text('🎉', style: TextStyle(fontSize: 20)),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  '今日雕琢完成',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.green,
-                  ),
-                ),
-                Text(
-                  '明日继续精雕细琢',
-                  style: TextStyle(color: AppColors.text2, fontSize: 12),
-                ),
-              ],
-            ),
-          ),
-          TextButton(
-            onPressed: () => notifier.startNewChallenge(),
-            child: const Text('再来一次'),
-          ),
-        ],
-      ),
-    );
+
+  void _reactToCombat(GameState prev, GameState next) {
+    final dHp = prev.monster.hp - next.monster.hp;
+    final dShield = next.monster.shield - prev.monster.shield;
+    if (dHp > 0) {
+      HapticFeedback.heavyImpact();
+      _showFloat('-$dHp', AppColors.ember);
+      setState(() => _hitFlash = true);
+      Future.delayed(const Duration(milliseconds: 160), () {
+        if (mounted) setState(() => _hitFlash = false);
+      });
+    } else if (dShield > 0) {
+      HapticFeedback.lightImpact();
+      _showFloat('+$dShield 盾', AppColors.shield);
+    } else if (dShield < 0 && dHp <= 0) {
+      HapticFeedback.mediumImpact();
+      _showFloat('${dShield.abs()} 破盾', AppColors.copper);
+    }
   }
-  
-  Widget _buildLoseBanner() {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      decoration: BoxDecoration(
-        color: AppColors.purple.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.purple.withOpacity(0.3)),
-      ),
-      child: Row(
-        children: [
-          const Text('😴', style: TextStyle(fontSize: 20)),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  '今日精力已耗尽',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.purple,
-                  ),
-                ),
-                Text(
-                  '好好休养，明天满血归来',
-                  style: TextStyle(color: AppColors.text2, fontSize: 12),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-  
-  void _tapMonster() {
+
+  void _showFloat(String label, Color color) {
     setState(() {
-      _isShaking = true;
+      _floatLabel = label;
+      _floatColor = color;
     });
-    Future.delayed(const Duration(milliseconds: 100), () {
-      if (mounted) {
-        setState(() => _isShaking = false);
-      }
+    Future.delayed(const Duration(milliseconds: 900), () {
+      if (mounted) setState(() => _floatLabel = null);
     });
   }
-  
+
+  String _statusLine(GameState gs) {
+    if (gs.status == GameStatus.won) return '今日任务完成，炉火歇着';
+    if (gs.status == GameStatus.lost) return '精力见底，先去休整';
+    if (gs.monster.hasShield) return '它裹着护甲——吃少一点，或去锤炼破盾';
+    if (gs.remainingCal >= 0) {
+      return '再消耗约 ${(gs.monster.hp * 0.8).toInt()} kcal 就能攻克它';
+    }
+    return '已超出 ${-gs.remainingCal} kcal，动一动就能削盾';
+  }
+
+  Widget _buildTopBar(GameState gs) {
+    return Row(
+      children: [
+        Consumer(
+          builder: (context, ref, _) {
+            final bleState = ref.watch(bleConnectionStateProvider);
+            HubStatus status = HubStatus.disconnected;
+            String tip = '连接腰部 Hub';
+            bleState.whenData((data) {
+              if (data.isConnected) {
+                status = HubStatus.connected;
+                tip = '已连接 ${data.name}';
+              }
+            });
+            return HubStatusDot(
+              status: status,
+              size: 9,
+              tooltip: tip,
+              onTap: () => _showHubBottomSheet(context),
+            );
+          },
+        ),
+        const SizedBox(width: 10),
+        Text(
+          '第 ${gs.day} 天',
+          style: GoogleFonts.figtree(
+            fontSize: 13,
+            color: AppColors.text2,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const Spacer(),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          decoration: BoxDecoration(
+            color: AppColors.card,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: AppColors.border),
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.monetization_on_rounded,
+                  size: 14, color: AppColors.copper),
+              const SizedBox(width: 4),
+              Text(
+                '${gs.coins}',
+                style: GoogleFonts.figtree(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.copper,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 4),
+        IconButton(
+          tooltip: '更多',
+          onPressed: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const SettingsPage()),
+            );
+          },
+          icon: const Icon(Icons.tune_rounded, color: AppColors.text2),
+        ),
+      ],
+    );
+  }
+
+  Widget _banner({
+    required String title,
+    required String subtitle,
+    required Color color,
+    String? actionLabel,
+    VoidCallback? onAction,
+  }) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: color.withValues(alpha: 0.4)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: GoogleFonts.figtree(
+                    fontWeight: FontWeight.w800,
+                    color: color,
+                    fontSize: 14,
+                  ),
+                ),
+                Text(
+                  subtitle,
+                  style: GoogleFonts.figtree(
+                    fontSize: 12,
+                    color: AppColors.text2,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (actionLabel != null && onAction != null)
+            TextButton(onPressed: onAction, child: Text(actionLabel)),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _openFood() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const FoodPage(showMonsterHeader: true)),
+    );
+  }
+
+  Future<void> _openExercise() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const ExercisePage(showMonsterHeader: true),
+      ),
+    );
+  }
+
   void _showHubBottomSheet(BuildContext context) {
     showModalBottomSheet(
       context: context,
@@ -427,16 +354,14 @@ class _HomePageState extends ConsumerState<HomePage> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (ctx) {
-        return const HubConnectionSheet();
-      },
+      builder: (_) => const HubConnectionSheet(),
     );
   }
 }
 
 class HubConnectionSheet extends ConsumerStatefulWidget {
   const HubConnectionSheet({super.key});
-  
+
   @override
   ConsumerState<HubConnectionSheet> createState() => _HubConnectionSheetState();
 }
@@ -444,7 +369,7 @@ class HubConnectionSheet extends ConsumerStatefulWidget {
 class _HubConnectionSheetState extends ConsumerState<HubConnectionSheet> {
   bool _isScanning = false;
   final List<String> _logs = [];
-  
+
   @override
   void initState() {
     super.initState();
@@ -458,12 +383,12 @@ class _HubConnectionSheetState extends ConsumerState<HubConnectionSheet> {
       }
     });
   }
-  
+
   @override
   Widget build(BuildContext context) {
     final bleService = ref.watch(bleServiceProvider);
     final bleState = ref.watch(bleConnectionStateProvider);
-    
+
     return Padding(
       padding: const EdgeInsets.all(20),
       child: Column(
@@ -481,24 +406,20 @@ class _HubConnectionSheetState extends ConsumerState<HubConnectionSheet> {
             ),
           ),
           const SizedBox(height: 16),
-          const Text(
-            '🔗 腰部 Hub 连接',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
+          Text(
+            '腰部 Hub',
+            style: GoogleFonts.fraunces(
+              fontSize: 22,
+              fontWeight: FontWeight.w600,
             ),
           ),
           const SizedBox(height: 16),
           bleState.when(
-            data: (data) {
-              return _buildStatusRow(data);
-            },
+            data: _buildStatusRow,
             loading: () => _buildStatusRow(const BleDeviceState()),
-            error: (_, __) => _buildStatusRow(const BleDeviceState()),
+            error: (_, _) => _buildStatusRow(const BleDeviceState()),
           ),
           const SizedBox(height: 16),
-          const Divider(color: AppColors.border),
-          const SizedBox(height: 12),
           Row(
             children: [
               Expanded(
@@ -506,10 +427,6 @@ class _HubConnectionSheetState extends ConsumerState<HubConnectionSheet> {
                   onPressed: _isScanning ? null : _startScan,
                   icon: Icon(_isScanning ? Icons.hourglass_empty : Icons.search),
                   label: Text(_isScanning ? '扫描中...' : '扫描设备'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.green,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                  ),
                 ),
               ),
               const SizedBox(width: 12),
@@ -517,28 +434,15 @@ class _HubConnectionSheetState extends ConsumerState<HubConnectionSheet> {
                 child: OutlinedButton.icon(
                   onPressed: () => _disconnect(bleService),
                   icon: const Icon(Icons.bluetooth_disabled),
-                  label: const Text('断开连接'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.red,
-                    side: BorderSide(color: AppColors.red.withOpacity(0.5)),
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                  ),
+                  label: const Text('断开'),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 16),
-          const Text(
-            '连接日志',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: AppColors.text2,
-            ),
-          ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
           Container(
-            height: 120,
+            height: 100,
+            width: double.infinity,
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               color: AppColors.bg,
@@ -549,86 +453,51 @@ class _HubConnectionSheetState extends ConsumerState<HubConnectionSheet> {
               reverse: true,
               child: Text(
                 _logs.isEmpty ? '等待操作...' : _logs.join('\n'),
-                style: const TextStyle(
+                style: GoogleFonts.figtree(
                   fontSize: 12,
                   color: AppColors.text2,
-                  fontFamily: 'monospace',
                 ),
               ),
             ),
           ),
-          const SizedBox(height: 16),
         ],
       ),
     );
   }
-  
+
   Widget _buildStatusRow(BleDeviceState data) {
-    HubStatus status = HubStatus.disconnected;
-    String statusText = '未连接';
-    Color statusColor = AppColors.text2;
-    
-    if (data.isConnected) {
-      status = HubStatus.connected;
-      statusText = '已连接';
-      statusColor = AppColors.green;
-    } else if (_isScanning) {
-      status = HubStatus.connecting;
-      statusText = '扫描中...';
-      statusColor = AppColors.gold;
-    }
-    
+    final connected = data.isConnected;
     return Row(
       children: [
-        HubStatusDot(status: status, size: 12),
+        HubStatusDot(
+          status: connected
+              ? HubStatus.connected
+              : (_isScanning ? HubStatus.connecting : HubStatus.disconnected),
+          size: 12,
+        ),
         const SizedBox(width: 12),
         Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                data.name.isEmpty ? 'ESP32-Hub' : data.name,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              Text(
-                statusText,
-                style: TextStyle(
-                  fontSize: 13,
-                  color: statusColor,
-                ),
-              ),
-            ],
+          child: Text(
+            connected
+                ? (data.name.isEmpty ? 'ESP32-Hub' : data.name)
+                : (_isScanning ? '扫描中…' : '未连接'),
+            style: GoogleFonts.figtree(fontWeight: FontWeight.w700),
           ),
         ),
-        if (data.deviceId.isNotEmpty)
-          Text(
-            data.deviceId.substring(0, 8),
-            style: const TextStyle(
-              fontSize: 12,
-              color: AppColors.text2,
-              fontFamily: 'monospace',
-            ),
-          ),
       ],
     );
   }
-  
+
   Future<void> _startScan() async {
     final bleService = ref.read(bleServiceProvider);
     setState(() => _isScanning = true);
-    
     try {
       await bleService.startScan();
     } finally {
-      if (mounted) {
-        setState(() => _isScanning = false);
-      }
+      if (mounted) setState(() => _isScanning = false);
     }
   }
-  
+
   Future<void> _disconnect(BleService bleService) async {
     await bleService.disconnect();
   }

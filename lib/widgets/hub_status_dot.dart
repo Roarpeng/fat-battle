@@ -22,7 +22,7 @@ class HubStatusDot extends StatelessWidget {
       case HubStatus.connected:
         return AppColors.green;
       case HubStatus.connecting:
-        return AppColors.gold;
+        return AppColors.copper;
       case HubStatus.disconnected:
         return AppColors.text2;
     }
@@ -39,12 +39,20 @@ class HubStatusDot extends StatelessWidget {
         boxShadow: status == HubStatus.connected
             ? [
                 BoxShadow(
-                  color: AppColors.green.withOpacity(0.4),
+                  color: AppColors.green.withValues(alpha: 0.4),
                   blurRadius: 4,
                   spreadRadius: 1,
                 ),
               ]
-            : null,
+            : status == HubStatus.connecting
+                ? [
+                    BoxShadow(
+                      color: AppColors.copper.withValues(alpha: 0.35),
+                      blurRadius: 4,
+                      spreadRadius: 1,
+                    ),
+                  ]
+                : null,
       ),
     );
 

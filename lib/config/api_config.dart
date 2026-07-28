@@ -71,4 +71,15 @@ class ApiConfig {
 
   /// GLM 可用：必须有直连 Key（代理仅作可选增强，当前阶段不依赖）
   static bool get hasGlmConfig => zhipuApiKey.isNotEmpty;
+
+  /// 拍照识别至少有一个在线源（GLM 或百度）
+  static bool get hasAnyFoodVisionConfig =>
+      hasGlmConfig || hasBaiduCredentials;
+
+  /// 未配置在线识别时给用户的构建提示（不含密钥）
+  static String get foodVisionConfigHint =>
+      '未检测到在线识别密钥。拍照将使用本地推荐候选；'
+      '构建时请传入 --dart-define=ZHIPU_API_KEY=... '
+      '和/或 --dart-define=BAIDU_API_KEY=... '
+      '--dart-define=BAIDU_SECRET_KEY=...';
 }

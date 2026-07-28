@@ -23,12 +23,28 @@ class FoodRecognitionResult {
   /// 识别过程中的错误信息（如有，用于日志展示）
   final String? error;
 
+  /// 已尝试的数据源（用于 UI 展示降级路径）
+  final List<String> attemptedSources;
+
+  /// 各源失败原因摘要
+  final List<String> failures;
+
   const FoodRecognitionResult({
     required this.items,
     required this.source,
     required this.success,
     this.error,
+    this.attemptedSources = const [],
+    this.failures = const [],
   });
+
+  /// 供 SnackBar / 对话框使用的简短说明
+  String get sourceLabel => switch (source) {
+        'glm' => 'GLM-4.6V',
+        'baidu' => '百度菜品识别',
+        'local' => '本地推荐',
+        _ => source,
+      };
 
   @override
   String toString() =>
@@ -54,6 +70,9 @@ class FoodFallbackService {
   /// 识别食物（自动降级）
   Future<FoodRecognitionResult> recognize(File imageFile) async {
     final u8 = await imageFile.readAsBytes();
+    final attempted = <String>[];
+    final failures = <String>[];
+
     debugPrint('=== 食物识别开始 ===');
     debugPrint('图片大小: ${u8.length} 字节');
     debugPrint('GLM 已配置: ${ApiConfig.hasGlmConfig}');
@@ -61,6 +80,7 @@ class FoodFallbackService {
 
     // ===== 1. GLM-4.6V-Flash（主源） =====
     if (ApiConfig.hasGlmConfig) {
+      attempted.add('GLM-4.6V');
       try {
         debugPrint('开始调用 GLM-4.6V-Flash API...');
         final glmItems = await _withRetry(
@@ -85,18 +105,24 @@ class FoodFallbackService {
             items: items,
             source: 'glm',
             success: true,
+            attemptedSources: attempted,
+            failures: failures,
           );
         }
+        failures.add('GLM 未识别到食物');
         debugPrint('GLM 返回空结果，降级到百度');
       } catch (e) {
+        failures.add('GLM: $e');
         debugPrint('GLM 识别失败，降级到百度: $e');
       }
     } else {
+      failures.add('GLM 未配置');
       debugPrint('GLM 未配置，直接走百度');
     }
 
     // ===== 2. 百度菜品识别（备选） =====
     if (_baidu.isConfigured()) {
+      attempted.add('百度菜品识别');
       try {
         debugPrint('开始调用百度API...');
         final dishes = await _withRetry(
@@ -121,20 +147,31 @@ class FoodFallbackService {
             items: items,
             source: 'baidu',
             success: true,
+            attemptedSources: attempted,
+            failures: failures,
           );
         }
+        failures.add('百度未识别到食物');
         debugPrint('百度返回空结果');
       } catch (e) {
+        failures.add('百度: $e');
         debugPrint('百度识别失败，降级到本地: $e');
-        return _localFallback(error: '百度识别失败: $e');
+        return _localFallback(
+          error: '百度识别失败: $e',
+          attempted: attempted,
+          failures: failures,
+        );
       }
     } else {
+      failures.add('百度未配置');
       debugPrint('百度未配置，直接走本地兜底');
     }
 
     // ===== 3. 本地兜底 =====
     return _localFallback(
       error: _baidu.isConfigured() ? '百度返回空' : '百度未配置',
+      attempted: attempted,
+      failures: failures,
     );
   }
 
@@ -208,7 +245,12 @@ class FoodFallbackService {
   }
 
   /// 本地兜底：返回随机本地食物
-  FoodRecognitionResult _localFallback({String? error}) {
+  FoodRecognitionResult _localFallback({
+    String? error,
+    List<String> attempted = const [],
+    List<String> failures = const [],
+  }) {
+    final sources = [...attempted, '本地推荐'];
     final allFoods = <QuickFood>[
       ...QuickFoods.breakfast,
       ...QuickFoods.lunch,
@@ -228,6 +270,8 @@ class FoodFallbackService {
       source: 'local',
       success: true,
       error: error,
+      attemptedSources: sources,
+      failures: failures,
     );
   }
 }

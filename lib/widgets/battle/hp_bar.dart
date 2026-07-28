@@ -1,20 +1,23 @@
 import 'package:flutter/material.dart';
 import '../../constants/app_constants.dart';
 
-/// 战斗�?HP 条（带护盾条 + 受伤闪烁 + 阶段切换动画�?///
-/// 设计参�?Web �?HpBar.tsx�?/// - HP 主体（红色渐变，从右向左减少�?/// - 护盾条覆盖在 HP 条上方（青色，带发光动画�?/// - 受伤时水平抖�?+ 低血量闪�?/// - 数字显示 "当前HP / 最大HP" + 护盾�?class BattleHpBar extends StatefulWidget {
+/// 战斗�?HP 条（带护盾条 + 受伤闪烁 + 阶段切换动画�?///
+///  设计参�?Web �?HpBar.tsx�?/// - HP 主体（红色渐变，从右向左减少�?/// - 护盾条覆盖在 HP 条上方（青色，带发光动画�?/// - 受伤时水平抖�?+ 低血量闪�?/// - 数字显示 "当前HP / 最大HP" + 护盾�
+class BattleHpBar extends StatefulWidget {
   /// 当前 HP
   final int current;
 
-  /// 最�?HP
+  /// 最�?HP
   final int max;
 
-  /// 当前护盾�?  final int shield;
+  ///  当前护盾�
+  final int shield;
 
-  /// 最大护盾值（用于计算护盾宽度比例），默认�?max 相同
+  /// 最大护盾值（用于计算护盾宽度比例），默认�?max 相同
   final int maxShield;
 
-  /// 条高�?  final double height;
+  ///  条高�
+  final double height;
 
   /// 是否显示数字
   final bool showText;
@@ -25,7 +28,8 @@ import '../../constants/app_constants.dart';
   /// 护盾颜色（默认青色）
   final Color shieldColor;
 
-  /// 是否为低血量（< 30%）触发闪�?  final bool lowHpPulse;
+  ///  是否为低血量（< 30%）触发闪�
+  final bool lowHpPulse;
 
   const BattleHpBar({
     super.key,
@@ -35,7 +39,7 @@ import '../../constants/app_constants.dart';
     this.maxShield = 0,
     this.height = 18,
     this.showText = true,
-    this.color = AppColors.red,
+    this.color = AppColors.ember,
     this.shieldColor = const Color(0xFF4ECDC4),
     this.lowHpPulse = true,
   });
@@ -50,7 +54,8 @@ class _BattleHpBarState extends State<BattleHpBar>
   late final AnimationController _shakeController;
   late final Animation<double> _shakeAnimation;
 
-  // 用于低血量呼吸闪�?  late final AnimationController _pulseController;
+  //  用于低血量呼吸闪�
+  late final AnimationController _pulseController;
   late final Animation<double> _pulseAnimation;
 
   // 用于护盾光波流动
@@ -89,7 +94,7 @@ class _BattleHpBarState extends State<BattleHpBar>
   @override
   void didUpdateWidget(covariant BattleHpBar oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // 检�?HP 或护盾变化，触发水平抖动
+    // 检�?HP 或护盾变化，触发水平抖动
     if (oldWidget.current != widget.current ||
         oldWidget.shield != widget.shield) {
       _shakeController.forward(from: 0);
@@ -123,7 +128,8 @@ class _BattleHpBarState extends State<BattleHpBar>
     return AnimatedBuilder(
       animation: _shakeAnimation,
       builder: (context, child) {
-        // 水平抖动偏移：在 -2..2 之间往�?        final t = _shakeAnimation.value;
+        //  水平抖动偏移：在 -2..2 之间往�
+        final t = _shakeAnimation.value;
         final dx = (t < 0.5)
             ? (t * 2 * 4 - 2) // 0..0.5 -> -2..2
             : ((1 - t) * 2 * 4 - 2); // 0.5..1 -> 2..-2
@@ -158,7 +164,7 @@ class _BattleHpBarState extends State<BattleHpBar>
     );
   }
 
-  /// HP 主体（红色渐�?+ 低血量闪烁）
+  /// HP 主体（红色渐�?+ 低血量闪烁）
   Widget _buildHpBar() {
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -197,7 +203,8 @@ class _BattleHpBarState extends State<BattleHpBar>
     );
   }
 
-  /// 护盾条（青色 + 流光 + 边框�?  Widget _buildShieldBar() {
+  ///  护盾条（青色 + 流光 + 边框�
+  Widget _buildShieldBar() {
     return LayoutBuilder(
       builder: (context, constraints) {
         final width = constraints.maxWidth * _shieldPercent;
@@ -244,7 +251,8 @@ class _BattleHpBarState extends State<BattleHpBar>
     );
   }
 
-  /// 文字层（HP 数字 + 护盾数字�?  Widget _buildText() {
+  ///  文字层（HP 数字 + 护盾数字�
+  Widget _buildText() {
     return Center(
       child: RichText(
         text: TextSpan(
@@ -277,7 +285,8 @@ class _BattleHpBarState extends State<BattleHpBar>
   }
 }
 
-/// 护盾流光绘制器：在护盾条上绘制一条移动的高光�?class _ShieldShimmerPainter extends CustomPainter {
+///  护盾流光绘制器：在护盾条上绘制一条移动的高光�
+class _ShieldShimmerPainter extends CustomPainter {
   final double progress; // 0..1
   final Color color;
 

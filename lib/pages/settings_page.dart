@@ -3,12 +3,18 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import '../constants/app_constants.dart';
 import '../providers/game_provider.dart';
 import '../services/voice_service.dart';
 import '../pages/welcome_page.dart';
+import '../pages/companion_page.dart';
+import '../pages/achievements_page.dart';
+import '../providers/inventory_provider.dart';
+import '../widgets/home/forge_background.dart';
+import '../widgets/meta/shop_item_card.dart';
 
 /// 设置页面
 class SettingsPage extends ConsumerStatefulWidget {
@@ -24,12 +30,17 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     final gameState = ref.watch(gameStateProvider);
     final gameNotifier = ref.read(gameStateProvider.notifier);
     
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('⚙️ 设置'),
-        centerTitle: true,
-      ),
-      body: SingleChildScrollView(
+    return ForgeBackground(
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        appBar: AppBar(
+          title: Text(
+            '工坊设置',
+            style: GoogleFonts.fraunces(fontWeight: FontWeight.w600),
+          ),
+          centerTitle: true,
+        ),
+        body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -207,39 +218,102 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               ),
             ),
             const SizedBox(height: 16),
-            
-            // 成就页面入口
-            Card(
-              child: ListTile(
-                leading: const Text('🏆', style: TextStyle(fontSize: 24)),
-                title: const Text('成就'),
-                trailing: Text('${gameState.achievements.length}/${Achievements.all.length}'),
-                onTap: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const AchievementsPage()),
-                  );
-                },
-              ),
+
+            // 养成与元系统
+            Row(
+              children: [
+                Icon(Icons.auto_awesome_outlined, color: AppColors.copper, size: 18),
+                const SizedBox(width: 8),
+                Text(
+                  '养成与元系统',
+                  style: GoogleFonts.figtree(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.text2,
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 8),
-            
-            // 商店页面入口
             Card(
-              child: ListTile(
-                leading: const Text('🛒', style: TextStyle(fontSize: 24)),
-                title: const Text('商店'),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text('🪙', style: TextStyle(color: AppColors.gold)),
-                    Text('${gameState.coins}', style: TextStyle(color: AppColors.gold)),
-                  ],
-                ),
-                onTap: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const ShopPage()),
-                  );
-                },
+              child: Column(
+                children: [
+                  ListTile(
+                    leading: Icon(Icons.pets_outlined, color: AppColors.copper, size: 24),
+                    title: Text('战斗伙伴', style: GoogleFonts.figtree(fontWeight: FontWeight.w600)),
+                    subtitle: Text(
+                      '切换宠物、互动与领取掉落',
+                      style: GoogleFonts.figtree(color: AppColors.text2, fontSize: 12),
+                    ),
+                    trailing: Icon(Icons.chevron_right, color: AppColors.copper),
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const CompanionPage()),
+                      );
+                    },
+                  ),
+                  const Divider(height: 1, color: AppColors.border),
+                  ListTile(
+                    leading: Icon(Icons.emoji_events_outlined, color: AppColors.copper, size: 24),
+                    title: Text('成就', style: GoogleFonts.figtree(fontWeight: FontWeight.w600)),
+                    subtitle: Text(
+                      '已解锁 ${gameState.achievements.length}/${Achievements.all.length}',
+                      style: GoogleFonts.figtree(color: AppColors.text2, fontSize: 12),
+                    ),
+                    trailing: Icon(Icons.chevron_right, color: AppColors.copper),
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const AchievementsPage()),
+                      );
+                    },
+                  ),
+                  const Divider(height: 1, color: AppColors.border),
+                  ListTile(
+                    leading: Icon(Icons.storefront_outlined, color: AppColors.copper, size: 24),
+                    title: Text('锻造商店', style: GoogleFonts.figtree(fontWeight: FontWeight.w600)),
+                    subtitle: Text(
+                      '用金币购买道具与装饰',
+                      style: GoogleFonts.figtree(color: AppColors.text2, fontSize: 12),
+                    ),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: AppColors.copper.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: AppColors.copper.withValues(alpha: 0.35),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.monetization_on_outlined,
+                                  color: AppColors.copper, size: 14),
+                              const SizedBox(width: 4),
+                              Text(
+                                '${gameState.coins}',
+                                style: GoogleFonts.fraunces(
+                                  color: AppColors.copper,
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Icon(Icons.chevron_right, color: AppColors.copper),
+                      ],
+                    ),
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const ShopPage()),
+                      );
+                    },
+                  ),
+                ],
               ),
             ),
             const SizedBox(height: 16),
@@ -362,12 +436,13 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     foregroundColor: AppColors.red,
                     side: BorderSide(color: AppColors.red.withOpacity(0.3)),
                   ),
-                  child: const Text('🗑️ 重置游戏'),
+                  child: const Text('重置游戏'),
                 ),
               ),
             ),
           ],
         ),
+      ),
       ),
     );
   }
@@ -553,141 +628,122 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   }
 }
 
-/// 成就页面
-class AchievementsPage extends ConsumerWidget {
-  const AchievementsPage({super.key});
-  
+/// 商店页面
+///
+/// 金币扣减走 [gameStateProvider]（持久化），
+/// 物品数量同步写入 [inventoryProvider]（SharedPreferences 持久化）。
+class ShopPage extends ConsumerStatefulWidget {
+  const ShopPage({super.key});
+
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final gameState = ref.watch(gameStateProvider);
-    
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('🏆 成就'),
-        centerTitle: true,
-      ),
-      body: GridView.count(
-        padding: const EdgeInsets.all(16),
-        crossAxisCount: 3,
-        mainAxisSpacing: 12,
-        crossAxisSpacing: 12,
-        children: Achievements.all.map((a) {
-          final unlocked = gameState.achievements.contains(a.id);
-          
-          return Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: AppColors.card,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: unlocked ? AppColors.gold : AppColors.border,
-              ),
-            ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  a.emoji,
-                  style: TextStyle(
-                    fontSize: 36,
-                    color: unlocked ? AppColors.text : AppColors.text.withOpacity(0.4),
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  a.name,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                    color: unlocked ? AppColors.text : AppColors.text.withOpacity(0.4),
-                  ),
-                ),
-                Text(
-                  a.desc,
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: AppColors.text2,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ],
-            ),
-          );
-        }).toList(),
+  ConsumerState<ShopPage> createState() => _ShopPageState();
+}
+
+class _ShopPageState extends ConsumerState<ShopPage> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final inv = ref.read(inventoryProvider);
+      if (inv.items.isEmpty) {
+        ref.read(inventoryProvider.notifier).initFromShopItems();
+      }
+    });
+  }
+
+  Future<void> _buy(ShopItem item) async {
+    final gameState = ref.read(gameStateProvider);
+    if (gameState.coins < item.price) return;
+
+    await ref.read(gameStateProvider.notifier).buyItem(item);
+    ref.read(inventoryProvider.notifier).addItem(item.id);
+
+    if (!mounted) return;
+    final qty = ref.read(inventoryProvider).getQuantity(item.id);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('购买成功！${item.name}（拥有 ×$qty）'),
+        backgroundColor: AppColors.ember.withValues(alpha: 0.9),
+        behavior: SnackBarBehavior.floating,
       ),
     );
   }
-}
 
-/// 商店页面
-class ShopPage extends ConsumerWidget {
-  const ShopPage({super.key});
-  
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final gameState = ref.watch(gameStateProvider);
-    final gameNotifier = ref.read(gameStateProvider.notifier);
-    
-    return Scaffold(
-      appBar: AppBar(
-        title: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('🛒 商店 '),
-            Text('🪙 ${gameState.coins}', style: TextStyle(color: AppColors.gold)),
-          ],
-        ),
-        centerTitle: true,
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: ShopItems.all.map((item) {
-          return Card(
-            margin: const EdgeInsets.only(bottom: 10),
-            child: Padding(
-              padding: const EdgeInsets.all(14),
-              child: Row(
-                children: [
-                  Text(item.emoji, style: const TextStyle(fontSize: 36)),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(item.name, style: const TextStyle(fontWeight: FontWeight.bold)),
-                        Text(item.desc, style: TextStyle(color: AppColors.text2, fontSize: 12)),
-                      ],
+    final inventory = ref.watch(inventoryProvider);
+    final display = GoogleFonts.fraunces(
+      fontWeight: FontWeight.w600,
+      color: AppColors.text,
+    );
+    final body = GoogleFonts.figtree(color: AppColors.text);
+
+    return ForgeBackground(
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        appBar: AppBar(
+          title: Text('锻造商店', style: display.copyWith(fontSize: 20)),
+          centerTitle: true,
+          actions: [
+            Padding(
+              padding: const EdgeInsets.only(right: 16),
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: AppColors.copper.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: AppColors.copper.withValues(alpha: 0.35),
                     ),
                   ),
-                  Column(
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text('🪙 ${item.price}', style: TextStyle(color: AppColors.gold)),
-                      const SizedBox(height: 4),
-                      ElevatedButton(
-                        onPressed: gameState.coins >= item.price
-                            ? () {
-                                gameNotifier.buyItem(item);
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text('购买成功！${item.name}'),
-                                    backgroundColor: AppColors.card,
-                                  ),
-                                );
-                              }
-                            : null,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.gold,
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                      Icon(Icons.monetization_on_outlined,
+                          color: AppColors.copper, size: 16),
+                      const SizedBox(width: 4),
+                      Text(
+                        '${gameState.coins}',
+                        style: display.copyWith(
+                          color: AppColors.copper,
+                          fontSize: 14,
                         ),
-                        child: const Text('购买'),
                       ),
                     ],
                   ),
-                ],
+                ),
               ),
             ),
-          );
-        }).toList(),
+          ],
+        ),
+        body: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              margin: const EdgeInsets.only(bottom: 12),
+              decoration: BoxDecoration(
+                color: AppColors.bg2,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.border),
+              ),
+              child: Text(
+                '购买后金币从主存档扣除；物品栏数量写入本地 inventory 存档。',
+                style: body.copyWith(color: AppColors.text2, fontSize: 11),
+              ),
+            ),
+            ...ShopItems.all.map((item) {
+              return ShopItemCard(
+                item: item,
+                ownedQuantity: inventory.getQuantity(item.id),
+                coins: gameState.coins,
+                onBuy: () => _buy(item),
+              );
+            }),
+          ],
+        ),
       ),
     );
   }

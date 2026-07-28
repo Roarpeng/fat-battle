@@ -242,7 +242,7 @@ class GameStateNotifier extends StateNotifier<GameState> {
     
     final newCalIn = state.todayCalIn + food.totalCal;
     
-    // 计算怪物护盾（正向反馈：吃多了只是加护盾，不会回血）
+    // 护盾按加餐后总量重算（core：过量卡路里 → 护盾）
     final result = GameAlgorithm.foodImpactOnMonster(
       food.totalCal,
       newCalIn,
@@ -272,12 +272,12 @@ class GameStateNotifier extends StateNotifier<GameState> {
       final food = meals[meal]![index];
       meals[meal]!.removeAt(index);
       
-      final newCalIn = state.todayCalIn - food.totalCal;
+      final newCalIn = (state.todayCalIn - food.totalCal).clamp(0, 1 << 30);
       
-      // 回滚护盾（正向反馈：撤销食物直接减护盾，不影响HP）
+      // 按删餐后总量重算护盾（与 addFood 同一套 core 公式）
       final result = GameAlgorithm.foodImpactOnMonster(
         food.totalCal,
-        state.todayCalIn,
+        newCalIn,
         state.targetCal,
         state.monster.maxHp,
         state.monster.hp,
@@ -285,13 +285,11 @@ class GameStateNotifier extends StateNotifier<GameState> {
         state.monster.shield,
       );
       
-      final newShield = (state.monster.shield - result.shieldGained).clamp(0, state.monster.maxHp).toInt();
-      
       state = state.copyWith(
         meals: meals,
         todayCalIn: newCalIn,
         monster: state.monster.copyWith(
-          shield: newShield,
+          shield: result.newMonsterShield,
         ),
       );
       

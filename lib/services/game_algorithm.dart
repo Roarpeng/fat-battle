@@ -1,7 +1,12 @@
+import 'dart:math' as math;
 import '../models/game_models.dart';
 import '../constants/app_constants.dart';
+import '../core/barrel.dart' as core;
 
 /// 游戏核心算法
+///
+/// 战斗结算（护盾/伤害）委托 [core] 共享层，与 Web 端公式对齐；
+/// BMI/目标卡路里等工具方法仍保留在本类供页面直接调用。
 class GameAlgorithm {
   /// 计算BMI
   static double calcBMI(double weightKg, double heightCm) {
@@ -81,7 +86,10 @@ class GameAlgorithm {
     }
   }
   
-  /// 饮食对怪物的影响（怪物获得护盾而非回血，减少挫败感）
+  /// 饮食对怪物的影响（护盾来自过量卡路里，对齐 [core.calculateShieldFromOvereat]）
+  ///
+  /// [todayCalIn] 应为**加餐/删餐后**的当日摄入总量；护盾按绝对过量值重算，
+  /// 不再对每餐叠加 5% 基础护盾。
   static FoodImpactResult foodImpactOnMonster(
     int foodCal,
     int todayCalIn,
@@ -91,37 +99,24 @@ class GameAlgorithm {
     double healBonus,
     int currentShield,
   ) {
-    // 基础护盾：摄入卡路里的5%转为护盾（而非回血）
-    final baseShield = (foodCal * 0.05).toInt();
-    
-    // 超标护盾：如果超过目标卡路里，额外增加护盾
-    int overageShield = 0;
-    final previousCal = todayCalIn - foodCal;
-    
-    if (previousCal <= targetCal && todayCalIn > targetCal) {
-      final over = todayCalIn - targetCal;
-      overageShield = (over * 0.3).toInt();
-    }
-    
-    // 总护盾
-    final totalShieldGain = ((baseShield + overageShield) * (1 + healBonus)).toInt();
-    final newShield = currentShield + totalShieldGain;
-    
-    // HP 不变（正向反馈：不会让怪物变强，只是暂时更抗揍）
-    final newHp = currentMonsterHp;
-    
+    final overeat = core.calculateOvereatCalories(todayCalIn, targetCal);
+    final overageShield = core.calculateShieldFromOvereat(overeat);
+    final targetShield =
+        (overageShield * (1 + healBonus)).round().clamp(0, monsterMaxHp * 3);
+    final shieldGained = targetShield - currentShield;
+
     return FoodImpactResult(
       heal: 0,
-      shieldGained: totalShieldGain,
-      newMonsterHp: newHp,
-      newMonsterShield: newShield,
-      isOverage: overageShield > 0,
-      baseHeal: baseShield,
+      shieldGained: shieldGained,
+      newMonsterHp: currentMonsterHp,
+      newMonsterShield: targetShield,
+      isOverage: overeat > 0,
+      baseHeal: 0,
       overageHeal: overageShield,
     );
   }
   
-  /// 锻炼对怪物的影响（伤害优先消耗护盾，护盾归零后才掉血）
+  /// 锻炼对怪物的影响：模式/赛季加成后，委托 [core.applyDamageToMonster]（护盾穿透）
   /// [season] 可选赛季配置，提供伤害加成
   static ExerciseImpactResult exerciseImpactOnMonster(
     int calBurned,
@@ -130,6 +125,7 @@ class GameAlgorithm {
     int monsterMaxHp,
     int monsterShield, {
     SeasonConfig? season,
+    double shieldReductionRate = 0.15,
   }) {
     // 基础伤害：消耗卡路里的80%
     double baseDamage = calBurned * 0.8;
@@ -149,34 +145,42 @@ class GameAlgorithm {
       baseDamage *= (1 + season.exerciseDamageBonus);
     }
     
-    final damage = baseDamage.toInt();
-    
-    // 先消耗护盾
-    int remainingDamage = damage;
-    int newShield = monsterShield;
-    int shieldBroken = 0;
-    
-    if (newShield > 0) {
-      if (remainingDamage >= newShield) {
-        shieldBroken = newShield;
-        remainingDamage -= newShield;
-        newShield = 0;
-      } else {
-        shieldBroken = remainingDamage;
-        newShield -= remainingDamage;
-        remainingDamage = 0;
-      }
-    }
-    
-    // 再扣血
-    final newHp = (monsterHp - remainingDamage).clamp(0, monsterMaxHp);
+    final damage = math.max(0, baseDamage.round());
+
+    final before = core.MonsterState(
+      hp: monsterHp,
+      maxHp: monsterMaxHp,
+      level: 1,
+      name: '',
+      emoji: '',
+      defId: 'compat',
+      tier: core.MonsterTier.minion,
+      weakness: core.ExerciseCategory.cardio,
+      affinity: core.ExerciseCategory.core,
+      baseAttack: 0,
+      description: '',
+      enrageThreshold: 0.2,
+      enrageMultiplier: 1.3,
+      coinMultiplier: 1,
+      phaseIndex: 0,
+      phaseName: '',
+      phaseEmoji: '',
+      isEnraged: false,
+      hpMultiplier: 1,
+      isPhantom: false,
+      shield: monsterShield,
+      maxShield: math.max(monsterShield, monsterMaxHp),
+      shieldReductionRate: shieldReductionRate,
+    );
+    final after = core.applyDamageToMonster(before, damage);
+    final shieldBroken = math.max(0, monsterShield - after.shield);
     
     return ExerciseImpactResult(
       damage: damage,
       shieldDamage: shieldBroken,
-      newMonsterHp: newHp,
-      newMonsterShield: newShield,
-      killed: newHp == 0,
+      newMonsterHp: after.hp,
+      newMonsterShield: after.shield,
+      killed: after.hp == 0,
     );
   }
   

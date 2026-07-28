@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../constants/app_constants.dart';
 import '../models/game_models.dart';
 import '../providers/game_provider.dart';
@@ -7,14 +8,14 @@ import '../widgets/battle/battle_effects.dart';
 import '../widgets/battle/damage_number.dart' show DamageType;
 import '../widgets/battle/hp_bar.dart';
 import '../widgets/battle/victory_effect.dart';
+import '../widgets/home/forge_background.dart';
 import '../widgets/hub_status_dot.dart';
 import '../services/ble_service.dart';
 
-/// 完整的战斗页�?///
-/// 设计参�?Web �?BattlePage.tsx�?/// - 顶部：怪物信息（名称、等级、tier�? Hub状�?+ 天数 + 金币
-/// - 中部：怪物显示 + 特效�?+ HP �?+ 护盾�?/// - 底部：操作按钮（饮食、锻炼、称重）
-/// - 运动克制提示（如果适用�?/// - 胜利特效（覆盖层�?class BattlePage extends ConsumerStatefulWidget {
-  /// Tab 切换回调�? 战斗 / 1 饮食 / 2 锻炼 / 3 称重�?  final void Function(int index)? onTabSwitch;
+/// ?????????? + ????
+class BattlePage extends ConsumerStatefulWidget {
+  /// Tab ?????1 ?? / 2 ?? / 3 ??????
+  final void Function(int index)? onTabSwitch;
 
   const BattlePage({super.key, this.onTabSwitch});
 
@@ -23,22 +24,25 @@ import '../services/ble_service.dart';
 }
 
 class _BattlePageState extends ConsumerState<BattlePage> {
-  // 最近一次伤害事�?  DamageEvent? _lastDamage;
-  // 上一帧的 HP（用于检测变化触发动画）
+  TextStyle get _displayStyle => GoogleFonts.fraunces(
+        fontWeight: FontWeight.w600,
+        color: AppColors.text,
+      );
+
+  TextStyle get _bodyStyle => GoogleFonts.figtree(color: AppColors.text);
+
+  DamageEvent? _lastDamage;
   int _prevMonsterHp = 0;
   int _prevMonsterShield = 0;
-  // 是否处于护盾破碎动画�?  bool _isShieldBreaking = false;
-  // 是否处于阶段切换动画
+  bool _isShieldBreaking = false;
   bool _isPhaseChanging = false;
-  // 是否显示胜利特效
   bool _showVictory = false;
-  // 上一帧的状态（用于检测胜利）
   GameStatus _prevStatus = GameStatus.playing;
 
   @override
   void initState() {
     super.initState();
-    // 监听游戏状态变�?    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
       final gameState = ref.read(gameStateProvider);
       _prevMonsterHp = gameState.monster.hp;
       _prevMonsterShield = gameState.monster.shield;
@@ -47,15 +51,14 @@ class _BattlePageState extends ConsumerState<BattlePage> {
   }
 
   void _onGameStateChange(GameState gs) {
-    // 检�?HP 变化
     if (gs.monster.hp != _prevMonsterHp) {
-      final damageValue = (_prevMonsterHp - gs.monster.hp).clamp(0, _prevMonsterHp);
+      final damageValue =
+          (_prevMonsterHp - gs.monster.hp).clamp(0, _prevMonsterHp);
       if (damageValue > 0) {
-        // 15% 概率暴击
         final isCritical = (gs.monster.hp + _prevMonsterHp) % 7 == 0;
-        // 判断护盾是否被破
-        final shieldBroken = _prevMonsterShield > 0 && gs.monster.shield < _prevMonsterShield;
-        // 推断攻击类型（默�?cardio，外部可扩展�?        final attackKind = inferAttackKind('running'); // 默认有氧
+        final shieldBroken =
+            _prevMonsterShield > 0 && gs.monster.shield < _prevMonsterShield;
+        final attackKind = inferAttackKind('running');
         setState(() {
           _lastDamage = DamageEvent(
             value: damageValue,
@@ -66,7 +69,7 @@ class _BattlePageState extends ConsumerState<BattlePage> {
           );
           if (shieldBroken) {
             _isShieldBreaking = true;
-            // 1.5s 后清除破碎状�?            Future.delayed(const Duration(milliseconds: 1500), () {
+            Future.delayed(const Duration(milliseconds: 1500), () {
               if (mounted) {
                 setState(() => _isShieldBreaking = false);
               }
@@ -76,7 +79,8 @@ class _BattlePageState extends ConsumerState<BattlePage> {
       }
       _prevMonsterHp = gs.monster.hp;
     }
-    // 检测护盾变化（饮食增加护盾�?    if (gs.monster.shield != _prevMonsterShield) {
+
+    if (gs.monster.shield != _prevMonsterShield) {
       final shieldDelta =
           (gs.monster.shield - _prevMonsterShield).clamp(0, gs.monster.shield);
       if (shieldDelta > 0 && _prevMonsterHp == gs.monster.hp) {
@@ -90,7 +94,8 @@ class _BattlePageState extends ConsumerState<BattlePage> {
       }
       _prevMonsterShield = gs.monster.shield;
     }
-    // 检测胜�?    if (gs.status == GameStatus.won && _prevStatus != GameStatus.won) {
+
+    if (gs.status == GameStatus.won && _prevStatus != GameStatus.won) {
       setState(() => _showVictory = true);
     }
     _prevStatus = gs.status;
@@ -98,45 +103,50 @@ class _BattlePageState extends ConsumerState<BattlePage> {
 
   String _getStatusMessage(GameState gs) {
     if (gs.status == GameStatus.won) {
-      return '今日任务完成 🎉 明天继续保持';
+      return '?????? ?? ??????';
     }
     if (gs.status == GameStatus.lost) {
-      return '今日体力已用完，好好休息';
+      return '????????????';
     }
     if (gs.monster.hasShield) {
-      return '它套了层壳，去走走就能破�?;
+      return '???????????';
     }
     if (gs.remainingCal >= 0) {
-      return '再消�?${(gs.monster.hp * 0.8).toInt()} kcal 就能击败�?;
-    } else {
-      return '超出 ${-gs.remainingCal} kcal，动一动就�?;
+      return '??? ${(gs.monster.hp * 0.8).toInt()} kcal ?????';
     }
+    return '?? ${-gs.remainingCal} kcal???????';
   }
 
   String _getCalorieDisplay(GameState gs) {
     final remaining = gs.remainingCal;
     if (remaining >= 0) {
-      return '今日还能�?$remaining kcal';
-    } else {
-      return '已超�?${-remaining} kcal';
+      return '?????? $remaining kcal';
     }
+    return '??? ${-remaining} kcal';
   }
 
   Color _getCalorieColor(GameState gs) {
     if (gs.remainingCal >= 500) return AppColors.green;
-    if (gs.remainingCal >= 0) return AppColors.gold;
-    return AppColors.red;
+    if (gs.remainingCal >= 0) return AppColors.copper;
+    return AppColors.ember;
   }
 
-  /// 怪物 tier 标签
   String _getTierName(Monster monster) {
     if (monster.isBoss) return 'BOSS';
-    return '普�?;
+    return '??';
   }
 
   Color _getTierColor(Monster monster) {
-    if (monster.isBoss) return AppColors.purple;
+    if (monster.isBoss) return AppColors.ember;
     return AppColors.bg3;
+  }
+
+  void _switchTabOrPop(int index) {
+    if (widget.onTabSwitch != null) {
+      widget.onTabSwitch!(index);
+      return;
+    }
+    Navigator.of(context).pop();
   }
 
   @override
@@ -144,24 +154,24 @@ class _BattlePageState extends ConsumerState<BattlePage> {
     final gameState = ref.watch(gameStateProvider);
     final gameNotifier = ref.read(gameStateProvider.notifier);
 
-    // 监听状态变�?    ref.listen(gameStateProvider, (previous, next) {
+    ref.listen(gameStateProvider, (previous, next) {
       _onGameStateChange(next);
     });
 
     if (!gameState.hasGame) {
-      return const Center(child: Text('请先创建角色'));
+      return const Center(child: Text('??????'));
     }
 
     final hour = DateTime.now().hour;
-    String greeting = '今天也加�?;
+    String greeting = '??????';
     if (hour < 6) {
-      greeting = '夜深了，早点休息';
+      greeting = '??????????';
     } else if (hour < 12) {
-      greeting = '早上�?;
+      greeting = '?????';
     } else if (hour < 18) {
-      greeting = '下午�?;
+      greeting = '????????';
     } else {
-      greeting = '晚上�?;
+      greeting = '??????';
     }
 
     final monsterBattle = MonsterBattleState.from(
@@ -169,21 +179,21 @@ class _BattlePageState extends ConsumerState<BattlePage> {
       isPhaseChanging: _isPhaseChanging,
     );
 
-    return Scaffold(
-      body: SafeArea(
-        child: Stack(
+    return ForgeBackground(
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        body: SafeArea(
+          child: Stack(
           children: [
-            // 主战斗界�?            Padding(
+            Padding(
               padding:
                   const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
               child: Column(
                 children: [
-                  // 顶部状态行
                   _buildTopBar(gameState),
                   const SizedBox(height: 16),
-                  // 信息摘要�?                  _buildInfoSummary(gameState),
+                  _buildInfoSummary(gameState),
                   const SizedBox(height: 16),
-                  // 中部战斗区域
                   Expanded(
                     child: _buildBattleArea(
                       gameState: gameState,
@@ -192,10 +202,8 @@ class _BattlePageState extends ConsumerState<BattlePage> {
                     ),
                   ),
                   const SizedBox(height: 16),
-                  // 底部操作按钮
                   _buildActionButtons(),
                   const SizedBox(height: 8),
-                  // 胜利/失败横幅
                   if (gameState.status == GameStatus.won &&
                       !_showVictory) ...[
                     const SizedBox(height: 8),
@@ -208,7 +216,7 @@ class _BattlePageState extends ConsumerState<BattlePage> {
                 ],
               ),
             ),
-            // 胜利特效覆盖�?            if (_showVictory)
+            if (_showVictory)
               VictoryEffect(
                 reward: VictoryReward(
                   coins: gameState.monster.isBoss ? 200 : 100,
@@ -223,23 +231,32 @@ class _BattlePageState extends ConsumerState<BattlePage> {
                 },
               ),
           ],
+          ),
         ),
       ),
     );
   }
 
-  /// 顶部状态行（Hub�?+ 天数 + 金币�?  Widget _buildTopBar(GameState gs) {
+  Widget _buildTopBar(GameState gs) {
     return Row(
       children: [
+        IconButton(
+          icon: const Icon(Icons.arrow_back, size: 20),
+          onPressed: () => Navigator.of(context).pop(),
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+          tooltip: '????',
+        ),
+        const SizedBox(width: 4),
         Consumer(
           builder: (context, ref, child) {
             final bleState = ref.watch(bleConnectionStateProvider);
             HubStatus status = HubStatus.disconnected;
-            String tooltip = '点击连接腰部Hub';
+            String tooltip = '??????Hub';
             bleState.whenData((data) {
               if (data.isConnected) {
                 status = HubStatus.connected;
-                tooltip = '腰部Hub已连�?- ${data.name}';
+                tooltip = '??Hub??? - ${data.name}';
               }
             });
             return HubStatusDot(
@@ -251,23 +268,30 @@ class _BattlePageState extends ConsumerState<BattlePage> {
         ),
         const Spacer(),
         Text(
-          '�?${gs.day} �?,
-          style: const TextStyle(color: AppColors.text2, fontSize: 13),
+          '? ${gs.day} ?',
+          style: _bodyStyle.copyWith(color: AppColors.text2, fontSize: 13),
         ),
         const SizedBox(width: 16),
-        Text(
-          '🪙 ${gs.coins}',
-          style: const TextStyle(
-            color: AppColors.gold,
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-          ),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.monetization_on_outlined,
+                color: AppColors.copper, size: 14),
+            const SizedBox(width: 4),
+            Text(
+              '${gs.coins}',
+              style: _displayStyle.copyWith(
+                color: AppColors.copper,
+                fontSize: 13,
+              ),
+            ),
+          ],
         ),
       ],
     );
   }
 
-  /// 信息摘要栏（摄入 / 消�?/ 超量�?  Widget _buildInfoSummary(GameState gs) {
+  Widget _buildInfoSummary(GameState gs) {
     final isOver = gs.remainingCal < 0;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -278,14 +302,13 @@ class _BattlePageState extends ConsumerState<BattlePage> {
       ),
       child: Row(
         children: [
-          // 摄入
           Expanded(
             child: Row(
               children: [
-                const Text('🍽�?, style: TextStyle(fontSize: 12)),
+                const Text('???', style: TextStyle(fontSize: 12)),
                 const SizedBox(width: 4),
                 const Text(
-                  '摄入',
+                  '??',
                   style: TextStyle(color: AppColors.text2, fontSize: 12),
                 ),
                 const SizedBox(width: 4),
@@ -308,14 +331,14 @@ class _BattlePageState extends ConsumerState<BattlePage> {
             height: 12,
             color: AppColors.border,
           ),
-          // 消�?          Expanded(
+          Expanded(
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Text('🏋�?, style: TextStyle(fontSize: 12)),
+                const Text('???', style: TextStyle(fontSize: 12)),
                 const SizedBox(width: 4),
                 const Text(
-                  '消�?,
+                  '??',
                   style: TextStyle(color: AppColors.text2, fontSize: 12),
                 ),
                 const SizedBox(width: 4),
@@ -337,7 +360,7 @@ class _BattlePageState extends ConsumerState<BattlePage> {
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Text(
-                '超量 ${-gs.remainingCal}',
+                '?? ${-gs.remainingCal}',
                 style: const TextStyle(
                   color: Colors.orange,
                   fontSize: 11,
@@ -350,7 +373,6 @@ class _BattlePageState extends ConsumerState<BattlePage> {
     );
   }
 
-  /// 战斗区域（怪物�?+ tier + BattleEffects + HP �?+ 卡路�?+ 状态文案）
   Widget _buildBattleArea({
     required GameState gameState,
     required MonsterBattleState monsterBattle,
@@ -366,15 +388,12 @@ class _BattlePageState extends ConsumerState<BattlePage> {
       ),
       child: Column(
         children: [
-          // 怪物信息�?          Row(
+          Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Text(
                 '${monster.name} Lv.${monster.level}',
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: _displayStyle.copyWith(fontSize: 14),
               ),
               const SizedBox(width: 8),
               Container(
@@ -395,12 +414,12 @@ class _BattlePageState extends ConsumerState<BattlePage> {
               ),
               if (monster.isBoss) ...[
                 const SizedBox(width: 4),
-                const Text('👑', style: TextStyle(fontSize: 12)),
+                const Text('??', style: TextStyle(fontSize: 12)),
               ],
             ],
           ),
           const SizedBox(height: 16),
-          // 战斗特效层（怪物 + 护盾 + 攻击 + 伤害飘字�?          Expanded(
+          Expanded(
             child: Center(
               child: BattleEffects(
                 monster: monsterBattle,
@@ -409,10 +428,7 @@ class _BattlePageState extends ConsumerState<BattlePage> {
                 emojiSize: 88,
                 shieldSize: 260,
                 onMonsterTap: () {
-                  // 点击怪物：触发短暂的阶段切换效果（可选）
-                  setState(() {
-                    _isPhaseChanging = true;
-                  });
+                  setState(() => _isPhaseChanging = true);
                   Future.delayed(const Duration(milliseconds: 600), () {
                     if (mounted) {
                       setState(() => _isPhaseChanging = false);
@@ -423,7 +439,6 @@ class _BattlePageState extends ConsumerState<BattlePage> {
             ),
           ),
           const SizedBox(height: 16),
-          // HP 条（含护盾）
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8),
             child: BattleHpBar(
@@ -435,29 +450,22 @@ class _BattlePageState extends ConsumerState<BattlePage> {
             ),
           ),
           const SizedBox(height: 16),
-          // 卡路里余�?          Text(
+          Text(
             greeting,
-            style: const TextStyle(
-              fontSize: 14,
-              color: AppColors.text2,
-            ),
+            style: _bodyStyle.copyWith(fontSize: 14, color: AppColors.text2),
           ),
           const SizedBox(height: 4),
           Text(
             _getCalorieDisplay(gameState),
-            style: TextStyle(
+            style: _displayStyle.copyWith(
               fontSize: 22,
-              fontWeight: FontWeight.bold,
               color: _getCalorieColor(gameState),
             ),
           ),
           const SizedBox(height: 8),
-          // 状态文案（正向反馈�?          Text(
+          Text(
             _getStatusMessage(gameState),
-            style: const TextStyle(
-              color: AppColors.text2,
-              fontSize: 13,
-            ),
+            style: _bodyStyle.copyWith(color: AppColors.text2, fontSize: 13),
             textAlign: TextAlign.center,
           ),
         ],
@@ -465,27 +473,26 @@ class _BattlePageState extends ConsumerState<BattlePage> {
     );
   }
 
-  /// 底部操作按钮
   Widget _buildActionButtons() {
     return Row(
       children: [
         _buildActionButton(
-          emoji: '🍽�?,
-          label: '饮食',
-          onTap: () => widget.onTabSwitch?.call(1),
+          emoji: '???',
+          label: '??',
+          onTap: () => _switchTabOrPop(1),
         ),
         const SizedBox(width: 12),
         _buildActionButton(
-          emoji: '🏋�?,
-          label: '锻炼',
-          onTap: () => widget.onTabSwitch?.call(2),
+          emoji: '???',
+          label: '??',
+          onTap: () => _switchTabOrPop(2),
           isPrimary: true,
         ),
         const SizedBox(width: 12),
         _buildActionButton(
-          emoji: '⚖️',
-          label: '称重',
-          onTap: () => widget.onTabSwitch?.call(3),
+          emoji: '??',
+          label: '??',
+          onTap: () => _switchTabOrPop(3),
         ),
       ],
     );
@@ -503,9 +510,11 @@ class _BattlePageState extends ConsumerState<BattlePage> {
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 16),
           decoration: BoxDecoration(
-            color: isPrimary ? AppColors.green : AppColors.card,
+            color: isPrimary ? AppColors.ember : AppColors.card,
             borderRadius: BorderRadius.circular(16),
-            border: isPrimary ? null : Border.all(color: AppColors.border),
+            border: isPrimary
+                ? Border.all(color: AppColors.ember.withValues(alpha: 0.5))
+                : Border.all(color: AppColors.border),
           ),
           child: Column(
             children: [
@@ -513,10 +522,10 @@ class _BattlePageState extends ConsumerState<BattlePage> {
               const SizedBox(height: 6),
               Text(
                 label,
-                style: TextStyle(
+                style: _bodyStyle.copyWith(
                   fontSize: 13,
                   fontWeight: FontWeight.w500,
-                  color: isPrimary ? Colors.white : AppColors.text,
+                  color: isPrimary ? const Color(0xFFFFF8F5) : AppColors.text,
                 ),
               ),
             ],
@@ -526,7 +535,6 @@ class _BattlePageState extends ConsumerState<BattlePage> {
     );
   }
 
-  /// 胜利横幅
   Widget _buildWinBanner(GameStateNotifier notifier) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -537,14 +545,14 @@ class _BattlePageState extends ConsumerState<BattlePage> {
       ),
       child: Row(
         children: [
-          const Text('🎉', style: TextStyle(fontSize: 20)),
+          const Text('??', style: TextStyle(fontSize: 20)),
           const SizedBox(width: 10),
           const Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '今日任务完成',
+                  '??????',
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.bold,
@@ -552,7 +560,7 @@ class _BattlePageState extends ConsumerState<BattlePage> {
                   ),
                 ),
                 Text(
-                  '明日继续保持',
+                  '????????',
                   style: TextStyle(color: AppColors.text2, fontSize: 12),
                 ),
               ],
@@ -560,41 +568,39 @@ class _BattlePageState extends ConsumerState<BattlePage> {
           ),
           TextButton(
             onPressed: () => notifier.startNewChallenge(),
-            child: const Text('再来一�?),
+            child: const Text('????'),
           ),
         ],
       ),
     );
   }
 
-  /// 失败横幅
   Widget _buildLoseBanner() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       decoration: BoxDecoration(
-        color: AppColors.purple.withValues(alpha: 0.1),
+        color: AppColors.copper.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.purple.withValues(alpha: 0.3)),
+        border: Border.all(color: AppColors.copper.withValues(alpha: 0.35)),
       ),
-      child: const Row(
+      child: Row(
         children: [
-          Text('😴', style: TextStyle(fontSize: 20)),
-          SizedBox(width: 10),
+          const Text('??', style: TextStyle(fontSize: 20)),
+          const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '今日体力已用�?,
-                  style: TextStyle(
+                  '???????',
+                  style: _displayStyle.copyWith(
                     fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.purple,
+                    color: AppColors.copper,
                   ),
                 ),
                 Text(
-                  '好好休息，明天满血归来',
-                  style: TextStyle(color: AppColors.text2, fontSize: 12),
+                  '???????????',
+                  style: _bodyStyle.copyWith(color: AppColors.text2, fontSize: 12),
                 ),
               ],
             ),

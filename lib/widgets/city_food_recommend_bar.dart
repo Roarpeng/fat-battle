@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../constants/app_constants.dart';
 import '../models/food_recommend_models.dart';
 import '../services/city_location_service.dart';
@@ -23,6 +24,16 @@ class CityFoodRecommendBar extends StatefulWidget {
 }
 
 class CityFoodRecommendBarState extends State<CityFoodRecommendBar> {
+  TextStyle get _displayStyle => GoogleFonts.fraunces(
+        color: AppColors.text,
+        fontWeight: FontWeight.w600,
+      );
+
+  TextStyle get _bodyStyle => GoogleFonts.figtree(color: AppColors.text);
+
+  TextStyle get _mutedStyle =>
+      GoogleFonts.figtree(color: AppColors.text2, fontSize: 12);
+
   final _location = CityLocationService();
   final _prefs = FoodPreferenceService();
   final _recommend = FoodRecommendService();
@@ -76,6 +87,14 @@ class CityFoodRecommendBarState extends State<CityFoodRecommendBar> {
     setState(() => _foods = list);
   }
 
+  /// 供父组件在外部加餐后刷新近期偏好排序
+  Future<void> refreshRecent() async {
+    final recent = await _prefs.loadRecentFoodCounts();
+    if (!mounted) return;
+    setState(() => _recent = recent);
+    _refreshFoods();
+  }
+
   Future<void> _relocate() async {
     setState(() => _locating = true);
     final result = await _location.resolveFromGps();
@@ -110,27 +129,38 @@ class CityFoodRecommendBarState extends State<CityFoodRecommendBar> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Padding(
-                padding: EdgeInsets.all(16),
-                child: Text('选择城市', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text(
+                  '选择城市',
+                  style: _displayStyle.copyWith(fontSize: 17),
+                ),
               ),
               ...cities.map((c) {
                 final selected = c == _cityResult.city;
                 return ListTile(
-                  title: Text('${c.displayName} · ${c.cuisineLabel}'),
-                  trailing: selected ? const Icon(Icons.check, color: AppColors.green) : null,
+                  title: Text(
+                    '${c.displayName} · ${c.cuisineLabel}',
+                    style: _bodyStyle,
+                  ),
+                  trailing: selected
+                      ? Icon(Icons.check, color: AppColors.copper)
+                      : null,
                   onTap: () => Navigator.pop(ctx, c),
                 );
               }),
               ListTile(
                 leading: _locating
-                    ? const SizedBox(
+                    ? SizedBox(
                         width: 20,
                         height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: AppColors.copper,
+                        ),
                       )
-                    : const Icon(Icons.my_location),
-                title: const Text('使用手机定位'),
+                    : Icon(Icons.my_location, color: AppColors.copper),
+                title: Text('使用手机定位', style: _bodyStyle),
                 onTap: () async {
                   Navigator.pop(ctx);
                   await _relocate();
@@ -181,15 +211,17 @@ class CityFoodRecommendBarState extends State<CityFoodRecommendBar> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Text('饮食偏好', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                    Text('饮食偏好', style: _displayStyle.copyWith(fontSize: 17)),
                     const SizedBox(height: 8),
                     SwitchListTile(
                       contentPadding: EdgeInsets.zero,
-                      title: const Text('素食优先'),
+                      title: Text('素食优先', style: _bodyStyle),
+                      activeTrackColor: AppColors.copper.withValues(alpha: 0.35),
+                      activeThumbColor: AppColors.copper,
                       value: draft.vegetarian,
                       onChanged: (v) => setModal(() => draft = draft.copyWith(vegetarian: v)),
                     ),
-                    const Text('忌口', style: TextStyle(fontSize: 13, color: AppColors.text2)),
+                    Text('忌口', style: _mutedStyle),
                     const SizedBox(height: 6),
                     Wrap(
                       spacing: 8,
@@ -197,8 +229,18 @@ class CityFoodRecommendBarState extends State<CityFoodRecommendBar> {
                       children: FoodAvoidTag.values.map((tag) {
                         final on = draft.avoidTags.contains(tag);
                         return FilterChip(
-                          label: Text(tag.label),
+                          label: Text(tag.label, style: _bodyStyle.copyWith(fontSize: 13)),
                           selected: on,
+                          selectedColor: AppColors.ember.withValues(alpha: 0.22),
+                          checkmarkColor: AppColors.copper,
+                          backgroundColor: AppColors.bg2,
+                          side: BorderSide(
+                            color: on ? AppColors.copper : AppColors.border,
+                          ),
+                          labelStyle: _bodyStyle.copyWith(
+                            fontSize: 13,
+                            color: on ? AppColors.copper : AppColors.text,
+                          ),
                           onSelected: (sel) {
                             setModal(() {
                               final next = {...draft.avoidTags};
@@ -214,7 +256,7 @@ class CityFoodRecommendBarState extends State<CityFoodRecommendBar> {
                       }).toList(),
                     ),
                     const SizedBox(height: 12),
-                    const Text('主食偏好', style: TextStyle(fontSize: 13, color: AppColors.text2)),
+                    Text('主食偏好', style: _mutedStyle),
                     const SizedBox(height: 6),
                     Wrap(
                       spacing: 8,
@@ -227,8 +269,17 @@ class CityFoodRecommendBarState extends State<CityFoodRecommendBar> {
                         final selected = draft.preferredStaple == e.$1 ||
                             (e.$1 == null && draft.preferredStaple == null);
                         return ChoiceChip(
-                          label: Text(e.$2),
+                          label: Text(e.$2, style: _bodyStyle.copyWith(fontSize: 13)),
                           selected: selected,
+                          selectedColor: AppColors.copper.withValues(alpha: 0.22),
+                          backgroundColor: AppColors.bg2,
+                          side: BorderSide(
+                            color: selected ? AppColors.copper : AppColors.border,
+                          ),
+                          labelStyle: _bodyStyle.copyWith(
+                            fontSize: 13,
+                            color: selected ? AppColors.copper : AppColors.text,
+                          ),
                           onSelected: (_) => setModal(() {
                             draft = e.$1 == null
                                 ? draft.copyWith(clearPreferredStaple: true)
@@ -274,9 +325,13 @@ class CityFoodRecommendBarState extends State<CityFoodRecommendBar> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 8),
-        child: LinearProgressIndicator(minHeight: 2),
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: LinearProgressIndicator(
+          minHeight: 2,
+          color: AppColors.copper,
+          backgroundColor: AppColors.border,
+        ),
       );
     }
 
@@ -291,31 +346,36 @@ class CityFoodRecommendBarState extends State<CityFoodRecommendBar> {
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   decoration: BoxDecoration(
-                    color: AppColors.bg2,
+                    color: AppColors.card,
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: AppColors.border),
+                    border: Border.all(
+                      color: AppColors.copper.withValues(alpha: 0.45),
+                    ),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       if (_locating)
-                        const SizedBox(
+                        SizedBox(
                           width: 12,
                           height: 12,
-                          child: CircularProgressIndicator(strokeWidth: 1.5),
+                          child: CircularProgressIndicator(
+                            strokeWidth: 1.5,
+                            color: AppColors.copper,
+                          ),
                         )
                       else
-                        const Text('📍', style: TextStyle(fontSize: 12)),
+                        Icon(Icons.location_on_outlined, size: 14, color: AppColors.copper),
                       const SizedBox(width: 4),
                       Flexible(
                         child: Text(
                           _chipLabel,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 12),
+                          style: _bodyStyle.copyWith(fontSize: 12),
                         ),
                       ),
-                      const Icon(Icons.expand_more, size: 16),
+                      Icon(Icons.expand_more, size: 16, color: AppColors.copper),
                     ],
                   ),
                 ),
@@ -327,11 +387,18 @@ class CityFoodRecommendBarState extends State<CityFoodRecommendBar> {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 decoration: BoxDecoration(
-                  color: AppColors.bg2,
+                  color: AppColors.card,
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(color: AppColors.border),
                 ),
-                child: const Text('偏好', style: TextStyle(fontSize: 12)),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.tune_outlined, size: 14, color: AppColors.copper),
+                    const SizedBox(width: 4),
+                    Text('偏好', style: _bodyStyle.copyWith(fontSize: 12)),
+                  ],
+                ),
               ),
             ),
           ],
@@ -361,11 +428,13 @@ class CityFoodRecommendBarState extends State<CityFoodRecommendBar> {
                   decoration: BoxDecoration(
                     color: AppColors.bg2,
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: AppColors.border),
+                    border: Border.all(
+                      color: AppColors.copper.withValues(alpha: 0.28),
+                    ),
                   ),
                   child: Text(
                     '${food.name} ${food.cal}',
-                    style: const TextStyle(fontSize: 12),
+                    style: _bodyStyle.copyWith(fontSize: 12),
                   ),
                 ),
               );

@@ -2,8 +2,10 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../../constants/app_constants.dart';
 
-/// 攻击类型（运动类�?�?颜色映射�?enum AttackKind {
-  /// 有氧（绿色风�?  cardio,
+///  攻击类型（运动类�?�?颜色映射�
+enum AttackKind {
+  ///  有氧（绿色风�
+  cardio,
 
   /// 力量（红色冲击）
   strength,
@@ -28,31 +30,31 @@ extension AttackKindExt on AttackKind {
   String get emoji {
     switch (this) {
       case AttackKind.cardio:
-        return '💨';
+        return '有氧冲击';
       case AttackKind.strength:
-        return '💥';
+        return '力量爆发';
       case AttackKind.core:
-        return '🌊';
+        return '核心震荡';
     }
   }
 
   String get label {
     switch (this) {
       case AttackKind.cardio:
-        return '有氧冲击�?;
+        return '有氧冲击';
       case AttackKind.strength:
-        return '力量爆发�?;
+        return '力量爆发';
       case AttackKind.core:
-        return '核心震荡�?;
+        return '核心震荡';
     }
   }
 }
 
 /// 攻击瞬间闪光特效
 ///
-/// 设计参�?Web �?AttackEffect.tsx�?/// - 攻击瞬间的图标飞�?+ 闪光
-/// - 不同运动类型不同颜色�?///   - cardio（有氧）：绿色风
-///   - strength（力量）：红色冲�?///   - core（核心）：蓝色波�?/// - 持续�?300-500ms 消散
+/// 设计参�?Web �?AttackEffect.tsx�?/// - 攻击瞬间的图标飞�?+ 闪光
+/// - 不同运动类型不同颜色�?///   - cardio（有氧）：绿色风
+///   - strength（力量）：红色冲�?///   - core（核心）：蓝色波�?/// - 持续�?300-500ms 消散
 class AttackEffect extends StatefulWidget {
   /// 唯一 ID
   final String id;
@@ -60,7 +62,8 @@ class AttackEffect extends StatefulWidget {
   /// 攻击类型
   final AttackKind kind;
 
-  /// 伤害�?  final int damage;
+  ///  伤害�
+  final int damage;
 
   /// 动画结束回调
   final VoidCallback onComplete;
@@ -79,7 +82,7 @@ class AttackEffect extends StatefulWidget {
 
 class _AttackEffectState extends State<AttackEffect>
     with TickerProviderStateMixin {
-  // 主图标飞�?+ 消散
+  // 主图标飞�?+ 消散
   late final AnimationController _iconController;
   late final Animation<double> _iconX;
   late final Animation<double> _iconOpacity;
@@ -101,7 +104,7 @@ class _AttackEffectState extends State<AttackEffect>
   void initState() {
     super.initState();
 
-    // 图标飞入�?00ms
+    // 图标飞入�?00ms
     _iconController = AnimationController(
       duration: const Duration(milliseconds: 400),
       vsync: this,
@@ -119,7 +122,7 @@ class _AttackEffectState extends State<AttackEffect>
       TweenSequenceItem(tween: Tween(begin: 1, end: 2), weight: 40),
     ]).animate(_iconController);
 
-    // 闪光扩散�?00ms
+    // 闪光扩散�?00ms
     _flashController = AnimationController(
       duration: const Duration(milliseconds: 500),
       vsync: this,
@@ -158,7 +161,8 @@ class _AttackEffectState extends State<AttackEffect>
     });
     _labelController.forward();
 
-    // 整体 700ms 后结�?    Future.delayed(const Duration(milliseconds: 800), () {
+    //  整体 700ms 后结�
+    Future.delayed(const Duration(milliseconds: 800), () {
       if (mounted) widget.onComplete();
     });
   }
@@ -192,7 +196,7 @@ class _AttackEffectState extends State<AttackEffect>
               size: 64,
               blur: false,
             ),
-            // 主图标飞�?            _buildIcon(),
+            // 主图标飞�?            _buildIcon(),
             // 标签徽章（顶部）
             _buildLabel(),
           ],

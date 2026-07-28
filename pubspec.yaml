@@ -79,6 +79,7 @@ dependencies:
 
   # 分享功能（成就卡片 / 数据导出）
   share_plus: ^10.1.4
+  google_fonts: ^8.2.0
 
 dev_dependencies:
   flutter_test:

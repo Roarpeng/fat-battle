@@ -4,14 +4,17 @@ import '../../constants/app_constants.dart';
 
 /// 伤害飘字类型
 enum DamageType {
-  /// 普通伤害（白色�?  damage,
+  ///  普通伤害（白色�
+  damage,
 
   /// 克制伤害 / 暴击（橙黄色，放大）
   critical,
 
-  /// 被克伤害（灰色，缩小�?  weak,
+  ///  被克伤害（灰色，缩小�
+  weak,
 
-  /// 治愈 / 护盾吸收（青色，SHIELD 文字�?  shield,
+  ///  治愈 / 护盾吸收（青色，SHIELD 文字�
+  shield,
 
   /// 治疗（绿色）
   heal,
@@ -19,21 +22,23 @@ enum DamageType {
 
 /// 单条伤害飘字
 ///
-/// 设计参�?Web �?DamageNumber.tsx�?/// - 从怪物位置飞出，向上飘�?+ 淡出
+/// 设计参�?Web �?DamageNumber.tsx�?/// - 从怪物位置飞出，向上飘�?+ 淡出
 /// - 普通伤害：白色
 /// - 暴击（克制）：橙黄色 + 放大
-/// - 被克：灰�?+ 缩小
-/// - 护盾吸收：青�?"SHIELD" 文字
+/// - 被克：灰�?+ 缩小
+/// - 护盾吸收：青�?"SHIELD" 文字
 class DamageNumber extends StatefulWidget {
-  /// 唯一 ID（用�?key 管理�?  final String id;
+  ///  唯一 ID（用�?key 管理�
+  final String id;
 
-  /// 数值（伤害�?/ 治疗�?/ 护盾值）
+  /// 数值（伤害�?/ 治疗�?/ 护盾值）
   final int value;
 
   /// 类型
   final DamageType type;
 
-  /// 初始水平偏移（相对怪物中心�?  final double offsetX;
+  ///  初始水平偏移（相对怪物中心�
+  final double offsetX;
 
   /// 动画结束回调
   final VoidCallback onComplete;
@@ -161,14 +166,16 @@ class _DamageNumberState extends State<DamageNumber>
       case DamageType.damage:
         return '-';
       case DamageType.weak:
-        return '-${widget.value} (�?';
+        return '-${widget.value} (�?';
       // weak 直接返回完整字串
     }
   }
 
   String get _displayText {
     if (widget.type == DamageType.weak) {
-      return _prefix; // 已包含�?    }
+      return _prefix;
+      //  已包含�
+}
     return '$_prefix${widget.value}';
   }
 

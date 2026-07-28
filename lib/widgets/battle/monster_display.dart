@@ -4,24 +4,30 @@ import '../../constants/app_constants.dart';
 
 /// 怪物显示组件
 ///
-/// 设计参�?Web �?MonsterAnimation.tsx�?/// - 持续浮动动画（上下移动）
-/// - 受伤时抖�?+ 红色滤镜
-/// - 狂暴时红色光�?+ emoji 放大 1.1x
-/// - 阶段切换�?fade 过渡
-/// - 死亡时灰�?+ 旋转消失
-/// - HP < 50% 显示情绪 emoji，HP < 30% 显示血�?class MonsterDisplay extends StatefulWidget {
+/// 设计参�?Web �?MonsterAnimation.tsx�?/// - 持续浮动动画（上下移动）
+/// - 受伤时抖�?+ 红色滤镜
+/// - 狂暴时红色光�?+ emoji 放大 1.1x
+/// - 阶段切换�?fade 过渡
+/// - 死亡时灰�?+ 旋转消失
+///  - HP < 50% 显示情绪 emoji，HP < 30% 显示血�
+class MonsterDisplay extends StatefulWidget {
   /// 怪物 emoji
   final String emoji;
 
-  /// 当前 HP 百分比（0..1�?  final double hpPercentage;
+  ///  当前 HP 百分比（0..1�
+  final double hpPercentage;
 
-  /// 是否正在受伤（触发抖�?+ 红色滤镜�?  final bool isHit;
+  ///  是否正在受伤（触发抖�?+ 红色滤镜�
+  final bool isHit;
 
-  /// 是否狂暴（触发红色光�?+ 放大�?  final bool isEnraged;
+  ///  是否狂暴（触发红色光�?+ 放大�
+  final bool isEnraged;
 
-  /// 是否死亡（触发灰�?+ 旋转消失�?  final bool isDead;
+  ///  是否死亡（触发灰�?+ 旋转消失�
+  final bool isDead;
 
-  /// 是否处于阶段切换（触�?fade 过渡�?  final bool isPhaseChanging;
+  ///  是否处于阶段切换（触�?fade 过渡�
+  final bool isPhaseChanging;
 
   /// emoji 基础字号
   final double emojiSize;
@@ -171,7 +177,7 @@ class _MonsterDisplayState extends State<MonsterDisplay>
     super.dispose();
   }
 
-  /// 根据 HP 百分比返回情�?emoji
+  /// 根据 HP 百分比返回情�?emoji
   String _getEmotionEmoji() {
     if (widget.isDead) return '💀';
     if (widget.hpPercentage < 0.2) return '😵';
@@ -200,7 +206,8 @@ class _MonsterDisplayState extends State<MonsterDisplay>
             _buildMonster(),
             // 受伤爆炸特效
             if (widget.isHit) _buildHitBurst(),
-            // HP < 30% 血迹效�?            if (widget.hpPercentage < 0.3 && !widget.isDead) _buildBloodOverlay(),
+            //  HP < 30% 血迹效�
+            if (widget.hpPercentage < 0.3 && !widget.isDead) _buildBloodOverlay(),
             // HP < 50% 情绪 emoji
             if (widget.hpPercentage < 0.5 && !widget.isDead) _buildEmotionBadge(),
           ],
@@ -209,7 +216,8 @@ class _MonsterDisplayState extends State<MonsterDisplay>
     );
   }
 
-  /// 主体怪物 emoji（浮�?+ 呼吸 + 抖动 + 阶段切换 + 死亡动画�?  Widget _buildMonster() {
+  ///  主体怪物 emoji（浮�?+ 呼吸 + 抖动 + 阶段切换 + 死亡动画�
+  Widget _buildMonster() {
     return AnimatedBuilder(
       animation: Listenable.merge([
         _floatAnimation,
@@ -274,7 +282,8 @@ class _MonsterDisplayState extends State<MonsterDisplay>
             style: TextStyle(
               fontSize: widget.emojiSize,
               decoration: TextDecoration.none,
-              // 受伤时叠加红色滤�?              color: hitRedOverlay == Colors.transparent
+              //  受伤时叠加红色滤�
+              color: hitRedOverlay == Colors.transparent
                   ? null
                   : Color.lerp(Colors.white, Colors.red, 0.3),
             ),
@@ -303,7 +312,7 @@ class _MonsterDisplayState extends State<MonsterDisplay>
     return AnimatedBuilder(
       animation: _hitController,
       builder: (context, child) {
-        // �?0..0.3 期间出现�?.3..1 期间淡出
+        // �?0..0.3 期间出现�?.3..1 期间淡出
         final t = _hitController.value;
         final opacity = t < 0.3 ? (t / 0.3) : ((1 - t) / 0.7).clamp(0.0, 1.0);
         final scale = 0.8 + t * 0.6;
@@ -349,7 +358,8 @@ class _MonsterDisplayState extends State<MonsterDisplay>
     );
   }
 
-  /// 死亡时灰光扩�?  Widget _buildDeathGlow() {
+  ///  死亡时灰光扩�
+  Widget _buildDeathGlow() {
     return AnimatedBuilder(
       animation: _deathController,
       builder: (context, _) {
@@ -372,7 +382,7 @@ class _MonsterDisplayState extends State<MonsterDisplay>
     );
   }
 
-  /// HP < 30% 显示半透明血�?emoji
+  /// HP < 30% 显示半透明血�?emoji
   Widget _buildBloodOverlay() {
     return const Opacity(
       opacity: 0.5,

@@ -291,6 +291,10 @@ class FusionRecognitionService {
   int _finalRepCount = 0;
   double _finalAccuracy = 0;
   
+  /// 融合结果回调
+  Function(int count, String exercise)? onRepDetected;
+  Function(String feedback)? onFeedback;
+
   /// 更新摄像头检测结果
   void updateCameraResult({
     String? exerciseType,
@@ -312,10 +316,13 @@ class FusionRecognitionService {
   
   /// 融合摄像头和IMU结果
   void _fuseResults() {
+    final exercise = _cameraExerciseType ?? _imuService.currentExercise;
+
     // 如果只有摄像头结果
     if (_cameraRepCount != null && _imuService.repCount == 0) {
       _finalRepCount = _cameraRepCount!;
       _finalAccuracy = _cameraAccuracy ?? 0.8;
+      onRepDetected?.call(_finalRepCount, exercise);
       return;
     }
     
@@ -323,13 +330,19 @@ class FusionRecognitionService {
     if (_imuService.repCount > 0 && _cameraRepCount == null) {
       _finalRepCount = _imuService.repCount;
       _finalAccuracy = 0.7; // IMU单独检测精度较低
+      onRepDetected?.call(_finalRepCount, exercise);
       return;
     }
     
     // 融合两者结果
     if (_cameraRepCount != null && _imuService.repCount > 0) {
       // 取两者平均值，摄像头权重更高
-      _finalRepCount = ((_cameraRepCount! * 0.6) + (_imuService.repCount * 0.4)).round();
+      final fused = ((_cameraRepCount! * 0.6) + (_imuService.repCount * 0.4)).round();
+      if (fused != _finalRepCount) {
+        _finalRepCount = fused;
+        onRepDetected?.call(_finalRepCount, exercise);
+        onFeedback?.call('融合计数 $_finalRepCount（摄像头+IMU）');
+      }
       
       // 融合精度：摄像头精度 + IMU强度验证
       final imuIntensity = _imuService.calculateIntensity();
@@ -347,6 +360,10 @@ class FusionRecognitionService {
   
   /// 开始检测
   void startDetection(String exerciseType) {
+    _imuService.onRepDetected = (count, exercise) {
+      _fuseResults();
+    };
+    _imuService.onFeedback = onFeedback;
     _imuService.startDetection(exerciseType);
     _cameraExerciseType = exerciseType;
     _cameraRepCount = null;

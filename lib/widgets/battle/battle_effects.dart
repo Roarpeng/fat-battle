@@ -11,12 +11,14 @@ class DamageEvent {
   /// 唯一 ID
   final String id;
 
-  /// 数�?  final int value;
+  ///  数�
+  final int value;
 
   /// 类型
   final DamageType type;
 
-  /// 攻击类型（仅 damage / critical / weak 时有意义�?  final AttackKind? attackKind;
+  ///  攻击类型（仅 damage / critical / weak 时有意义�
+  final AttackKind? attackKind;
 
   /// 触发时间
   final DateTime timestamp;
@@ -34,11 +36,13 @@ class DamageEvent {
 
 /// 怪物战斗状态（聚合展示用）
 ///
-/// 简化的怪物状态视图模型，�?[Monster] + 额外动画标志位构�?class MonsterBattleState {
+///  简化的怪物状态视图模型，�?[Monster] + 额外动画标志位构�
+class MonsterBattleState {
   /// 怪物基础数据
   final Monster monster;
 
-  /// 是否狂暴（HP < 30% 自动判定，或外部传入�?  final bool isEnraged;
+  ///  是否狂暴（HP < 30% 自动判定，或外部传入�
+  final bool isEnraged;
 
   /// 是否处于阶段切换（外部触发）
   final bool isPhaseChanging;
@@ -49,7 +53,8 @@ class DamageEvent {
     this.isPhaseChanging = false,
   });
 
-  /// 根据 Monster 自动构造（HP < 30% 触发狂暴�?  factory MonsterBattleState.from(Monster monster,
+  ///  根据 Monster 自动构造（HP < 30% 触发狂暴�
+  factory MonsterBattleState.from(Monster monster,
       {bool isPhaseChanging = false}) {
     return MonsterBattleState(
       monster: monster,
@@ -65,16 +70,18 @@ class DamageEvent {
 
 /// 战斗特效聚合组件
 ///
-/// 设计参�?Web �?BattlePage.tsx 的状态管�?+ BattleEffects.tsx 聚合�?/// - 渲染 HP �?+ 怪物 + 护盾 + 攻击特效 + 伤害飘字
+/// 设计参�?Web �?BattlePage.tsx 的状态管�?+ BattleEffects.tsx 聚合�?/// - 渲染 HP �?+ 怪物 + 护盾 + 攻击特效 + 伤害飘字
 /// - 自动监听 [monster] / [lastDamage] 变化触发动画
 /// - 内部维护活跃的伤害飘字队列和攻击特效队列
 class BattleEffects extends StatefulWidget {
-  /// 怪物战斗状�?  final MonsterBattleState monster;
+  ///  怪物战斗状�
+  final MonsterBattleState monster;
 
-  /// 最近一次伤害事件（�?null 时触发动画）
+  /// 最近一次伤害事件（�?null 时触发动画）
   final DamageEvent? lastDamage;
 
-  /// 是否处于护盾破碎状�?  final bool isShieldBreaking;
+  ///  是否处于护盾破碎状�
+  final bool isShieldBreaking;
 
   /// 怪物 emoji 字号
   final double emojiSize;
@@ -85,7 +92,7 @@ class BattleEffects extends StatefulWidget {
   /// 怪物点击回调
   final VoidCallback? onMonsterTap;
 
-  /// 特效完成回调（伤害飘�?/ 攻击特效全部消失后）
+  /// 特效完成回调（伤害飘�?/ 攻击特效全部消失后）
   final VoidCallback? onEffectsCleared;
 
   const BattleEffects({
@@ -104,10 +111,13 @@ class BattleEffects extends StatefulWidget {
 }
 
 class _BattleEffectsState extends State<BattleEffects> {
-  // 活跃的伤害飘�?  final List<DamageEvent> _activeDamageNumbers = [];
-  // 活跃的攻击特�?  final List<_AttackEffectEntry> _activeAttackEffects = [];
-  // 是否正在受伤（用于触发怪物抖动�?  bool _isMonsterHit = false;
-  // 已处理过�?lastDamage ID
+  //  活跃的伤害飘�
+  final List<DamageEvent> _activeDamageNumbers = [];
+  //  活跃的攻击特�
+  final List<_AttackEffectEntry> _activeAttackEffects = [];
+  //  是否正在受伤（用于触发怪物抖动�
+  bool _isMonsterHit = false;
+  // 已处理过�?lastDamage ID
   String? _processedDamageId;
 
   @override
@@ -119,14 +129,15 @@ class _BattleEffectsState extends State<BattleEffects> {
   @override
   void didUpdateWidget(covariant BattleEffects oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // 检�?lastDamage 是否变化
+    // 检�?lastDamage 是否变化
     if (widget.lastDamage != null &&
         widget.lastDamage!.id != _processedDamageId) {
       _processDamage(widget.lastDamage);
     }
   }
 
-  /// 处理一次伤害事件：添加到队�?  void _processDamage(DamageEvent? event) {
+  ///  处理一次伤害事件：添加到队�
+  void _processDamage(DamageEvent? event) {
     if (event == null) return;
     _processedDamageId = event.id;
 
@@ -138,7 +149,8 @@ class _BattleEffectsState extends State<BattleEffects> {
         _isMonsterHit = true;
         _activeDamageNumbers.add(event);
       });
-      // 500ms 后清除受伤标�?      Future.delayed(const Duration(milliseconds: 500), () {
+      //  500ms 后清除受伤标�
+      Future.delayed(const Duration(milliseconds: 500), () {
         if (mounted) {
           setState(() => _isMonsterHit = false);
         }
@@ -149,7 +161,8 @@ class _BattleEffectsState extends State<BattleEffects> {
       });
     }
 
-    // 如果是伤害类，触发攻击特�?    if ((event.type == DamageType.damage ||
+    //  如果是伤害类，触发攻击特�
+    if ((event.type == DamageType.damage ||
             event.type == DamageType.critical ||
             event.type == DamageType.weak) &&
         event.attackKind != null) {
@@ -190,8 +203,10 @@ class _BattleEffectsState extends State<BattleEffects> {
       children: [
         // 怪物 + 护盾
         _buildMonsterWithShield(),
-        // 攻击特效�?        ..._buildAttackEffects(),
-        // 伤害飘字�?        ..._buildDamageNumbers(),
+        //  攻击特效�
+        ..._buildAttackEffects(),
+        //  伤害飘字�
+        ..._buildDamageNumbers(),
       ],
     );
   }
@@ -205,7 +220,8 @@ class _BattleEffectsState extends State<BattleEffects> {
       child: Stack(
         alignment: Alignment.center,
         children: [
-          // 护盾光圈（在怪物后方�?          if (widget.monster.hasShield || widget.isShieldBreaking)
+          //  护盾光圈（在怪物后方�
+          if (widget.monster.hasShield || widget.isShieldBreaking)
             EnergyShield(
               value: monster.shield,
               maxShield: monster.maxHp,
@@ -228,7 +244,8 @@ class _BattleEffectsState extends State<BattleEffects> {
     );
   }
 
-  /// 攻击特效�?  List<Widget> _buildAttackEffects() {
+  ///  攻击特效�
+  List<Widget> _buildAttackEffects() {
     return _activeAttackEffects.map((entry) {
       return AttackEffect(
         key: ValueKey('attack_${entry.id}'),
@@ -240,7 +257,8 @@ class _BattleEffectsState extends State<BattleEffects> {
     }).toList();
   }
 
-  /// 伤害飘字层（覆盖在怪物上方�?  List<Widget> _buildDamageNumbers() {
+  ///  伤害飘字层（覆盖在怪物上方�
+  List<Widget> _buildDamageNumbers() {
     return _activeDamageNumbers.map((event) {
       return Positioned(
         top: 0,
@@ -260,7 +278,8 @@ class _BattleEffectsState extends State<BattleEffects> {
   }
 }
 
-/// 攻击特效条目（内部用�?class _AttackEffectEntry {
+///  攻击特效条目（内部用�
+class _AttackEffectEntry {
   final String id;
   final AttackKind kind;
   final int damage;
@@ -272,9 +291,9 @@ class _BattleEffectsState extends State<BattleEffects> {
   });
 }
 
-/// 工具：根据锻�?[ExerciseRecord] 推断攻击类型
+/// 工具：根据锻�?[ExerciseRecord] 推断攻击类型
 ///
-/// Flutter 端运�?[ExerciseType.type] 映射�?/// - cardio：running / walking / cycling / swimming / jumping_jack / jumprope / hiit
+/// Flutter 端运�?[ExerciseType.type] 映射�?/// - cardio：running / walking / cycling / swimming / jumping_jack / jumprope / hiit
 /// - strength：pushup / squat / strength
 /// - core：yoga
 AttackKind inferAttackKind(String exerciseType) {
@@ -297,9 +316,9 @@ AttackKind inferAttackKind(String exerciseType) {
   }
 }
 
-/// 工具：根据伤害值与上下文判�?[DamageType]
+/// 工具：根据伤害值与上下文判�?[DamageType]
 ///
-/// - 暴击概率�?15%
+/// - 暴击概率�?15%
 /// - 护盾被破：shield 类型
 /// - 普通伤害：damage
 DamageType inferDamageType({

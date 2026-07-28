@@ -1,5 +1,13 @@
+import 'dart:convert';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
 import '../constants/app_constants.dart';
+import 'game_provider.dart' show sharedPreferencesProvider;
+
+const _inventoryPrefsKey = 'fat_battle_inventory';
 
 /// 物品栏单个物品的运行时状态
 class InventoryItem {
@@ -58,6 +66,26 @@ class InventoryItem {
       type: 'consumable',
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'desc': desc,
+        'emoji': emoji,
+        'quantity': quantity,
+        'type': type,
+      };
+
+  factory InventoryItem.fromJson(Map<String, dynamic> json) {
+    return InventoryItem(
+      id: json['id'] as String? ?? '',
+      name: json['name'] as String? ?? '',
+      desc: json['desc'] as String? ?? '',
+      emoji: json['emoji'] as String? ?? '📦',
+      quantity: (json['quantity'] as num?)?.toInt() ?? 0,
+      type: json['type'] as String? ?? 'consumable',
+    );
+  }
 }
 
 /// 物品栏状态
@@ -103,11 +131,55 @@ class InventoryState {
 
   /// 物品总数（叠加数量）
   int get totalQuantity => items.fold(0, (sum, i) => sum + i.quantity);
+
+  Map<String, dynamic> toJson() => {
+        'items': items.map((i) => i.toJson()).toList(),
+        'equippedItemId': equippedItemId,
+      };
+
+  factory InventoryState.fromJson(Map<String, dynamic> json) {
+    final itemsRaw = json['items'] as List?;
+    final items = itemsRaw
+            ?.whereType<Map>()
+            .map((e) => InventoryItem.fromJson(Map<String, dynamic>.from(e)))
+            .toList() ??
+        const <InventoryItem>[];
+    return InventoryState(
+      items: items,
+      equippedItemId: json['equippedItemId'] as String?,
+    );
+  }
 }
 
-/// 物品栏 Notifier
+/// 物品栏 Notifier（带 SharedPreferences 持久化）
 class InventoryNotifier extends StateNotifier<InventoryState> {
-  InventoryNotifier() : super(const InventoryState());
+  InventoryNotifier(this.prefs) : super(const InventoryState()) {
+    _loadSync();
+  }
+
+  final SharedPreferences? prefs;
+
+  void _loadSync() {
+    if (prefs == null) return;
+    try {
+      final raw = prefs!.getString(_inventoryPrefsKey);
+      if (raw == null || raw.isEmpty) return;
+      state = InventoryState.fromJson(
+        jsonDecode(raw) as Map<String, dynamic>,
+      );
+    } catch (e) {
+      debugPrint('[inventory] 加载失败: $e');
+    }
+  }
+
+  Future<void> _persist() async {
+    if (prefs == null) return;
+    try {
+      await prefs!.setString(_inventoryPrefsKey, jsonEncode(state.toJson()));
+    } catch (e) {
+      debugPrint('[inventory] 保存失败: $e');
+    }
+  }
 
   /// 从商店物品定义初始化物品栏（所有数量为 0）
   void initFromShopItems() {
@@ -116,11 +188,13 @@ class InventoryNotifier extends StateNotifier<InventoryState> {
           .map((item) => InventoryItem.fromShopItem(item))
           .toList(),
     );
+    _persist();
   }
 
   /// 批量设置物品列表（用于持久化恢复）
   void setItems(List<InventoryItem> items) {
     state = InventoryState(items: items);
+    _persist();
   }
 
   /// 添加物品数量
@@ -138,6 +212,7 @@ class InventoryNotifier extends StateNotifier<InventoryState> {
           items[idx].copyWith(quantity: items[idx].quantity + amount);
     }
     state = InventoryState(items: items, equippedItemId: state.equippedItemId);
+    _persist();
   }
 
   /// 使用物品（数量 -1）
@@ -150,6 +225,7 @@ class InventoryNotifier extends StateNotifier<InventoryState> {
     items[idx] =
         items[idx].copyWith(quantity: items[idx].quantity - 1);
     state = InventoryState(items: items, equippedItemId: state.equippedItemId);
+    _persist();
     return true;
   }
 
@@ -166,22 +242,26 @@ class InventoryNotifier extends StateNotifier<InventoryState> {
       items[idx] = items[idx].copyWith(quantity: newQty);
     }
     state = InventoryState(items: items, equippedItemId: state.equippedItemId);
+    _persist();
   }
 
   /// 装备物品
   void equip(String itemId) {
     if (state.getQuantity(itemId) <= 0) return;
     state = state.copyWith(equippedItemId: itemId);
+    _persist();
   }
 
   /// 卸下装备
   void unequip() {
     state = state.copyWith(clearEquipped: true);
+    _persist();
   }
 
   /// 重置
   void reset() {
     state = const InventoryState();
+    _persist();
   }
 
   ShopItem? _findShopItem(String id) {
@@ -195,5 +275,5 @@ class InventoryNotifier extends StateNotifier<InventoryState> {
 /// 物品栏 Provider
 final inventoryProvider =
     StateNotifierProvider<InventoryNotifier, InventoryState>((ref) {
-  return InventoryNotifier();
+  return InventoryNotifier(ref.watch(sharedPreferencesProvider));
 });

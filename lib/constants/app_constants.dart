@@ -1,18 +1,29 @@
 import 'package:flutter/material.dart';
 
-// 主题颜色
+/// 锻造工坊色板（Forge Workshop）
+///
+/// 暖炭黑底 + 铜金 + 炉火赤红；避开通用蓝紫暗色壳。
 class AppColors {
-  static const Color bg = Color(0xFF1a1a2e);
-  static const Color bg2 = Color(0xFF16213e);
-  static const Color bg3 = Color(0xFF0f3460);
-  static const Color red = Color(0xFFff6b6b);
-  static const Color gold = Color(0xFFffd93d);
-  static const Color green = Color(0xFF2ecc71);
-  static const Color purple = Color(0xFF667eea);
-  static const Color text = Color(0xFFe0e0e0);
-  static const Color text2 = Color(0xFFa0a0b0);
-  static const Color card = Color(0xFF1e2a4a);
-  static const Color border = Color(0xFF2a3a5a);
+  static const Color bg = Color(0xFF14110E);
+  static const Color bg2 = Color(0xFF1C1814);
+  static const Color bg3 = Color(0xFF2A241C);
+  /// 炉火赤红（主行动 / 伤害）
+  static const Color red = Color(0xFFE85D4C);
+  /// 铜金（金币 / 强调）
+  static const Color gold = Color(0xFFC4A574);
+  /// 鼠尾草绿（正向 / 安全）
+  static const Color green = Color(0xFF7D9B76);
+  /// 钢青（护盾；保留 purple 字段名以兼容旧调用）
+  static const Color purple = Color(0xFF6B9BB8);
+  static const Color text = Color(0xFFF2EBE3);
+  static const Color text2 = Color(0xFF9A9084);
+  static const Color card = Color(0xFF24201A);
+  static const Color border = Color(0xFF3D3429);
+
+  static const Color ember = red;
+  static const Color copper = gold;
+  static const Color forgeGlow = Color(0xFFFF8A5B);
+  static const Color shield = purple;
 }
 
 // 怪物配置

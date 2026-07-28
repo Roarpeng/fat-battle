@@ -3,16 +3,19 @@ import 'package:flutter/material.dart';
 
 /// 能量护盾特效
 ///
-/// 设计参�?Web �?EnergyShield.tsx�?/// - 护盾存在时，怪物周围环形光圈
+/// 设计参�?Web �?EnergyShield.tsx�?/// - 护盾存在时，怪物周围环形光圈
 /// - 青色渐变 + 旋转动画
 /// - 护盾值越高，光圈越亮
-/// - 护盾破碎时爆炸特效（通过 [ShieldBreakBurst] 实现�?class EnergyShield extends StatefulWidget {
+///  - 护盾破碎时爆炸特效（通过 [ShieldBreakBurst] 实现�
+class EnergyShield extends StatefulWidget {
   /// 护盾值（0..maxShield），决定光圈亮度
   final int value;
 
-  /// 最大护盾�?  final int maxShield;
+  ///  最大护盾�
+  final int maxShield;
 
-  /// 光圈直径（默�?280�?  final double size;
+  ///  光圈直径（默�?280�
+  final double size;
 
   /// 是否正在破碎（触发爆炸特效）
   final bool isBreaking;
@@ -116,7 +119,7 @@ class _EnergyShieldState extends State<EnergyShield>
     super.dispose();
   }
 
-  /// 护盾密度�?..1）：决定光圈亮度与粒子数
+  /// 护盾密度�?..1）：决定光圈亮度与粒子数
   double get _density {
     if (widget.maxShield <= 0) return 0;
     return (widget.value / widget.maxShield).clamp(0.0, 1.0);
@@ -136,8 +139,9 @@ class _EnergyShieldState extends State<EnergyShield>
         children: [
           // 外圈虚线（脉动）
           _buildOuterDashedRing(),
-          // 内圈实线（脉�?+ 发光�?          _buildInnerSolidRing(),
-          // 8 个旋转粒�?          if (!widget.isBreaking) _buildRotatingDots(),
+          // 内圈实线（脉�?+ 发光�?          _buildInnerSolidRing(),
+          //  8 个旋转粒�
+          if (!widget.isBreaking) _buildRotatingDots(),
           // 破碎爆炸效果
           if (widget.isBreaking) _buildBreakBurst(),
         ],
@@ -206,7 +210,8 @@ class _EnergyShieldState extends State<EnergyShield>
     );
   }
 
-  /// 8 个旋转粒�?  Widget _buildRotatingDots() {
+  ///  8 个旋转粒�
+  Widget _buildRotatingDots() {
     return AnimatedBuilder(
       animation: _rotateController,
       builder: (context, _) {
@@ -273,7 +278,8 @@ class _EnergyShieldState extends State<EnergyShield>
                 ),
               ),
             ),
-            // 8 个发散碎�?            ...List.generate(8, (i) {
+            //  8 个发散碎�
+            ...List.generate(8, (i) {
               final angle = (i * 45) * (math.pi / 180);
               final distance = widget.size * 0.5 * _breakScale.value;
               return Transform.translate(
@@ -307,7 +313,8 @@ class _EnergyShieldState extends State<EnergyShield>
   }
 }
 
-/// 虚线圆环绘制�?class _DashedRingPainter extends CustomPainter {
+///  虚线圆环绘制�
+class _DashedRingPainter extends CustomPainter {
   final Color color;
   final double strokeWidth;
   final int dashCount;
@@ -330,7 +337,8 @@ class _EnergyShieldState extends State<EnergyShield>
     final radius = size.width / 2 - strokeWidth;
     final center = Offset(size.width / 2, size.height / 2);
 
-    // �?Path 绘制虚线�?    final path = Path();
+    //  �?Path 绘制虚线�
+    final path = Path();
     final circumference = 2 * math.pi * radius;
     final dashLength = circumference / (dashCount * 2);
     for (var i = 0; i < dashCount; i++) {

@@ -19,7 +19,7 @@ class HpBar extends StatelessWidget {
     this.height = 20,
     this.showText = true,
     this.shield = 0,
-    this.shieldColor = AppColors.purple,
+    this.shieldColor = AppColors.shield,
   });
   
   @override
@@ -46,7 +46,7 @@ class HpBar extends StatelessWidget {
               child: Container(
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
-                    colors: [color.withOpacity(0.8), color],
+                    colors: [color.withValues(alpha: 0.8), color],
                   ),
                   borderRadius: BorderRadius.circular(10),
                 ),
@@ -66,11 +66,11 @@ class HpBar extends StatelessWidget {
                 child: Container(
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
-                      colors: [Colors.transparent, shieldColor.withOpacity(0.6)],
+                      colors: [Colors.transparent, shieldColor.withValues(alpha: 0.6)],
                       stops: [0.7, 1.0],
                     ),
                     borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: shieldColor.withOpacity(0.8), width: 1.5),
+                    border: Border.all(color: shieldColor.withValues(alpha: 0.8), width: 1.5),
                   ),
                 ),
               ),
@@ -86,7 +86,7 @@ class HpBar extends StatelessWidget {
                   fontSize: 11,
                   fontWeight: FontWeight.bold,
                   shadows: [
-                    Shadow(color: Colors.black.withOpacity(0.5), offset: Offset(0, 1)),
+                    Shadow(color: Colors.black.withValues(alpha: 0.5), offset: Offset(0, 1)),
                   ],
                 ),
               ),
@@ -107,7 +107,7 @@ class ProgressBar extends StatelessWidget {
     super.key,
     required this.percent,
     this.text = '',
-    this.color = AppColors.green,
+    this.color = AppColors.ember,
   });
   
   @override
@@ -128,7 +128,7 @@ class ProgressBar extends StatelessWidget {
               child: Container(
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
-                    colors: [AppColors.green, AppColors.gold],
+                    colors: [AppColors.copper, AppColors.ember],
                   ),
                   borderRadius: BorderRadius.circular(12),
                 ),

@@ -7,7 +7,8 @@ class VictoryReward {
   /// 金币奖励
   final int coins;
 
-  /// 怪物�?  final String monsterName;
+  ///  怪物�
+  final String monsterName;
 
   /// 怪物等级
   final int monsterLevel;
@@ -15,7 +16,8 @@ class VictoryReward {
   /// 是否 Boss
   final bool isBoss;
 
-  /// 连续天数（可选，> 0 显示�?  final int streak;
+  ///  连续天数（可选，> 0 显示�
+  final int streak;
 
   const VictoryReward({
     required this.coins,
@@ -28,14 +30,15 @@ class VictoryReward {
 
 /// 胜利特效
 ///
-/// 设计参�?Web �?VictoryEffect.tsx�?/// - 金币雨（30 个金币）
-/// - 星星发散�?2 颗星�?/// - "VICTORY!" 大字动画
+/// 设计参�?Web �?VictoryEffect.tsx�?/// - 金币雨（30 个金币）
+/// - 星星发散�?2 颗星�?/// - "VICTORY!" 大字动画
 /// - 奖励信息卡片
 class VictoryEffect extends StatefulWidget {
   /// 奖励信息（null 则只播放纯特效）
   final VictoryReward? reward;
 
-  /// 完成回调（用户点�?收下成就"按钮�?  final VoidCallback? onCollect;
+  ///  完成回调（用户点�?收下成就"按钮�
+  final VoidCallback? onCollect;
 
   /// 是否显示奖励卡片
   final bool showRewardCard;
@@ -57,7 +60,7 @@ class _VictoryEffectState extends State<VictoryEffect>
   late final AnimationController _fadeController;
   late final Animation<double> _fadeAnimation;
 
-  // 奖杯入场（旋�?+ 弹性）
+  // 奖杯入场（旋�?+ 弹性）
   late final AnimationController _trophyController;
   late final Animation<double> _trophyScale;
   late final Animation<double> _trophyRotation;
@@ -76,12 +79,14 @@ class _VictoryEffectState extends State<VictoryEffect>
   late final Animation<double> _cardOpacity;
   late final Animation<double> _cardY;
 
-  // 金币雨（持续�?  late final AnimationController _coinController;
+  //  金币雨（持续�
+  late final AnimationController _coinController;
 
   // 星爆（持续循环）
   late final AnimationController _starController;
 
-  // 金币雨数�?  final List<_CoinData> _coins = [];
+  //  金币雨数�
+  final List<_CoinData> _coins = [];
   // 星爆数据
   final List<_StarData> _stars = [];
   final _rng = math.Random();
@@ -99,7 +104,8 @@ class _VictoryEffectState extends State<VictoryEffect>
         size: 20 + _rng.nextDouble() * 16,
       ));
     }
-    // 初始化星爆数�?    for (var i = 0; i < 12; i++) {
+    //  初始化星爆数�
+    for (var i = 0; i < 12; i++) {
       _stars.add(_StarData(
         angle: (i * 30) * (math.pi / 180),
         delay: i * 0.1,
@@ -131,7 +137,7 @@ class _VictoryEffectState extends State<VictoryEffect>
     )..repeat(reverse: true);
     _swingAnimation = Tween<double>(begin: -0.17, end: 0.17).animate(
       CurvedAnimation(parent: _swingController, curve: Curves.easeInOut),
-    ); // �?±10°
+    ); // �?±10°
 
     _textController = AnimationController(
       duration: const Duration(milliseconds: 500),
@@ -206,7 +212,7 @@ class _VictoryEffectState extends State<VictoryEffect>
           children: [
             // 背景径向渐变光晕
             _buildBackgroundGlow(),
-            // 金币�?            _buildCoinRain(),
+            // 金币�?            _buildCoinRain(),
             // 星爆
             _buildStarBurst(),
             // 中央内容
@@ -241,7 +247,8 @@ class _VictoryEffectState extends State<VictoryEffect>
     );
   }
 
-  /// 金币�?  Widget _buildCoinRain() {
+  ///  金币�
+  Widget _buildCoinRain() {
     return Positioned.fill(
       child: IgnorePointer(
         child: AnimatedBuilder(
@@ -249,9 +256,10 @@ class _VictoryEffectState extends State<VictoryEffect>
           builder: (context, _) {
             return Stack(
               children: _coins.map((coin) {
-                // 每个 coin �?_coinController �?value + delay 算位�?                final progress =
+                //  每个 coin �?_coinController �?value + delay 算位�
+                final progress =
                     ((_coinController.value + coin.delaySeconds / 4) % 1.0);
-                // 从顶�?(-10%) 到底�?(110%)
+                // 从顶�?(-10%) 到底�?(110%)
                 final top = -10 + progress * 120;
                 // 旋转
                 final rotation = progress * 4 * math.pi;
@@ -288,7 +296,7 @@ class _VictoryEffectState extends State<VictoryEffect>
     );
   }
 
-  /// 星爆�?2 颗星星向 12 个方向发散）
+  /// 星爆�?2 颗星星向 12 个方向发散）
   Widget _buildStarBurst() {
     return IgnorePointer(
       child: AnimatedBuilder(
@@ -297,7 +305,8 @@ class _VictoryEffectState extends State<VictoryEffect>
           return Stack(
             alignment: Alignment.center,
             children: _stars.map((star) {
-              // t �?0..1 之间循环（带 delay�?              final t = (_starController.value + star.delay) % 1.0;
+              //  t �?0..1 之间循环（带 delay�
+              final t = (_starController.value + star.delay) % 1.0;
               // scale: 0 -> 1.5 -> 0
               final scale = t < 0.5 ? t * 3 : (1 - t) * 3;
               // opacity: 0 -> 1 -> 0
@@ -313,7 +322,7 @@ class _VictoryEffectState extends State<VictoryEffect>
                   child: Opacity(
                     opacity: opacity.clamp(0.0, 1.0),
                     child: const Text(
-                      '�?,
+                      '*',
                       style: TextStyle(
                         fontSize: 24,
                         decoration: TextDecoration.none,
@@ -329,7 +338,7 @@ class _VictoryEffectState extends State<VictoryEffect>
     );
   }
 
-  /// 中央内容：奖�?+ VICTORY 文字 + 奖励卡片
+  /// 中央内容：奖�?+ VICTORY 文字 + 奖励卡片
   Widget _buildCenterContent() {
     return SingleChildScrollView(
       child: Column(
@@ -393,7 +402,7 @@ class _VictoryEffectState extends State<VictoryEffect>
                 ).createShader(bounds);
               },
               child: const Text(
-                '胜利�?,
+                'Victory!',
                 style: TextStyle(
                   fontSize: 44,
                   fontWeight: FontWeight.w900,
@@ -452,7 +461,7 @@ class _VictoryEffectState extends State<VictoryEffect>
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    '${reward.monsterName}${reward.isBoss ? '（Boss�? : ''} 已被击退�?,
+                    '${reward.monsterName}${reward.isBoss ? ' (Boss)' : ''} defeated!',
                     textAlign: TextAlign.center,
                     style: const TextStyle(
                       fontSize: 14,
@@ -491,7 +500,7 @@ class _VictoryEffectState extends State<VictoryEffect>
                   if (reward.streak > 0) ...[
                     const SizedBox(height: 8),
                     Text(
-                      '🔥 连胜 ${reward.streak} �?,
+                      'Streak ${reward.streak} days',
                       style: const TextStyle(
                         fontSize: 12,
                         color: Colors.orange,
@@ -529,7 +538,7 @@ class _VictoryEffectState extends State<VictoryEffect>
                 ),
               ),
               child: const Text(
-                '收下成就 �?,
+                'Collect Rewards',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
@@ -543,7 +552,8 @@ class _VictoryEffectState extends State<VictoryEffect>
   }
 }
 
-/// 金币雨单条数�?class _CoinData {
+///  金币雨单条数�
+class _CoinData {
   final double leftPercent; // 0..100
   final double delaySeconds;
   final double durationSeconds;

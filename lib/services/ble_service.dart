@@ -4,6 +4,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import '../models/game_models.dart';
 
+/// BLE 状态通知（供 UI SnackBar 等使用）
+class BleStatusEvent {
+  final String message;
+  final bool isError;
+
+  const BleStatusEvent(this.message, {this.isError = false});
+}
+
 /// BLE蓝牙服务 - 与ESP32腰部Hub通信
 class BleService {
   // ESP32设备名称
@@ -25,66 +33,92 @@ class BleService {
   final StreamController<ImuData> _imuDataStreamController = StreamController.broadcast();
   final StreamController<BleDeviceState> _connectionStateController = StreamController.broadcast();
   final StreamController<String> _logController = StreamController.broadcast();
+  final StreamController<BleStatusEvent> _statusController = StreamController.broadcast();
+
+  StreamSubscription<List<ScanResult>>? _scanSubscription;
+  Timer? _scanTimeoutTimer;
   
   Stream<ImuData> get imuDataStream => _imuDataStreamController.stream;
   Stream<BleDeviceState> get connectionStateStream => _connectionStateController.stream;
   Stream<String> get logStream => _logController.stream;
+  Stream<BleStatusEvent> get statusStream => _statusController.stream;
   
   bool _isScanning = false;
   bool _isConnected = false;
+  bool get isScanning => _isScanning;
+  bool get isConnected => _isConnected;
+
+  void _emitLog(String message, {bool isError = false}) {
+    _logController.add(message);
+    _statusController.add(BleStatusEvent(message, isError: isError));
+  }
   
   /// 开始扫描设备
-  Future<void> startScan() async {
-    if (_isScanning) return;
+  Future<bool> startScan() async {
+    if (_isScanning) return false;
     
     _isScanning = true;
-    _logController.add('开始扫描BLE设备...');
+    _emitLog('开始扫描BLE设备...');
     
     try {
       // 检查蓝牙是否可用
       if (await FlutterBluePlus.adapterState.first != BluetoothAdapterState.on) {
-        _logController.add('蓝牙未开启，请先开启蓝牙');
+        _emitLog('蓝牙未开启，请先开启蓝牙', isError: true);
         _isScanning = false;
-        return;
+        return false;
       }
       
-      // 开始扫描
-      await FlutterBluePlus.startScan(timeout: Duration(seconds: 10));
-      
+      await _scanSubscription?.cancel();
+      _scanTimeoutTimer?.cancel();
+
       // 监听扫描结果
-      FlutterBluePlus.scanResults.listen((results) {
+      _scanSubscription = FlutterBluePlus.scanResults.listen((results) {
         for (final result in results) {
           if (result.device.platformName.contains(targetDeviceName) ||
               result.device.advName.contains(targetDeviceName)) {
-            _logController.add('发现设备: ${result.device.platformName} (${result.device.remoteId})');
+            _emitLog('发现设备: ${result.device.platformName} (${result.device.remoteId})');
+            _stopScanInternal();
             connectToDevice(result.device);
-            FlutterBluePlus.stopScan();
             break;
           }
         }
       });
-      
+
+      // 开始扫描
+      await FlutterBluePlus.startScan(timeout: const Duration(seconds: 10));
+
       // 扫描超时
-      await Future.delayed(Duration(seconds: 10));
-      if (_isScanning && !_isConnected) {
-        _logController.add('扫描超时，未找到设备');
-        FlutterBluePlus.stopScan();
-      }
+      _scanTimeoutTimer = Timer(const Duration(seconds: 10), () {
+        if (_isScanning && !_isConnected) {
+          _emitLog('扫描超时，未找到 $targetDeviceName 设备', isError: true);
+          _stopScanInternal();
+        }
+      });
+
+      return true;
     } catch (e) {
-      _logController.add('扫描错误: $e');
+      _emitLog('扫描错误: $e', isError: true);
+      _stopScanInternal();
+      return false;
     }
-    
+  }
+
+  void _stopScanInternal() {
+    _scanTimeoutTimer?.cancel();
+    _scanTimeoutTimer = null;
+    FlutterBluePlus.stopScan();
     _isScanning = false;
   }
   
   /// 连接到设备
   Future<void> connectToDevice(BluetoothDevice device) async {
-    _logController.add('正在连接到 ${device.platformName}...');
+    _emitLog('正在连接到 ${device.platformName}...');
     
     try {
-      await device.connect(timeout: Duration(seconds: 10));
+      await device.connect(timeout: const Duration(seconds: 10));
       _device = device;
       _isConnected = true;
+      _stopScanInternal();
       
       _connectionStateController.add(BleDeviceState(
         name: device.platformName,
@@ -94,7 +128,7 @@ class BleService {
         lastUpdate: DateTime.now(),
       ));
       
-      _logController.add('已连接到 ${device.platformName}');
+      _emitLog('已连接到 ${device.platformName}');
       
       // 监听连接状态
       device.connectionState.listen((state) {
@@ -105,14 +139,14 @@ class BleService {
             deviceId: device.remoteId.str,
             isConnected: false,
           ));
-          _logController.add('设备断开连接');
+          _emitLog('设备断开连接', isError: true);
         }
       });
       
       // 发现服务
       await discoverServices();
     } catch (e) {
-      _logController.add('连接失败: $e');
+      _emitLog('连接失败: $e', isError: true);
       _isConnected = false;
     }
   }
@@ -256,16 +290,21 @@ class BleService {
   
   /// 释放资源
   void dispose() {
+    _scanSubscription?.cancel();
+    _scanTimeoutTimer?.cancel();
     _imuDataStreamController.close();
     _connectionStateController.close();
     _logController.close();
+    _statusController.close();
     disconnect();
   }
 }
 
 /// BLE服务Provider
 final bleServiceProvider = Provider<BleService>((ref) {
-  return BleService();
+  final service = BleService();
+  ref.onDispose(service.dispose);
+  return service;
 });
 
 /// BLE连接状态Provider
@@ -284,4 +323,10 @@ final imuDataStreamProvider = StreamProvider<ImuData>((ref) {
 final bleLogProvider = StreamProvider<String>((ref) {
   final bleService = ref.watch(bleServiceProvider);
   return bleService.logStream;
+});
+
+/// BLE 状态事件 Provider（含错误标记，供 SnackBar）
+final bleStatusProvider = StreamProvider<BleStatusEvent>((ref) {
+  final bleService = ref.watch(bleServiceProvider);
+  return bleService.statusStream;
 });

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../constants/app_constants.dart';
 
 /// Renders a human pose skeleton overlay on a camera preview.
 ///
@@ -57,14 +58,14 @@ class PoseOverlayPainter extends CustomPainter {
 
   // ---- colour helpers ----
 
-  /// Maps the 'z' value (treated as confidence 0.0–1.0) to a colour:
-  ///   z >= 0.7  → green   (high confidence)
-  ///   z >= 0.3  → orange  (medium)
-  ///   z <  0.3  → red     (low)
+  /// Maps the 'z' value (treated as confidence 0.0–1.0) to forge palette:
+  ///   z >= 0.7  → copper   (high confidence)
+  ///   z >= 0.3  → forgeGlow (medium)
+  ///   z <  0.3  → ember    (low)
   static Color _confidenceColor(double z) {
-    if (z >= 0.7) return Colors.green;
-    if (z >= 0.3) return Colors.orange;
-    return Colors.red;
+    if (z >= 0.7) return AppColors.copper;
+    if (z >= 0.3) return AppColors.forgeGlow;
+    return AppColors.ember;
   }
 
   /// Returns the average colour between two landmarks so a bone is drawn
