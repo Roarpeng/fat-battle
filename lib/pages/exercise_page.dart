@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:camera/camera.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -13,9 +14,12 @@ import '../services/motion_recognition.dart';
 import '../services/pose_detection_service.dart';
 import '../services/tflite_motion_service.dart';
 import '../services/exercise_game_logic.dart';
+import '../services/exercise_prescription.dart';
 import '../widgets/exercise/pose_overlay.dart';
+import '../widgets/exercise/pose_coach_guide.dart';
 import '../widgets/home/forge_background.dart';
 import '../widgets/home/mini_monster_header.dart';
+import 'pose_coach_page.dart';
 
 /// 锻炼页面
 class ExercisePage extends ConsumerStatefulWidget {
@@ -34,6 +38,8 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
   String _exerciseMode = 'manual'; // 'manual' | 'camera' | 'imu'
   String _cameraEngine = 'mlkit'; // 'mlkit' | 'tflite'
   bool _cameraBleFusion = false;
+  WorkoutFocus _workoutFocus = WorkoutFocus.mixed;
+  WorkoutPlan? _recommendedPlan;
   
   final MotionRecognitionService _motionService = MotionRecognitionService();
   final FusionRecognitionService _fusionService = FusionRecognitionService();
@@ -57,6 +63,20 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
   DateTime? _cameraStartTime;
   Map<String, Map<String, double>>? _currentLandmarks;
   bool _cameraSettling = false;
+
+  /// 教练页实时数据桥
+  final ValueNotifier<Map<String, Map<String, double>>?> _landmarksN =
+      ValueNotifier(null);
+  final ValueNotifier<String> _feedbackN = ValueNotifier('准备开始');
+  final ValueNotifier<int> _repCountN = ValueNotifier(0);
+  final ValueNotifier<String> _countUnitN = ValueNotifier('次');
+  final ValueNotifier<int> _comboN = ValueNotifier(0);
+  final ValueNotifier<double> _staminaN =
+      ValueNotifier(ExerciseGameLogic.maxStamina);
+  final ValueNotifier<bool> _pausedN = ValueNotifier(false);
+  final ValueNotifier<bool> _preparingN = ValueNotifier(false);
+  final ValueNotifier<double> _prepareProgressN = ValueNotifier(0);
+  bool _coachPageOpen = false;
 
   TextStyle get _displayStyle => GoogleFonts.fraunces(
         fontWeight: FontWeight.w600,
@@ -89,6 +109,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
       if (_cameraBleFusion && mounted) {
         setState(() {
           _cameraRepCount = count;
+          _repCountN.value = count;
         });
       }
     };
@@ -96,27 +117,34 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
       if (_cameraBleFusion && mounted) {
         setState(() {
           _cameraFeedback = feedback;
+          _feedbackN.value = feedback;
         });
       }
     };
 
     // 游戏逻辑回调
     _gameLogic.onComboChanged = (combo, multiplier) {
+      _comboN.value = combo;
       if (mounted) setState(() {});
     };
     _gameLogic.onStaminaChanged = (stamina, depleted) {
+      _staminaN.value = stamina;
       if (mounted) setState(() {});
     };
     _gameLogic.onPauseChanged = (paused) {
+      _pausedN.value = paused;
       if (mounted) setState(() {});
     };
     _gameLogic.onPrepareProgress = (progress) {
+      _prepareProgressN.value = progress;
+      _preparingN.value = _gameLogic.isPreparing;
       if (mounted) setState(() {});
     };
     _gameLogic.onQualityScored = (quality, grade) {
       if (mounted) {
         setState(() {
           _cameraFeedback = '⭐ $grade (${quality}分) $_cameraFeedback';
+          _feedbackN.value = _cameraFeedback;
         });
       }
     };
@@ -134,6 +162,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
       } else {
         setState(() {
           _cameraRepCount = count;
+          _repCountN.value = count;
         });
       }
       _gameLogic.handleRepSuccess();
@@ -142,6 +171,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
       if (mounted && _isActiveCamera(detector)) {
         setState(() {
           _cameraFeedback = feedback;
+          _feedbackN.value = feedback;
         });
       }
     };
@@ -157,7 +187,10 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
       detector.onPoseUpdate = (landmarks) {
         if (!_isActiveCamera(detector) || !mounted) return;
         if (landmarks == null) {
-          setState(() => _currentLandmarks = null);
+          setState(() {
+            _currentLandmarks = null;
+            _landmarksN.value = null;
+          });
           return;
         }
         final converted = <String, Map<String, double>>{};
@@ -166,6 +199,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
         });
         setState(() {
           _currentLandmarks = converted;
+          _landmarksN.value = converted;
         });
       };
     } else if (detector is TfliteMotionService) {
@@ -173,6 +207,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
         if (!_isActiveCamera(detector) || !mounted) return;
         setState(() {
           _currentLandmarks = landmarks;
+          _landmarksN.value = landmarks;
         });
       };
     }
@@ -192,9 +227,38 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
   @override
   void dispose() {
     _logScrollController.dispose();
+    _landmarksN.dispose();
+    _feedbackN.dispose();
+    _repCountN.dispose();
+    _countUnitN.dispose();
+    _comboN.dispose();
+    _staminaN.dispose();
+    _pausedN.dispose();
+    _preparingN.dispose();
+    _prepareProgressN.dispose();
     _cameraDetector.dispose();
     _tfliteDetector.dispose();
+    _restoreAppOrientation();
     super.dispose();
+  }
+
+  Future<void> _enableSensorOrientations() async {
+    // 跟随手机姿态：允许横/竖自由旋转
+    await SystemChrome.setPreferredOrientations(const [
+      DeviceOrientation.portraitUp,
+      DeviceOrientation.portraitDown,
+      DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
+    ]);
+    await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+  }
+
+  Future<void> _restoreAppOrientation() async {
+    await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    // 退出教练后回到竖屏主导（列表页更合适）
+    await SystemChrome.setPreferredOrientations(const [
+      DeviceOrientation.portraitUp,
+    ]);
   }
   
   @override
@@ -312,54 +376,235 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
             // 运动选择
             _sectionCard(
               icon: Icons.fitness_center_outlined,
-              title: '选择运动',
-              child: GridView.count(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      crossAxisCount: 2,
-                      mainAxisSpacing: 10,
-                      crossAxisSpacing: 10,
-                      childAspectRatio: 1.5,
-                      children: Exercises.all.asMap().entries.map((entry) {
-                        final index = entry.key;
-                        final exercise = entry.value;
-                        final isSelected = _selectedExercise == index;
-                        
-                        return GestureDetector(
-                          onTap: () => setState(() => _selectedExercise = index),
-                          child: Container(
-                            padding: const EdgeInsets.all(14),
-                            decoration: BoxDecoration(
-                              color: isSelected
-                                  ? AppColors.copper.withValues(alpha: 0.1)
-                                  : AppColors.bg2,
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                color: isSelected ? AppColors.copper : AppColors.border,
-                                width: isSelected ? 2 : 1,
-                              ),
-                            ),
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Text(exercise.emoji, style: const TextStyle(fontSize: 32)),
-                                Text(
-                                  exercise.name,
-                                  style: _bodyStyle.copyWith(fontSize: 14),
-                                ),
-                                Text(
-                                  '${exercise.calPerMin}千卡/分钟',
-                                  style: _mutedStyle.copyWith(
-                                    color: AppColors.copper,
-                                    fontSize: 11,
-                                  ),
-                                ),
-                              ],
+              title: _exerciseMode == 'camera' ? '摄像头可识别动作' : '选择运动',
+              trailing: TextButton.icon(
+                onPressed: () => _applyBodyPrescription(gameState.user),
+                icon: const Icon(Icons.auto_awesome, size: 16),
+                label: Text(
+                  '生成组合',
+                  style: GoogleFonts.figtree(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                style: TextButton.styleFrom(
+                  foregroundColor: AppColors.copper,
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('锻炼偏好', style: _mutedStyle.copyWith(fontSize: 12)),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: WorkoutFocus.values.map((f) {
+                      final selected = _workoutFocus == f;
+                      return GestureDetector(
+                        onTap: () => setState(() => _workoutFocus = f),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 7,
+                          ),
+                          decoration: BoxDecoration(
+                            color: selected
+                                ? AppColors.copper.withValues(alpha: 0.14)
+                                : AppColors.bg2,
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: selected
+                                  ? AppColors.copper
+                                  : AppColors.border,
                             ),
                           ),
-                        );
-                      }).toList(),
+                          child: Text(
+                            f.label,
+                            style: GoogleFonts.figtree(
+                              fontSize: 12,
+                              fontWeight:
+                                  selected ? FontWeight.w700 : FontWeight.w500,
+                              color: selected
+                                  ? AppColors.copper
+                                  : AppColors.text2,
+                            ),
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    _workoutFocus.hint,
+                    style: _mutedStyle.copyWith(fontSize: 11),
+                  ),
+                  if (_exerciseMode == 'camera') ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      '摄像头模式只显示可姿态识别的动作；跑步/骑行等请用「手动」或「IMU」记录。',
+                      style: _mutedStyle.copyWith(
+                        fontSize: 11,
+                        color: AppColors.ember.withValues(alpha: 0.9),
+                      ),
                     ),
+                  ],
+                  if (_recommendedPlan != null) ...[
+                    const SizedBox(height: 12),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: AppColors.copper.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: AppColors.copper.withValues(alpha: 0.35),
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _recommendedPlan!.title,
+                            style: _bodyStyle.copyWith(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 13,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '${_recommendedPlan!.reason} · 约 ${_recommendedPlan!.estimatedMinutes} 分钟',
+                            style: _mutedStyle.copyWith(fontSize: 11),
+                          ),
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 6,
+                            runSpacing: 6,
+                            children: _recommendedPlan!.exerciseIndexes
+                                .asMap()
+                                .entries
+                                .map((e) {
+                              final idx = e.value;
+                              final ex = Exercises.all[idx];
+                              final selected = _selectedExercise == idx;
+                              return GestureDetector(
+                                onTap: () =>
+                                    setState(() => _selectedExercise = idx),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 6,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: selected
+                                        ? AppColors.ember.withValues(alpha: 0.15)
+                                        : AppColors.bg,
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(
+                                      color: selected
+                                          ? AppColors.ember
+                                          : AppColors.border,
+                                    ),
+                                  ),
+                                  child: Text(
+                                    '${e.key + 1}. ${ex.emoji}${ex.name}',
+                                    style: GoogleFonts.figtree(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      color: selected
+                                          ? AppColors.ember
+                                          : AppColors.text,
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 12),
+                  GridView.count(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    crossAxisCount: 2,
+                    mainAxisSpacing: 10,
+                    crossAxisSpacing: 10,
+                    childAspectRatio: 1.28,
+                    children: _visibleExercises().map((entry) {
+                      final index = entry.key;
+                      final exercise = entry.value;
+                      final isSelected = _selectedExercise == index;
+                      final inPlan = _recommendedPlan?.exerciseIndexes
+                              .contains(index) ??
+                          false;
+
+                      return GestureDetector(
+                        onTap: () =>
+                            setState(() => _selectedExercise = index),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 8,
+                          ),
+                          decoration: BoxDecoration(
+                            color: isSelected
+                                ? AppColors.copper.withValues(alpha: 0.1)
+                                : AppColors.bg2,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: isSelected
+                                  ? AppColors.copper
+                                  : inPlan
+                                      ? AppColors.forgeGlow
+                                      : AppColors.border,
+                              width: isSelected ? 2 : 1,
+                            ),
+                          ),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                exercise.emoji,
+                                style: const TextStyle(
+                                  fontSize: 28,
+                                  height: 1.0,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                exercise.name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: _bodyStyle.copyWith(
+                                  fontSize: 13,
+                                  height: 1.15,
+                                ),
+                              ),
+                              Text(
+                                exercise.supportCamera
+                                    ? '${exercise.calPerMin}千卡/分 · 可识别'
+                                    : '${exercise.calPerMin}千卡/分',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: _mutedStyle.copyWith(
+                                  color: AppColors.copper,
+                                  fontSize: 10,
+                                  height: 1.15,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ],
+              ),
             ),
             const SizedBox(height: 16),
             
@@ -1037,10 +1282,10 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
             ],
             if (!_cameraReady && !_cameraDetecting)
               OutlinedButton.icon(
-                onPressed: _initCamera,
-                icon: const Icon(Icons.videocam_outlined, size: 18),
+                onPressed: _cameraSettling ? null : _initCamera,
+                icon: const Icon(Icons.screen_rotation_alt_outlined, size: 18),
                 label: Text(
-                  '启动摄像头',
+                  _cameraSettling ? '正在打开…' : '打开摄像头教练',
                   style: GoogleFonts.figtree(fontWeight: FontWeight.w600),
                 ),
                 style: OutlinedButton.styleFrom(
@@ -1102,7 +1347,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
                     minimumSize: const Size(double.infinity, 44),
                   ),
                   child: Text(
-                    '▶️ 开始检测',
+                    '开始摄像头教练',
                     style: GoogleFonts.figtree(fontWeight: FontWeight.w700),
                   ),
                 ),
@@ -1116,7 +1361,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
                   minimumSize: const Size(double.infinity, 44),
                 ),
                 child: Text(
-                  '⏹️ 结束检测',
+                  '结束教练（结算）',
                   style: GoogleFonts.figtree(fontWeight: FontWeight.w600),
                 ),
               ),
@@ -1260,7 +1505,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
     );
   }
   
-  /// 启动摄像头
+  /// 启动摄像头；就绪后若已选动作则直接进教练页（方向跟随手机姿态）
   Future<void> _initCamera() async {
     final status = await Permission.camera.request();
     if (!status.isGranted) {
@@ -1276,6 +1521,11 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
       return;
     }
 
+    if (_selectedExercise == null) {
+      _showToast('请先选择运动类型，再打开摄像头');
+      return;
+    }
+
     setState(() => _cameraSettling = true);
     try {
       final ready = await _initializeActiveCameraEngine();
@@ -1283,19 +1533,23 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
 
       setState(() {
         _cameraReady = true;
+        _cameraSettling = false;
       });
-      _showToast('摄像头已就绪（$_cameraEngineLabel）');
+      // 打开摄像头即进入教练页（横/竖屏跟随手机姿态）
+      await _startCameraDetection();
     } catch (e) {
       if (_cameraEngine == 'tflite') {
         final fallback = await _fallbackToMlKit(reason: '$e');
         if (fallback) {
+          setState(() => _cameraSettling = false);
           _showToast('TFLite 初始化失败，已回退 ML Kit');
+          await _startCameraDetection();
           return;
         }
       }
       _showToast('摄像头初始化失败: $e');
     } finally {
-      if (mounted) {
+      if (mounted && _cameraSettling) {
         setState(() => _cameraSettling = false);
       }
     }
@@ -1374,32 +1628,88 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
     );
   }
   
-  /// 开始摄像头检测
-  void _startCameraDetection() {
+  /// 开始摄像头检测 → 允许横竖自由旋转并进入全屏教练页
+  Future<void> _startCameraDetection() async {
     if (_selectedExercise == null) {
       _showToast('请先选择运动类型');
       return;
     }
-    
+    if (!_cameraReady || _activeCameraDetector.controller == null) {
+      // 未就绪则走完整打开流程
+      await _initCamera();
+      return;
+    }
+    if (_coachPageOpen) return;
+
     final exercise = Exercises.all[_selectedExercise!];
-    
+    if (!exercise.supportCamera) {
+      _showToast('${exercise.name} 暂不支持摄像头识别，请换动作或用手动记录');
+      return;
+    }
+
+    // 跟随手机姿态，不强制横/竖
+    await _enableSensorOrientations();
+    if (!mounted) return;
+
+    final preferLandscape = PoseCoachGuideMath.prefersLandscape(exercise.type);
     setState(() {
       _cameraDetecting = true;
       _cameraRepCount = 0;
-      _cameraFeedback = '开始运动吧！';
+      _cameraFeedback = preferLandscape
+          ? '可横持手机 · ${_getActionTip(exercise.type)}'
+          : '可竖持手机 · ${_getActionTip(exercise.type)}';
       _cameraStartTime = DateTime.now();
+      _repCountN.value = 0;
+      _feedbackN.value = _cameraFeedback;
+      _countUnitN.value = _getCountUnit(exercise.type);
+      _comboN.value = 0;
+      _staminaN.value = ExerciseGameLogic.maxStamina;
+      _pausedN.value = false;
+      _preparingN.value = true;
+      _prepareProgressN.value = 0;
+      _landmarksN.value = _currentLandmarks;
     });
-    
+
     _gameLogic.reset();
     _gameLogic.startPrepare();
     if (_cameraBleFusion) {
       _fusionService.startDetection(exercise.type);
     }
     _activeCameraDetector.startDetection(exercise.type);
-    _showToast('开始检测 ${exercise.name}（$_cameraEngineLabel）');
     _startCameraTimer();
+
+    _coachPageOpen = true;
+    await Navigator.of(context).push(
+      PageRouteBuilder<void>(
+        opaque: true,
+        fullscreenDialog: true,
+        pageBuilder: (_, __, ___) => PoseCoachPage(
+          exerciseName: exercise.name,
+          exerciseEmoji: exercise.emoji,
+          exerciseType: exercise.type,
+          tip: _getActionTip(exercise.type),
+          controller: _activeCameraDetector.controller!,
+          landmarks: _landmarksN,
+          feedback: _feedbackN,
+          repCount: _repCountN,
+          countUnit: _countUnitN,
+          combo: _comboN,
+          stamina: _staminaN,
+          paused: _pausedN,
+          preparing: _preparingN,
+          prepareProgress: _prepareProgressN,
+          onStop: _stopCameraDetection,
+        ),
+        transitionsBuilder: (_, animation, __, child) {
+          return FadeTransition(opacity: animation, child: child);
+        },
+      ),
+    );
+    _coachPageOpen = false;
+    await _restoreAppOrientation();
+    if (mounted) setState(() {});
   }
-  
+
   /// 停止摄像头检测
   Future<void> _stopCameraDetection() async {
     if (!_cameraDetecting && _cameraStartTime == null) return;
@@ -1407,6 +1717,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
     setState(() {
       _cameraDetecting = false;
       _cameraSettling = true;
+      _preparingN.value = false;
     });
 
     await _activeCameraDetector.stopDetection();
@@ -1421,6 +1732,42 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
     if (mounted) {
       setState(() => _cameraSettling = false);
     }
+  }
+
+  void _applyBodyPrescription(User user) {
+    final plan = ExercisePrescription.recommendCombo(
+      user,
+      focus: _workoutFocus,
+    );
+    if (plan.exerciseIndexes.isEmpty) {
+      _showToast('暂无可用的摄像头可识别动作');
+      return;
+    }
+    setState(() {
+      _recommendedPlan = plan;
+      _selectedExercise = plan.exerciseIndexes.first;
+      _exerciseMode = 'camera';
+      // 组合默认时长取估算分钟（夹到可选档）
+      final opts = const [5, 10, 15, 20, 30];
+      _selectedDuration = opts.reduce(
+        (a, b) =>
+            (a - plan.estimatedMinutes).abs() <=
+                    (b - plan.estimatedMinutes).abs()
+                ? a
+                : b,
+      );
+    });
+    final names = plan.exercises.map((e) => e.name).join(' → ');
+    _showToast('${plan.title}：$names');
+  }
+
+  /// 摄像头模式只展示可识别动作；手动/IMU 展示全部（跑步等仅此可用）。
+  List<MapEntry<int, ExerciseType>> _visibleExercises() {
+    final all = Exercises.all.asMap().entries.toList();
+    if (_exerciseMode == 'camera') {
+      return all.where((e) => e.value.supportCamera).toList();
+    }
+    return all;
   }
   
   /// 完成摄像头检测并保存记录
@@ -1679,16 +2026,26 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
   String _getActionTip(String exerciseType) {
     switch (exerciseType) {
       case 'pushup':
-        return '💡 侧身入镜，保持手肘与肩膀成三角形';
+        return '侧身入框，身体与剪影重合，手肘约 90°';
       case 'squat':
-        return '💡 正面入镜，下蹲时膝盖不超过脚尖';
+        return '正面入框，跟随剪影半蹲，膝盖勿过度前顶';
       case 'jumping_jack':
-        return '💡 正面入镜，手臂上举过头，双脚开合';
+        return '正面入框，手臂上举过头，双脚开合';
+      case 'plank':
+        return '侧身入框，身体成一条直线';
+      case 'lunge':
+        return '侧面/正面入框，前膝约 90°';
+      case 'highknee':
+        return '正面入框，膝盖抬至髋高';
+      case 'burpee':
+        return '全身入框，跟随剪影节奏完成动作';
+      case 'mountainclimber':
+        return '侧身入框，核心收紧交替收腿';
       case 'hiit':
       case 'jumprope':
-        return '💡 正面入镜，快速跳跃，手脚配合';
+        return '正面入框，保持全身可见';
       default:
-        return '💡 保持全身入镜，距离手机 2-3 米';
+        return '站进白色画框，与剪影对齐后开始动作';
     }
   }
 
@@ -1780,7 +2137,16 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
         ],
         selected: {_exerciseMode},
         onSelectionChanged: (selected) {
-          setState(() => _exerciseMode = selected.first);
+          final mode = selected.first;
+          setState(() {
+            _exerciseMode = mode;
+            // 切到摄像头时，若当前选了不可识别动作则清空
+            if (mode == 'camera' &&
+                _selectedExercise != null &&
+                !Exercises.all[_selectedExercise!].supportCamera) {
+              _selectedExercise = null;
+            }
+          });
         },
         showSelectedIcon: false,
         style: ButtonStyle(
