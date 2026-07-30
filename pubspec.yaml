@@ -94,3 +94,4 @@ flutter:
     - assets/images/
     - assets/data/
     - assets/models/
+    - assets/branding/app_icon_512.png

@@ -49,12 +49,29 @@ jobs:
         # 当前 release 使用 debug 签名（见 android/app/build.gradle.kts），CI 无需 keystore
         run: flutter build apk --release
 
+      - name: Rename APK for release
+        if: github.event_name != 'pull_request'
+        id: apk
+        run: |
+          set -euo pipefail
+          VERSION="$(sed -n 's/^version: //p' pubspec.yaml | cut -d'+' -f1)"
+          BUILD="$(sed -n 's/^version: //p' pubspec.yaml | cut -d'+' -f2)"
+          APK_SRC="build/app/outputs/flutter-apk/app-release.apk"
+          # 发布名对齐品牌「塑身工坊」，便于用户识别
+          APK_NAME="塑身工坊-${VERSION}.apk"
+          mkdir -p dist-apk
+          cp "$APK_SRC" "dist-apk/${APK_NAME}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "build=${BUILD}" >> "$GITHUB_OUTPUT"
+          echo "apk_name=${APK_NAME}" >> "$GITHUB_OUTPUT"
+          echo "apk_path=dist-apk/${APK_NAME}" >> "$GITHUB_OUTPUT"
+
       - name: Upload APK artifact
         if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
-          name: fat-battle-apk-${{ github.sha }}
-          path: build/app/outputs/flutter-apk/app-release.apk
+          name: 塑身工坊-apk-${{ github.sha }}
+          path: ${{ steps.apk.outputs.apk_path }}
           if-no-files-found: error
           retention-days: 14
 
@@ -65,14 +82,13 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          VERSION="$(sed -n 's/^version: //p' pubspec.yaml | cut -d'+' -f1)"
-          BUILD="$(sed -n 's/^version: //p' pubspec.yaml | cut -d'+' -f2)"
-          APK_SRC="build/app/outputs/flutter-apk/app-release.apk"
-          APK_NAME="fat-battle-${VERSION}.apk"
-          cp "$APK_SRC" "$APK_NAME"
+          VERSION="${{ steps.apk.outputs.version }}"
+          BUILD="${{ steps.apk.outputs.build }}"
+          APK_NAME="${{ steps.apk.outputs.apk_name }}"
+          APK_PATH="${{ steps.apk.outputs.apk_path }}"
 
           NOTES="$(cat <<EOF
-          ## 减肥大作战 Android APK
+          ## 塑身工坊 Android APK
 
           - **版本**: ${VERSION}+${BUILD}
           - **Commit**: \`${GITHUB_SHA}\`
@@ -86,7 +102,7 @@ jobs:
           if gh release view latest >/dev/null 2>&1; then
             gh release delete latest --yes --cleanup-tag
           fi
-          gh release create latest "$APK_NAME" \
-            --title "Latest APK (v${VERSION})" \
+          gh release create latest "$APK_PATH" \
+            --title "塑身工坊 v${VERSION}" \
             --notes "$NOTES" \
             --latest

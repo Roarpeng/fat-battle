@@ -24,14 +24,6 @@ class WelcomePage extends StatelessWidget {
                   height: 108,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        AppColors.bg3,
-                        AppColors.ember.withValues(alpha: 0.35),
-                      ],
-                    ),
                     border: Border.all(
                       color: AppColors.copper.withValues(alpha: 0.55),
                       width: 1.5,
@@ -44,8 +36,11 @@ class WelcomePage extends StatelessWidget {
                       ),
                     ],
                   ),
-                  alignment: Alignment.center,
-                  child: const Text('🔨', style: TextStyle(fontSize: 48)),
+                  clipBehavior: Clip.antiAlias,
+                  child: Image.asset(
+                    'assets/branding/app_icon_512.png',
+                    fit: BoxFit.cover,
+                  ),
                 ),
                 const SizedBox(height: 28),
                 Text(
