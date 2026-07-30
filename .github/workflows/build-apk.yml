@@ -11,6 +11,9 @@ concurrency:
   group: build-apk-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: write
+
 jobs:
   build:
     name: Flutter APK
@@ -46,7 +49,7 @@ jobs:
         # 当前 release 使用 debug 签名（见 android/app/build.gradle.kts），CI 无需 keystore
         run: flutter build apk --release
 
-      - name: Upload APK
+      - name: Upload APK artifact
         if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
@@ -54,3 +57,36 @@ jobs:
           path: build/app/outputs/flutter-apk/app-release.apk
           if-no-files-found: error
           retention-days: 14
+
+      - name: Publish APK to GitHub Releases
+        # Actions Artifact ≠ GitHub Releases；master 构建成功后同步到 Releases 页
+        if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/master' || github.event_name == 'workflow_dispatch')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          VERSION="$(sed -n 's/^version: //p' pubspec.yaml | cut -d'+' -f1)"
+          BUILD="$(sed -n 's/^version: //p' pubspec.yaml | cut -d'+' -f2)"
+          APK_SRC="build/app/outputs/flutter-apk/app-release.apk"
+          APK_NAME="fat-battle-${VERSION}.apk"
+          cp "$APK_SRC" "$APK_NAME"
+
+          NOTES="$(cat <<EOF
+          ## 减肥大作战 Android APK
+
+          - **版本**: ${VERSION}+${BUILD}
+          - **Commit**: \`${GITHUB_SHA}\`
+          - **工作流**: [Run #${GITHUB_RUN_NUMBER}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})
+
+          下载下方 \`${APK_NAME}\` 安装即可（当前为 debug 签名）。
+          EOF
+          )"
+
+          # 滚动更新 latest，保证 Releases 页始终有可下载的最新 APK
+          if gh release view latest >/dev/null 2>&1; then
+            gh release delete latest --yes --cleanup-tag
+          fi
+          gh release create latest "$APK_NAME" \
+            --title "Latest APK (v${VERSION})" \
+            --notes "$NOTES" \
+            --latest
