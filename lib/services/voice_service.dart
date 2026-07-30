@@ -13,6 +13,8 @@ class VoiceService {
   bool _enabled = true;
   bool _initialized = false;
 
+  VoiceStyle get style => _style;
+
   Map<VoiceStyle, double> get _pitchMap => {
         VoiceStyle.pet: 1.4,
         VoiceStyle.warrior: 0.8,

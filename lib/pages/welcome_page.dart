@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../constants/app_constants.dart';
 import '../widgets/home/forge_background.dart';
-import 'setup_page.dart';
+import 'auth_page.dart';
 
 /// 欢迎页 — 锻造工坊开场
 class WelcomePage extends StatelessWidget {
@@ -82,14 +82,14 @@ class WelcomePage extends StatelessWidget {
                   child: ElevatedButton(
                     onPressed: () {
                       Navigator.of(context).pushReplacement(
-                        MaterialPageRoute(builder: (_) => const SetupPage()),
+                        MaterialPageRoute(builder: (_) => const AuthPage()),
                       );
                     },
                     style: ElevatedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 16),
                     ),
                     child: Text(
-                      '点燃炉火',
+                      '注册 / 登录进入工坊',
                       style: GoogleFonts.figtree(
                         fontSize: 17,
                         fontWeight: FontWeight.w800,

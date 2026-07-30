@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -64,6 +65,16 @@ class _PoseCoachPageState extends State<PoseCoachPage> {
     ]);
   }
 
+  @override
+  void dispose() {
+    // 退出训练时重置为系统默认布局与竖屏锁定
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    SystemChrome.setPreferredOrientations(const [
+      DeviceOrientation.portraitUp,
+    ]);
+    super.dispose();
+  }
+
   Future<void> _handleStop() async {
     if (_stopping) return;
     setState(() => _stopping = true);
@@ -88,12 +99,9 @@ class _PoseCoachPageState extends State<PoseCoachPage> {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              // 摄像头（镜像，贴近自拍习惯）
+              // 摄像头自适应视窗（智能匹配横竖屏比例放缩与镜像）
               Positioned.fill(
-                child: Transform.scale(
-                  scaleX: -1,
-                  child: CameraPreview(widget.controller),
-                ),
+                child: _buildCameraPreview(context),
               ),
               // 引导框 + 剪影（随方向自适应）
               Positioned.fill(
@@ -202,6 +210,49 @@ class _PoseCoachPageState extends State<PoseCoachPage> {
           ),
         ),
       ),
+    );
+  }
+
+  /// 构建横竖屏自适应的摄像头预览视图
+  Widget _buildCameraPreview(BuildContext context) {
+    if (!widget.controller.value.isInitialized) {
+      return const SizedBox.shrink();
+    }
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final previewSize = widget.controller.value.previewSize;
+        if (previewSize == null) {
+          return Transform.scale(
+            scaleX: -1,
+            child: CameraPreview(widget.controller),
+          );
+        }
+
+        // 计算当前视窗与传感器预览画面的 Aspect Ratio 比例
+        final screenRatio = constraints.maxWidth / constraints.maxHeight;
+        final previewRatio = previewSize.height / previewSize.width;
+
+        var scale = screenRatio / previewRatio;
+        if (scale < 1.0) {
+          scale = 1.0 / scale;
+        }
+
+        return ClipRect(
+          child: OverflowBox(
+            alignment: Alignment.center,
+            child: Transform.scale(
+              scale: scale,
+              child: Transform(
+                alignment: Alignment.center,
+                // 前置摄像头镜像处理
+                transform: Matrix4.rotationY(math.pi),
+                child: CameraPreview(widget.controller),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }

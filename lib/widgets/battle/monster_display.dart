@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../../constants/app_constants.dart';
 
 /// 怪物显示组件
@@ -277,25 +278,84 @@ class _MonsterDisplayState extends State<MonsterDisplay>
           );
         }
 
-        // 受伤时叠加红色覆盖层（更直观的受伤反馈）
-        final hitRedOverlay = (widget.isHit && _hitController.value < 0.6)
-            ? Colors.red.withValues(alpha: 
-                (1 - _hitController.value / 0.6).clamp(0.0, 1.0) * 0.4)
-            : Colors.transparent;
+        Widget monsterCard = Container(
+          width: widget.emojiSize * 1.4,
+          height: widget.emojiSize * 1.4,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: RadialGradient(
+              colors: widget.isEnraged
+                  ? [AppColors.red.withValues(alpha: 0.6), AppColors.bg]
+                  : [AppColors.copper.withValues(alpha: 0.25), AppColors.card],
+            ),
+            border: Border.all(
+              color: widget.isEnraged ? AppColors.red : AppColors.copper,
+              width: 2.5,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: (widget.isEnraged ? AppColors.red : AppColors.copper)
+                    .withValues(alpha: 0.45),
+                blurRadius: 20,
+                spreadRadius: 3,
+              ),
+            ],
+          ),
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              // 魔王能量暗环
+              Container(
+                margin: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: AppColors.copper.withValues(alpha: 0.3),
+                    width: 1.0,
+                  ),
+                ),
+              ),
+              // 魔物主体表情与核心姿态
+              Text(
+                widget.emoji,
+                style: TextStyle(
+                  fontSize: widget.emojiSize * 0.65,
+                  height: 1.0,
+                  shadows: [
+                    Shadow(
+                      color: Colors.black.withValues(alpha: 0.8),
+                      blurRadius: 12,
+                    ),
+                  ],
+                ),
+              ),
+              // 底部卡路里魔物勋章
+              Positioned(
+                bottom: 4,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.75),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: AppColors.copper.withValues(alpha: 0.5)),
+                  ),
+                  child: Text(
+                    widget.isEnraged ? '🔥 狂暴脂肪霸主' : '😈 卡路里领主',
+                    style: GoogleFonts.figtree(
+                      color: widget.isEnraged ? AppColors.red : AppColors.gold,
+                      fontSize: 9,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
 
         Widget emojiWidget = ColorFiltered(
           colorFilter: colorFilter,
-          child: Text(
-            widget.emoji,
-            style: TextStyle(
-              fontSize: widget.emojiSize,
-              decoration: TextDecoration.none,
-              //  受伤时叠加红色滤�
-              color: hitRedOverlay == Colors.transparent
-                  ? null
-                  : Color.lerp(Colors.white, Colors.red, 0.3),
-            ),
-          ),
+          child: monsterCard,
         );
 
         return Opacity(

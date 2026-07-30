@@ -5,6 +5,7 @@ import 'providers/game_provider.dart';
 import 'pages/welcome_page.dart';
 import 'pages/home_page.dart';
 import 'pages/setup_page.dart';
+import 'pages/auth_page.dart';
 import 'pages/stats_page.dart';
 import 'theme/forge_theme.dart';
 
@@ -27,16 +28,20 @@ class BodyStudioApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final gameState = ref.watch(gameStateProvider);
+    final prefs = ref.watch(sharedPreferencesProvider);
+    final isLoggedIn = prefs?.getBool('is_logged_in') ?? false;
 
     return MaterialApp(
       title: '塑身工坊',
       debugShowCheckedModeBanner: false,
       theme: buildForgeTheme(),
-      home: gameState.hasGame
-          ? const MainPage()
-          : gameState.user.height > 0
-              ? const SetupPage()
-              : const WelcomePage(),
+      home: !isLoggedIn
+          ? const AuthPage()
+          : gameState.hasGame
+              ? const MainPage()
+              : gameState.user.height > 0
+                  ? const SetupPage()
+                  : const WelcomePage(),
     );
   }
 }

@@ -6,9 +6,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../constants/app_constants.dart';
 import '../providers/game_provider.dart';
 import '../services/voice_service.dart';
+import '../pages/auth_page.dart';
 import '../pages/welcome_page.dart';
 import '../pages/companion_page.dart';
 import '../pages/achievements_page.dart';
@@ -188,28 +190,60 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   children: [
                     Text('角色风格', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.text)),
                     const SizedBox(height: 12),
-                    Wrap(
-                      spacing: 10,
-                      runSpacing: 10,
+                    Row(
                       children: CharacterStyle.values.map((style) {
-                        return ChoiceChip(
-                          label: Text('${style.emoji} ${style.name}'),
-                          selected: false,
-                          onSelected: (_) {
-                            // 映射角色风格到语音风格
-                            final voiceStyleMap = {
-                              CharacterStyle.pet: VoiceStyle.pet,
-                              CharacterStyle.warrior: VoiceStyle.warrior,
-                              CharacterStyle.mage: VoiceStyle.mage,
-                              CharacterStyle.assassin: VoiceStyle.assassin,
-                            };
-                            VoiceService().setStyle(voiceStyleMap[style]!);
-                            _showToast('已切换为${style.name}风格');
-                          },
-                          selectedColor: AppColors.purple.withOpacity(0.3),
-                          backgroundColor: AppColors.card,
-                          labelStyle: TextStyle(color: AppColors.text),
-                          side: BorderSide(color: AppColors.border),
+                        final currentVoice = VoiceService().style;
+                        final voiceStyleMap = {
+                          CharacterStyle.pet: VoiceStyle.pet,
+                          CharacterStyle.warrior: VoiceStyle.warrior,
+                          CharacterStyle.mage: VoiceStyle.mage,
+                          CharacterStyle.assassin: VoiceStyle.assassin,
+                        };
+                        final isSelected = currentVoice == voiceStyleMap[style];
+
+                        return Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 3),
+                            child: InkWell(
+                              onTap: () {
+                                VoiceService().setStyle(voiceStyleMap[style]!);
+                                setState(() {});
+                                _showToast('已切换为${style.name}风格');
+                              },
+                              borderRadius: BorderRadius.circular(10),
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 200),
+                                padding: const EdgeInsets.symmetric(vertical: 10),
+                                decoration: BoxDecoration(
+                                  color: isSelected
+                                      ? AppColors.purple.withValues(alpha: 0.25)
+                                      : AppColors.card,
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(
+                                    color: isSelected
+                                        ? AppColors.purple
+                                        : AppColors.border,
+                                    width: isSelected ? 1.5 : 1.0,
+                                  ),
+                                ),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(style.emoji, style: const TextStyle(fontSize: 18)),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      style.name,
+                                      style: GoogleFonts.figtree(
+                                        fontSize: 12,
+                                        fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                                        color: isSelected ? AppColors.purple : AppColors.text,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
                         );
                       }).toList(),
                     ),
@@ -430,6 +464,30 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                       trailing: Icon(Icons.check_circle_outline, color: AppColors.green, size: 20),
                     ),
                     const Divider(color: AppColors.border),
+
+                    // 退出当前账号按钮
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        icon: const Icon(Icons.logout_rounded, size: 18),
+                        label: const Text('退出当前账号 / 切换身份'),
+                        onPressed: () async {
+                          final prefs = await SharedPreferences.getInstance();
+                          await prefs.setBool('is_logged_in', false);
+                          if (context.mounted) {
+                            Navigator.of(context).pushAndRemoveUntil(
+                              MaterialPageRoute(builder: (_) => const AuthPage()),
+                              (route) => false,
+                            );
+                          }
+                        },
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppColors.copper,
+                          side: BorderSide(color: AppColors.copper.withValues(alpha: 0.5)),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
 
                     // 账号注销 (刚性合规项)
                     SizedBox(
