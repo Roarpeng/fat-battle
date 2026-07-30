@@ -32,6 +32,9 @@ class MonsterDisplay extends StatefulWidget {
   /// emoji 基础字号
   final double emojiSize;
 
+  /// 暴食/卡路里超标膨胀系数 (0.0 ~ 1.0)
+  final double overeatFactor;
+
   /// 点击回调
   final VoidCallback? onTap;
 
@@ -44,6 +47,7 @@ class MonsterDisplay extends StatefulWidget {
     this.isDead = false,
     this.isPhaseChanging = false,
     this.emojiSize = 96,
+    this.overeatFactor = 0.0,
     this.onTap,
   });
 
@@ -246,9 +250,13 @@ class _MonsterDisplayState extends State<MonsterDisplay>
         // 阶段切换 fade
         final phaseOpacity = widget.isPhaseChanging ? _phaseFade.value : 1.0;
 
+        // 暴食卡路里物理膨胀
+        final overeatScale = 1.0 + (widget.overeatFactor.clamp(0.0, 1.0) * 0.25);
+
         final totalScale = breatheScale *
             hitScale *
             enrageScale *
+            overeatScale *
             (widget.isDead ? deathScale : 1.0);
 
         // 受伤红色滤镜（仅在受伤瞬间）+ 死亡灰度

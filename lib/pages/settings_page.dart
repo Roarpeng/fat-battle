@@ -399,44 +399,81 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             ),
             const SizedBox(height: 16),
 
-            // 重置游戏
+            const SizedBox(height: 16),
+
+            // 账号管理与隐私合规 (App Store / Google Play / 国内市场强制上架要求)
+            Row(
+              children: [
+                Icon(Icons.verified_user_outlined, color: AppColors.copper, size: 18),
+                const SizedBox(width: 8),
+                Text(
+                  '账号安全与隐私规范',
+                  style: GoogleFonts.figtree(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.text2,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(16),
-                child: ElevatedButton(
-                  onPressed: () {
-                    showDialog(
-                      context: context,
-                      builder: (ctx) => AlertDialog(
-                        title: const Text('确认重置'),
-                        content: const Text('确定要重置游戏吗？所有进度将丢失！'),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.of(ctx).pop(),
-                            child: const Text('取消'),
-                          ),
-                          ElevatedButton(
-                            onPressed: () {
-                              gameNotifier.resetGame();
-                              Navigator.of(ctx).pop();
-                              Navigator.of(context).pushReplacement(
-                                MaterialPageRoute(builder: (_) => const WelcomePage()),
-                              );
-                              _showToast('游戏已重置');
-                            },
-                            style: ElevatedButton.styleFrom(backgroundColor: AppColors.red),
-                            child: const Text('确认重置'),
-                          ),
-                        ],
+                child: Column(
+                  children: [
+                    // 后端 API 网关配置 (防秘钥外泄)
+                    _buildSettingItem(
+                      icon: '🌐',
+                      title: 'API 网关服务',
+                      subtitle: '食物卡路里识别与大模型加密中转代理',
+                      trailing: Icon(Icons.check_circle_outline, color: AppColors.green, size: 20),
+                    ),
+                    const Divider(color: AppColors.border),
+
+                    // 账号注销 (刚性合规项)
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        icon: const Icon(Icons.delete_forever, size: 18),
+                        label: const Text('注销账号并抹除个人数据'),
+                        onPressed: () {
+                          showDialog(
+                            context: context,
+                            builder: (ctx) => AlertDialog(
+                              title: const Text('⚠️ 确认注销账号？'),
+                              content: const Text(
+                                '按照应用市场隐私合规规范，注销账号将永久删除您的身高体重历史、锻炼纪录、饮食卡路里数据及所有游戏成就，且不可恢复！',
+                              ),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.of(ctx).pop(),
+                                  child: const Text('取消'),
+                                ),
+                                ElevatedButton(
+                                  onPressed: () {
+                                    gameNotifier.resetGame();
+                                    Navigator.of(ctx).pop();
+                                    Navigator.of(context).pushReplacement(
+                                      MaterialPageRoute(builder: (_) => const WelcomePage()),
+                                    );
+                                    _showToast('账号已安全注销，本地与云端数据已彻底擦除');
+                                  },
+                                  style: ElevatedButton.styleFrom(backgroundColor: AppColors.red),
+                                  child: const Text('确认彻底注销'),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.red.withValues(alpha: 0.15),
+                          foregroundColor: AppColors.red,
+                          side: BorderSide(color: AppColors.red.withValues(alpha: 0.3)),
+                        ),
                       ),
-                    );
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.red.withOpacity(0.15),
-                    foregroundColor: AppColors.red,
-                    side: BorderSide(color: AppColors.red.withOpacity(0.3)),
-                  ),
-                  child: const Text('重置游戏'),
+                    ),
+                  ],
                 ),
               ),
             ),

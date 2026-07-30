@@ -24,6 +24,12 @@ class AppColors {
   static const Color copper = gold;
   static const Color forgeGlow = Color(0xFFFF8A5B);
   static const Color shield = purple;
+  /// 扣血残影条（滞后缓动颜色）
+  static const Color ghostBar = Color(0xFFFF9E80);
+  /// 受击/暴击高亮火花
+  static const Color hitSpark = Color(0xFFFFF176);
+  /// 多巴胺活力霓虹橙
+  static const Color dopamineOrange = Color(0xFFFF7043);
 }
 
 // 怪物配置

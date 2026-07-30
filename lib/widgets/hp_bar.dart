@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import '../constants/app_constants.dart';
 
-/// 血条组件
-class HpBar extends StatelessWidget {
+/// 拥有扣血残影条（Ghost Damage Bar）与护盾微光的血条组件
+class HpBar extends StatefulWidget {
   final int current;
   final int max;
   final Color color;
@@ -21,72 +21,143 @@ class HpBar extends StatelessWidget {
     this.shield = 0,
     this.shieldColor = AppColors.shield,
   });
-  
+
+  @override
+  State<HpBar> createState() => _HpBarState();
+}
+
+class _HpBarState extends State<HpBar> with SingleTickerProviderStateMixin {
+  late double _ghostPercent;
+  late double _targetPercent;
+
+  @override
+  void initState() {
+    super.initState();
+    _targetPercent = (widget.current / widget.max).clamp(0.0, 1.0);
+    _ghostPercent = _targetPercent;
+  }
+
+  @override
+  void didUpdateWidget(covariant HpBar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final newPercent = (widget.current / widget.max).clamp(0.0, 1.0);
+    final oldPercent = (oldWidget.current / oldWidget.max).clamp(0.0, 1.0);
+
+    if (newPercent < oldPercent) {
+      // 扣血：主血条即刻缩短，残影条滞后缩回
+      setState(() {
+        _ghostPercent = oldPercent;
+        _targetPercent = newPercent;
+      });
+      Future.delayed(const Duration(milliseconds: 300), () {
+        if (mounted) {
+          setState(() {
+            _ghostPercent = newPercent;
+          });
+        }
+      });
+    } else {
+      // 加血/不变：同步更新
+      setState(() {
+        _targetPercent = newPercent;
+        _ghostPercent = newPercent;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final percent = (current / max).clamp(0.0, 1.0);
-    final shieldPercent = (shield / max).clamp(0.0, 1.0);
-    
+    final shieldPercent = (widget.shield / widget.max).clamp(0.0, 1.0);
+
     return Container(
-      height: height,
+      height: widget.height,
       decoration: BoxDecoration(
         color: AppColors.bg,
         borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.border, width: 1),
       ),
       child: Stack(
         children: [
-          // 血条
+          // 1. 滞后扣血残影条 (Ghost Damage Bar)
           AnimatedContainer(
-            duration: const Duration(milliseconds: 500),
+            duration: const Duration(milliseconds: 600),
+            curve: Curves.easeOutCubic,
             width: double.infinity,
-            height: height,
+            height: widget.height,
             child: FractionallySizedBox(
               alignment: Alignment.centerLeft,
-              widthFactor: percent,
+              widthFactor: _ghostPercent,
               child: Container(
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [color.withValues(alpha: 0.8), color],
-                  ),
+                  color: AppColors.ghostBar,
                   borderRadius: BorderRadius.circular(10),
                 ),
               ),
             ),
           ),
-          
-          // 护盾层
-          if (shield > 0)
+
+          // 2. 主 HP 血条
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 250),
+            curve: Curves.easeOut,
+            width: double.infinity,
+            height: widget.height,
+            child: FractionallySizedBox(
+              alignment: Alignment.centerLeft,
+              widthFactor: _targetPercent,
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [widget.color.withValues(alpha: 0.8), widget.color],
+                  ),
+                  borderRadius: BorderRadius.circular(10),
+                  boxShadow: [
+                    BoxShadow(
+                      color: widget.color.withValues(alpha: 0.4),
+                      blurRadius: 6,
+                      spreadRadius: 1,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+
+          // 3. 护盾叠加层
+          if (widget.shield > 0)
             AnimatedContainer(
-              duration: const Duration(milliseconds: 500),
+              duration: const Duration(milliseconds: 300),
               width: double.infinity,
-              height: height,
+              height: widget.height,
               child: FractionallySizedBox(
                 alignment: Alignment.centerLeft,
-                widthFactor: (percent + shieldPercent).clamp(0.0, 1.0),
+                widthFactor: (_targetPercent + shieldPercent).clamp(0.0, 1.0),
                 child: Container(
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
-                      colors: [Colors.transparent, shieldColor.withValues(alpha: 0.6)],
-                      stops: [0.7, 1.0],
+                      colors: [Colors.transparent, widget.shieldColor.withValues(alpha: 0.7)],
+                      stops: const [0.6, 1.0],
                     ),
                     borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: shieldColor.withValues(alpha: 0.8), width: 1.5),
+                    border: Border.all(color: widget.shieldColor.withValues(alpha: 0.9), width: 1.5),
                   ),
                 ),
               ),
             ),
-          
-          // 文字
-          if (showText)
+
+          // 4. 数值显示
+          if (widget.showText)
             Center(
               child: Text(
-                shield > 0 ? '$current+$shield/$max' : '$current/$max',
+                widget.shield > 0
+                    ? '${widget.current}+${widget.shield}/${widget.max}'
+                    : '${widget.current}/${widget.max}',
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 11,
                   fontWeight: FontWeight.bold,
                   shadows: [
-                    Shadow(color: Colors.black.withValues(alpha: 0.5), offset: Offset(0, 1)),
+                    Shadow(color: Colors.black.withValues(alpha: 0.8), offset: const Offset(0, 1)),
                   ],
                 ),
               ),
