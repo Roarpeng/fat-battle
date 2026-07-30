@@ -11,7 +11,7 @@
 
 **在线体验：** [https://roarpeng-trae-idera.ms.show](https://roarpeng-trae-idera.ms.show)
 
-**Android APK：** [Releases（Latest）](https://github.com/Roarpeng/fat-battle/releases/latest) — 文件名 `塑身工坊-<版本>.apk`，`master` 构建成功后自动上传
+**Android APK：** [Releases（Latest）](https://github.com/Roarpeng/fat-battle/releases/latest) — 文件名 `SuxingGongfang-<版本>.apk`（安装后显示「塑身工坊」）
 
 ---
 

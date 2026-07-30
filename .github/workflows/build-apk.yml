@@ -57,8 +57,8 @@ jobs:
           VERSION="$(sed -n 's/^version: //p' pubspec.yaml | cut -d'+' -f1)"
           BUILD="$(sed -n 's/^version: //p' pubspec.yaml | cut -d'+' -f2)"
           APK_SRC="build/app/outputs/flutter-apk/app-release.apk"
-          # 发布名对齐品牌「塑身工坊」，便于用户识别
-          APK_NAME="塑身工坊-${VERSION}.apk"
+          # 文件名用拼音，避免 GitHub Releases 丢弃中文；桌面显示名仍是「塑身工坊」
+          APK_NAME="SuxingGongfang-${VERSION}.apk"
           mkdir -p dist-apk
           cp "$APK_SRC" "dist-apk/${APK_NAME}"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
@@ -70,7 +70,7 @@ jobs:
         if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
-          name: 塑身工坊-apk-${{ github.sha }}
+          name: suxing-gongfang-apk-${{ github.sha }}
           path: ${{ steps.apk.outputs.apk_path }}
           if-no-files-found: error
           retention-days: 14
@@ -91,10 +91,11 @@ jobs:
           ## 塑身工坊 Android APK
 
           - **版本**: ${VERSION}+${BUILD}
+          - **安装包**: \`${APK_NAME}\`（安装后桌面显示「塑身工坊」）
           - **Commit**: \`${GITHUB_SHA}\`
           - **工作流**: [Run #${GITHUB_RUN_NUMBER}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})
 
-          下载下方 \`${APK_NAME}\` 安装即可（当前为 debug 签名）。
+          下载下方 APK 安装即可（当前为 debug 签名）。
           EOF
           )"
 
