@@ -6,6 +6,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../constants/app_constants.dart';
 import '../../models/game_models.dart';
+import '../battle/forge_monster_art.dart';
 
 /// 舞台中央怪物立绘：底座光环 + 护盾光圈 + 打击缩放
 class MonsterStageAvatar extends StatefulWidget {
@@ -140,9 +141,10 @@ class _MonsterStageAvatarState extends State<MonsterStageAvatar>
                   ],
                 ),
                 alignment: Alignment.center,
-                child: Text(
-                  widget.monster.emoji,
-                  style: const TextStyle(fontSize: 78, height: 1),
+                child: ForgeMonsterArt(
+                  kind: monsterKindOf(widget.monster.emoji),
+                  size: 116,
+                  isEnraged: enraged,
                 ),
               ),
               // 等级徽章

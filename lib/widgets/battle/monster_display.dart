@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../constants/app_constants.dart';
+import 'forge_monster_art.dart';
 
 /// 怪物显示组件
 ///
@@ -315,19 +316,11 @@ class _MonsterDisplayState extends State<MonsterDisplay>
                   ),
                 ),
               ),
-              // 魔物主体表情与核心姿态
-              Text(
-                widget.emoji,
-                style: TextStyle(
-                  fontSize: widget.emojiSize * 0.65,
-                  height: 1.0,
-                  shadows: [
-                    Shadow(
-                      color: Colors.black.withValues(alpha: 0.8),
-                      blurRadius: 12,
-                    ),
-                  ],
-                ),
+              // 魔物主体矢量立绘（锻造工坊绘制）
+              ForgeMonsterArt(
+                kind: monsterKindOf(widget.emoji),
+                size: widget.emojiSize * 0.95,
+                isEnraged: widget.isEnraged,
               ),
               // 底部卡路里魔物勋章
               Positioned(
