@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../constants/app_constants.dart';
+import '../services/auth_service.dart';
 import '../widgets/home/forge_background.dart';
 import 'home_page.dart';
 
@@ -45,12 +46,18 @@ class _AuthPageState extends State<AuthPage> with SingleTickerProviderStateMixin
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isLoading = true);
+    final isRegister = _tabController.index == 1;
 
-    // 模拟注册/登录认证延迟与网络请求
+    // 已配置真实后端（API_BASE_URL）：注册/登录走后端接口
+    if (AuthService().isBackendConfigured) {
+      await _handleBackendAuth(isRegister);
+      return;
+    }
+
+    // 离线模拟模式：本地假 token（向后兼容，未配置后端时保持原样）
     await Future.delayed(const Duration(milliseconds: 900));
 
     final prefs = await SharedPreferences.getInstance();
-    final isRegister = _tabController.index == 1;
 
     final accountName = isRegister
         ? _usernameController.text.trim()
@@ -74,6 +81,64 @@ class _AuthPageState extends State<AuthPage> with SingleTickerProviderStateMixin
     // 登录成功跳转主界面
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(builder: (_) => const HomePage()),
+    );
+  }
+
+  /// 真实后端注册/登录（成功存 token 后跳转，失败提示 SnackBar）
+  Future<void> _handleBackendAuth(bool isRegister) async {
+    final auth = AuthService();
+    try {
+      final email = _emailController.text.trim();
+      final password = _passwordController.text;
+
+      final AuthUser user;
+      if (isRegister) {
+        user = await auth.register(
+          email: email,
+          password: password,
+          nickname: _usernameController.text.trim(),
+        );
+      } else {
+        user = await auth.login(email: email, password: password);
+      }
+
+      // 记录本地展示账号（昵称优先，兼容旧 user_account 键）
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        'user_account',
+        user.nickname.isNotEmpty ? user.nickname : email,
+      );
+
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(isRegister ? '🎉 注册成功！欢迎加入塑身工坊' : '⚡ 登录成功！欢迎回来'),
+          backgroundColor: AppColors.green,
+        ),
+      );
+
+      // 登录成功跳转主界面
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => const HomePage()),
+      );
+    } on AuthException catch (e) {
+      _showBackendError(e.message);
+    } catch (e) {
+      _showBackendError('网络异常，请确认后端服务已启动（$e）');
+    }
+  }
+
+  /// 后端错误提示（保持与现有 SnackBar 风格一致）
+  void _showBackendError(String message) {
+    if (!mounted) return;
+    setState(() => _isLoading = false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('❌ $message'),
+        backgroundColor: AppColors.red,
+      ),
     );
   }
 

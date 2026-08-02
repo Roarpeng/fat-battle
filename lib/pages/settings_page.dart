@@ -9,6 +9,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../constants/app_constants.dart';
 import '../providers/game_provider.dart';
+import '../services/auth_service.dart';
 import '../services/voice_service.dart';
 import '../pages/auth_page.dart';
 import '../pages/welcome_page.dart';
@@ -472,6 +473,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                         icon: const Icon(Icons.logout_rounded, size: 18),
                         label: const Text('退出当前账号 / 切换身份'),
                         onPressed: () async {
+                          // 真实后端模式下通知后端登出并清理 token；
+                          // 未配置后端时仅做本地清理（向后兼容）
+                          await AuthService().logout();
                           final prefs = await SharedPreferences.getInstance();
                           await prefs.setBool('is_logged_in', false);
                           if (context.mounted) {

@@ -72,9 +72,21 @@ class ApiConfig {
   /// GLM 可用：必须有直连 Key（代理仅作可选增强，当前阶段不依赖）
   static bool get hasGlmConfig => zhipuApiKey.isNotEmpty;
 
-  /// 拍照识别至少有一个在线源（GLM 或百度）
+  // ===== 真实后端（账号系统 + LLM 食物识别代理） =====
+  /// 后端基础地址；默认空 = 后端未启用，走原模拟/离线模式。
+  ///
+  /// 构建示例：
+  /// ```bash
+  /// flutter run --dart-define=API_BASE_URL=http://localhost:8080
+  /// ```
+  static const backendBaseUrl = String.fromEnvironment('API_BASE_URL');
+
+  /// 是否启用真实后端（配置了 API_BASE_URL）
+  static bool get isBackendEnabled => backendBaseUrl.isNotEmpty;
+
+  /// 拍照识别至少有一个在线源（真实后端代理 / GLM / 百度）
   static bool get hasAnyFoodVisionConfig =>
-      hasGlmConfig || hasBaiduCredentials;
+      isBackendEnabled || hasGlmConfig || hasBaiduCredentials;
 
   /// 未配置在线识别时给用户的构建提示（不含密钥）
   static String get foodVisionConfigHint =>

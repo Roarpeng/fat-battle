@@ -60,10 +60,11 @@ class FoodRecognitionServiceV2 {
   /// 健康检查：百度凭据是否已配置
   bool get isBaiduConfigured => _baidu.isConfigured();
 
-  /// 健康检查：GLM 是否已配置
-  bool get isGlmConfigured => _glm.isConfigured;
+  /// 健康检查：GLM 是否已配置（真实后端代理 / 直连 Key / 旧代理）
+  bool get isGlmConfigured =>
+      ApiConfig.isBackendEnabled || _glm.isConfigured;
 
-  /// 拍照识别是否至少有一个在线源
+  /// 拍照识别是否至少有一个在线源（真实后端代理也算已配置）
   bool get hasAnyVisionConfig => ApiConfig.hasAnyFoodVisionConfig;
 
   /// V2 主入口：基于文件识别食物（走降级链）

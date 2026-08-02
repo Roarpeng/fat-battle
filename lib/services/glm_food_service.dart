@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:image/image.dart' as imgLib;
 
 import '../config/api_config.dart';
+import 'auth_service.dart';
 
 /// GLM-4.6V-Flash 食物识别结果项
 class GlmFoodItem {
@@ -76,12 +77,16 @@ class GlmFoodItem {
 
 /// GLM-4.6V-Flash 食物识别服务
 ///
-/// 直接调用智谱 GLM-4.6V-Flash 多模态大模型 API，无需后端代理。
+/// 调用优先级（从上到下）：
+/// 1. 真实后端 LLM 代理（`{API_BASE_URL}/api/v1/food/recognize|search`，
+///    携带登录 token，密钥只存服务器）
+/// 2. App 直连智谱 GLM-4.6V-Flash 多模态大模型 API
+/// 3. 旧 GLM 代理（GLM_PROXY_BASE_URL，无鉴权）
 ///
 /// App 端职责：
 /// - 图片预处理（方向校正、缩放、格式转换、压缩）
 /// - base64 编码
-/// - 直接调用 https://open.bigmodel.cn/api/paas/v4/chat/completions
+/// - 调用后端代理 / https://open.bigmodel.cn/api/paas/v4/chat/completions
 /// - 解析 GLM 返回的 JSON 结构化结果
 class GlmFoodService {
   static final GlmFoodService _instance = GlmFoodService._internal();
@@ -101,8 +106,9 @@ class GlmFoodService {
   /// 推荐长边尺寸（GLM-4.6V-Flash 视觉模型在 1024-1280px 范围识别效果最佳）
   static const _targetLongEdge = 1280;
 
-  /// 是否可用：后端代理 或 直连 API Key
-  bool get isConfigured => ApiConfig.hasGlmConfig;
+  /// 是否可用：真实后端代理 或 直连 API Key 或 旧代理
+  bool get isConfigured =>
+      ApiConfig.isBackendEnabled || ApiConfig.hasGlmConfig || ApiConfig.useGlmProxy;
 
   /// 食物识别系统提示词（直连备用）
   static const String _systemPrompt = '''你是专业的食物识别和营养分析专家。请识别图片中的食物，返回结构化 JSON 结果。
@@ -138,20 +144,61 @@ class GlmFoodService {
 
     debugPrint('=== GLM-4.6V-Flash 食物识别开始 ===');
     debugPrint('原始图片大小: ${imageBytes.length} 字节');
+    debugPrint('后端代理模式: ${ApiConfig.isBackendEnabled}');
     debugPrint('直连模式: ${ApiConfig.zhipuApiKey.isNotEmpty}');
 
     final preprocessed = _preprocessImage(imageBytes);
     final base64Str = base64Encode(preprocessed);
     debugPrint('预处理后大小: ${preprocessed.length} 字节');
 
-    // 当前阶段：优先 App 直连智谱；仅当无 Key 且显式配置了代理时才走代理
+    // 优先级：真实后端 LLM 代理 → App 直连智谱 → 旧 GLM 代理
+    if (ApiConfig.isBackendEnabled) {
+      return _recognizeViaBackendProxy(base64Str,
+          topNum: topNum, thinking: thinking);
+    }
     if (ApiConfig.zhipuApiKey.isNotEmpty) {
       return _recognizeDirect(base64Str, topNum: topNum, thinking: thinking);
     }
     if (ApiConfig.useGlmProxy) {
       return _recognizeViaProxy(base64Str, topNum: topNum, thinking: thinking);
     }
-    throw Exception('GLM 未配置（需 ZHIPU_API_KEY）');
+    throw Exception('GLM 未配置（需 API_BASE_URL 后端、ZHIPU_API_KEY 或代理）');
+  }
+
+  /// 通过真实后端 LLM 代理识别（携带登录 token，401 自动刷新重试）
+  Future<List<GlmFoodItem>> _recognizeViaBackendProxy(
+    String base64Str, {
+    required int topNum,
+    required bool thinking,
+  }) async {
+    final url = '${ApiConfig.backendBaseUrl}/api/v1/food/recognize';
+    debugPrint('后端代理识别: $url');
+    final t0 = DateTime.now().millisecondsSinceEpoch;
+    final response = await AuthService()
+        .authedPost(
+          '/api/v1/food/recognize',
+          body: {
+            'image': base64Str,
+            'topNum': topNum,
+            'thinking': thinking,
+          },
+        );
+    debugPrint(
+        '后端代理响应: ${response.statusCode} (${DateTime.now().millisecondsSinceEpoch - t0}ms)');
+
+    if (response.statusCode != 200) {
+      throw Exception('后端代理识别 HTTP ${response.statusCode}: ${response.body}');
+    }
+
+    final data = jsonDecode(response.body);
+    if (data is! Map) {
+      throw Exception('后端代理识别响应格式错误');
+    }
+    final map = Map<String, dynamic>.from(data);
+    if (map['success'] != true) {
+      throw Exception(map['error']?.toString() ?? '后端代理识别失败');
+    }
+    return _parseItemsList(map['items'], topNum: topNum);
   }
 
   Future<List<GlmFoodItem>> _recognizeViaProxy(
@@ -290,15 +337,46 @@ class GlmFoodService {
 
     debugPrint('=== GLM 文本搜索食物 ===');
     debugPrint('查询词: $query');
+    debugPrint('后端代理模式: ${ApiConfig.isBackendEnabled}');
     debugPrint('直连模式: ${ApiConfig.zhipuApiKey.isNotEmpty}');
 
+    // 优先级：真实后端 LLM 代理 → App 直连智谱 → 旧 GLM 代理
+    if (ApiConfig.isBackendEnabled) {
+      return _searchViaBackendProxy(query, topNum: topNum);
+    }
     if (ApiConfig.zhipuApiKey.isNotEmpty) {
       return _searchDirect(query, topNum: topNum);
     }
     if (ApiConfig.useGlmProxy) {
       return _searchViaProxy(query, topNum: topNum);
     }
-    throw Exception('GLM 未配置（需 ZHIPU_API_KEY）');
+    throw Exception('GLM 未配置（需 API_BASE_URL 后端、ZHIPU_API_KEY 或代理）');
+  }
+
+  /// 通过真实后端 LLM 代理搜索（携带登录 token，401 自动刷新重试）
+  Future<List<GlmFoodItem>> _searchViaBackendProxy(
+    String query, {
+    required int topNum,
+  }) async {
+    final url = '${ApiConfig.backendBaseUrl}/api/v1/food/search';
+    debugPrint('后端代理搜索: $url');
+    final response = await AuthService().authedPost(
+      '/api/v1/food/search',
+      body: {'query': query, 'topNum': topNum},
+    );
+
+    debugPrint('后端代理搜索响应: ${response.statusCode}');
+    if (response.statusCode != 200) {
+      throw Exception('后端代理搜索 HTTP ${response.statusCode}: ${response.body}');
+    }
+
+    final data = jsonDecode(response.body);
+    if (data is! Map) throw Exception('后端代理搜索响应格式错误');
+    final map = Map<String, dynamic>.from(data);
+    if (map['success'] != true) {
+      throw Exception(map['error']?.toString() ?? '后端代理搜索失败');
+    }
+    return _parseItemsList(map['items'], topNum: topNum);
   }
 
   Future<List<GlmFoodItem>> _searchViaProxy(
