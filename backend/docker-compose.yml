@@ -1,0 +1,81 @@
+# 塑身工坊后端 — 一键部署
+# 使用: docker compose up -d --build   （首次约 1-2 分钟构建镜像）
+# 验证: curl http://localhost:8080/api/v1/healthz
+
+services:
+  api:
+    build: .
+    container_name: fatbattle-api
+    restart: unless-stopped
+    environment:
+      PORT: "8080"
+      GIN_MODE: release
+      # 密钥务必在 .env 中覆盖（见 .env.example）
+      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me}
+      DATABASE_URL: postgres://fatbattle:fatbattle@postgres:5432/fatbattle?sslmode=disable
+      # M3 阶段启用（密钥只留服务器）
+      ZHIPU_API_KEY: ${ZHIPU_API_KEY:-}
+      BAIDU_API_KEY: ${BAIDU_API_KEY:-}
+      BAIDU_SECRET_KEY: ${BAIDU_SECRET_KEY:-}
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/api/v1/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    volumes:
+      - ./migrations:/app/migrations:ro
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: fatbattle-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: fatbattle
+      POSTGRES_PASSWORD: fatbattle
+      POSTGRES_DB: fatbattle
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./migrations/0001_init.sql:/docker-entrypoint-initdb.d/0001_init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fatbattle -d fatbattle"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: fatbattle-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    container_name: fatbattle-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: fatbattle
+      MINIO_ROOT_PASSWORD: fatbattle-minio-pass
+    ports:
+      - "9000:9000"   # 对象存储 API
+      - "9001:9001"   # 控制台
+    volumes:
+      - minio_data:/data
+
+volumes:
+  pg_data:
+  redis_data:
+  minio_data:
