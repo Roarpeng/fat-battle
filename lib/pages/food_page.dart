@@ -15,6 +15,7 @@ import '../providers/game_provider.dart';
 import '../services/food_recognition_service_v2.dart';
 import '../services/food_preference_service.dart';
 import '../widgets/city_food_recommend_bar.dart';
+import '../widgets/home/forge_background.dart';
 import '../widgets/home/mini_monster_header.dart';
 
 class FoodPage extends ConsumerStatefulWidget {
@@ -851,7 +852,9 @@ class _FoodPageState extends ConsumerState<FoodPage> {
     final gameState = ref.watch(gameStateProvider);
     final gameNotifier = ref.read(gameStateProvider.notifier);
 
-    return Scaffold(
+    return ForgeBackground(
+      child: Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         title: const Text('饮食'),
         centerTitle: true,
@@ -874,6 +877,7 @@ class _FoodPageState extends ConsumerState<FoodPage> {
             ),
           ],
         ),
+      ),
       ),
     );
   }

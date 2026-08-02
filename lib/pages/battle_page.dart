@@ -12,9 +12,9 @@ import '../widgets/home/forge_background.dart';
 import '../widgets/hub_status_dot.dart';
 import '../services/ble_service.dart';
 
-/// ?????????? + ????
+/// 锻造工坊 · 战斗舞台（核心玩法页）
 class BattlePage extends ConsumerStatefulWidget {
-  /// Tab ?????1 ?? / 2 ?? / 3 ??????
+  /// Tab 切换：1 饮食 / 2 锤炼 / 3 进度
   final void Function(int index)? onTabSwitch;
 
   const BattlePage({super.key, this.onTabSwitch});
@@ -103,26 +103,26 @@ class _BattlePageState extends ConsumerState<BattlePage> {
 
   String _getStatusMessage(GameState gs) {
     if (gs.status == GameStatus.won) {
-      return '?????? ?? ??????';
+      return '怪物已被击败，炉火正旺，明日再战';
     }
     if (gs.status == GameStatus.lost) {
-      return '????????????';
+      return '精力耗尽，好好休养，明天满血归来';
     }
     if (gs.monster.hasShield) {
-      return '???????????';
+      return '它裹着护甲——吃少一点，或去锤炼破盾';
     }
     if (gs.remainingCal >= 0) {
-      return '??? ${(gs.monster.hp * 0.8).toInt()} kcal ?????';
+      return '再消耗约 ${(gs.monster.hp * 0.8).toInt()} kcal 就能攻克它';
     }
-    return '?? ${-gs.remainingCal} kcal???????';
+    return '已超出 ${-gs.remainingCal} kcal，动一动就能削盾';
   }
 
   String _getCalorieDisplay(GameState gs) {
     final remaining = gs.remainingCal;
     if (remaining >= 0) {
-      return '?????? $remaining kcal';
+      return '今日目标还剩 $remaining kcal';
     }
-    return '??? ${-remaining} kcal';
+    return '已超支 ${-remaining} kcal';
   }
 
   Color _getCalorieColor(GameState gs) {
@@ -133,7 +133,7 @@ class _BattlePageState extends ConsumerState<BattlePage> {
 
   String _getTierName(Monster monster) {
     if (monster.isBoss) return 'BOSS';
-    return '??';
+    return '精英';
   }
 
   Color _getTierColor(Monster monster) {
@@ -159,19 +159,19 @@ class _BattlePageState extends ConsumerState<BattlePage> {
     });
 
     if (!gameState.hasGame) {
-      return const Center(child: Text('??????'));
+      return const Center(child: Text('请先创建角色'));
     }
 
     final hour = DateTime.now().hour;
-    String greeting = '??????';
+    String greeting = '炉火正旺，向卡路里怪物宣战';
     if (hour < 6) {
-      greeting = '??????????';
+      greeting = '夜深了，养精蓄锐，明天再战';
     } else if (hour < 12) {
-      greeting = '?????';
+      greeting = '早安，工坊开工，先打败它';
     } else if (hour < 18) {
-      greeting = '????????';
+      greeting = '午后时光，动一动就削它一层血';
     } else {
-      greeting = '??????';
+      greeting = '夜幕降临，炉火正旺，继续雕琢';
     }
 
     final monsterBattle = MonsterBattleState.from(
@@ -245,18 +245,18 @@ class _BattlePageState extends ConsumerState<BattlePage> {
           onPressed: () => Navigator.of(context).pop(),
           padding: EdgeInsets.zero,
           constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-          tooltip: '????',
+          tooltip: '返回',
         ),
         const SizedBox(width: 4),
         Consumer(
           builder: (context, ref, child) {
             final bleState = ref.watch(bleConnectionStateProvider);
             HubStatus status = HubStatus.disconnected;
-            String tooltip = '??????Hub';
+            String tooltip = '腰部 Hub';
             bleState.whenData((data) {
               if (data.isConnected) {
                 status = HubStatus.connected;
-                tooltip = '??Hub??? - ${data.name}';
+                tooltip = '已连接 Hub - ${data.name}';
               }
             });
             return HubStatusDot(
@@ -268,7 +268,7 @@ class _BattlePageState extends ConsumerState<BattlePage> {
         ),
         const Spacer(),
         Text(
-          '? ${gs.day} ?',
+          '第 ${gs.day} 天',
           style: _bodyStyle.copyWith(color: AppColors.text2, fontSize: 13),
         ),
         const SizedBox(width: 16),
@@ -305,10 +305,10 @@ class _BattlePageState extends ConsumerState<BattlePage> {
           Expanded(
             child: Row(
               children: [
-                const Text('???', style: TextStyle(fontSize: 12)),
+                const Text('摄入', style: TextStyle(fontSize: 12)),
                 const SizedBox(width: 4),
                 const Text(
-                  '??',
+                  'kcal',
                   style: TextStyle(color: AppColors.text2, fontSize: 12),
                 ),
                 const SizedBox(width: 4),
@@ -335,10 +335,10 @@ class _BattlePageState extends ConsumerState<BattlePage> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Text('???', style: TextStyle(fontSize: 12)),
+                const Text('消耗', style: TextStyle(fontSize: 12)),
                 const SizedBox(width: 4),
                 const Text(
-                  '??',
+                  'kcal',
                   style: TextStyle(color: AppColors.text2, fontSize: 12),
                 ),
                 const SizedBox(width: 4),
@@ -360,7 +360,7 @@ class _BattlePageState extends ConsumerState<BattlePage> {
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Text(
-                '?? ${-gs.remainingCal}',
+                '超支 ${-gs.remainingCal}',
                 style: const TextStyle(
                   color: Colors.orange,
                   fontSize: 11,
@@ -414,7 +414,7 @@ class _BattlePageState extends ConsumerState<BattlePage> {
               ),
               if (monster.isBoss) ...[
                 const SizedBox(width: 4),
-                const Text('??', style: TextStyle(fontSize: 12)),
+                const Text('👑', style: TextStyle(fontSize: 12)),
               ],
             ],
           ),
@@ -477,21 +477,21 @@ class _BattlePageState extends ConsumerState<BattlePage> {
     return Row(
       children: [
         _buildActionButton(
-          emoji: '???',
-          label: '??',
+          emoji: '🍽️',
+          label: '饮食',
           onTap: () => _switchTabOrPop(1),
         ),
         const SizedBox(width: 12),
         _buildActionButton(
-          emoji: '???',
-          label: '??',
+          emoji: '🔨',
+          label: '锤炼',
           onTap: () => _switchTabOrPop(2),
           isPrimary: true,
         ),
         const SizedBox(width: 12),
         _buildActionButton(
-          emoji: '??',
-          label: '??',
+          emoji: '📈',
+          label: '进度',
           onTap: () => _switchTabOrPop(3),
         ),
       ],
@@ -515,6 +515,15 @@ class _BattlePageState extends ConsumerState<BattlePage> {
             border: isPrimary
                 ? Border.all(color: AppColors.ember.withValues(alpha: 0.5))
                 : Border.all(color: AppColors.border),
+            boxShadow: isPrimary
+                ? [
+                    BoxShadow(
+                      color: AppColors.ember.withValues(alpha: 0.3),
+                      blurRadius: 16,
+                      offset: const Offset(0, 6),
+                    ),
+                  ]
+                : null,
           ),
           child: Column(
             children: [
@@ -545,14 +554,14 @@ class _BattlePageState extends ConsumerState<BattlePage> {
       ),
       child: Row(
         children: [
-          const Text('??', style: TextStyle(fontSize: 20)),
+          const Text('🎉', style: TextStyle(fontSize: 20)),
           const SizedBox(width: 10),
           const Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '??????',
+                  '今日雕琢完成',
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.bold,
@@ -560,7 +569,7 @@ class _BattlePageState extends ConsumerState<BattlePage> {
                   ),
                 ),
                 Text(
-                  '????????',
+                  '炉火温着，明日再战',
                   style: TextStyle(color: AppColors.text2, fontSize: 12),
                 ),
               ],
@@ -568,7 +577,7 @@ class _BattlePageState extends ConsumerState<BattlePage> {
           ),
           TextButton(
             onPressed: () => notifier.startNewChallenge(),
-            child: const Text('????'),
+            child: const Text('再来一次'),
           ),
         ],
       ),
@@ -585,21 +594,21 @@ class _BattlePageState extends ConsumerState<BattlePage> {
       ),
       child: Row(
         children: [
-          const Text('??', style: TextStyle(fontSize: 20)),
+          const Text('🛌', style: TextStyle(fontSize: 20)),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '???????',
+                  '今日精力耗尽',
                   style: _displayStyle.copyWith(
                     fontSize: 14,
                     color: AppColors.copper,
                   ),
                 ),
                 Text(
-                  '???????????',
+                  '好好休养，明天满血归来',
                   style: _bodyStyle.copyWith(color: AppColors.text2, fontSize: 12),
                 ),
               ],
