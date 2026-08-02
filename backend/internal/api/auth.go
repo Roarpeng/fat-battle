@@ -72,10 +72,12 @@ func loginHandler(pool *pgxpool.Pool, jwtSecret string) gin.HandlerFunc {
 		}
 
 		var u model.User
+		var isDisabled bool
 		err := pool.QueryRow(c.Request.Context(),
-			`SELECT id, email, nickname, pass_hash, COALESCE(avatar_url, ''), created_at FROM users WHERE email = $1`,
+			`SELECT id, email, nickname, pass_hash, COALESCE(avatar_url, ''), created_at, is_disabled
+			 FROM users WHERE email = $1`,
 			req.Email,
-		).Scan(&u.ID, &u.Email, &u.Nickname, &u.PassHash, &u.AvatarURL, &u.CreatedAt)
+		).Scan(&u.ID, &u.Email, &u.Nickname, &u.PassHash, &u.AvatarURL, &u.CreatedAt, &isDisabled)
 		if errors.Is(err, pgx.ErrNoRows) {
 			jsonError(c, http.StatusUnauthorized, "账号或密码错误")
 			return
@@ -86,6 +88,10 @@ func loginHandler(pool *pgxpool.Pool, jwtSecret string) gin.HandlerFunc {
 		}
 		if bcrypt.CompareHashAndPassword([]byte(u.PassHash), []byte(req.Password)) != nil {
 			jsonError(c, http.StatusUnauthorized, "账号或密码错误")
+			return
+		}
+		if isDisabled {
+			jsonError(c, http.StatusForbidden, "账号已被禁用")
 			return
 		}
 

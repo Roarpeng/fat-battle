@@ -26,7 +26,7 @@ func NewRouter(_ *pgxpool.Pool, _ string) *gin.Engine {
 }
 
 // RegisterRoutes 注册全部 API 路由
-func RegisterRoutes(r *gin.Engine, pool *pgxpool.Pool, jwtSecret string) {
+func RegisterRoutes(r *gin.Engine, pool *pgxpool.Pool, jwtSecret, adminJwtSecret string) {
 	api := r.Group("/api/v1")
 	{
 		// 健康检查（docker compose healthcheck 依赖）
@@ -57,12 +57,12 @@ func RegisterRoutes(r *gin.Engine, pool *pgxpool.Pool, jwtSecret string) {
 			protected.GET("/user/me", meHandler(pool))
 			protected.DELETE("/user", deleteAccountHandler(pool))
 
-			// 食物识别代理（M3 接入 GLM/百度转发）
+			// 食物识别代理（GLM 转发，密钥只留服务器）
 			food := protected.Group("/food")
 			{
 				food.POST("/recognize", recognizeHandler(pool))
 				food.POST("/barcode", barcodeHandler())
-				food.GET("/search", searchHandler())
+				food.POST("/search", searchHandler(pool))
 				food.POST("/feedback", feedbackHandler(pool))
 			}
 
@@ -75,6 +75,32 @@ func RegisterRoutes(r *gin.Engine, pool *pgxpool.Pool, jwtSecret string) {
 				progress.GET("/events", getEventsHandler())
 				progress.GET("/summary", summaryHandler())
 			}
+		}
+	}
+
+	// 管理后台：单页入口（Go embed）
+	r.GET("/admin", adminIndexHandler())
+	r.GET("/admin/", adminIndexHandler())
+
+	// 管理 API（/api/admin，独立 JWT secret）
+	admin := r.Group("/api/admin")
+	{
+		admin.POST("/login", adminLoginHandler(pool, adminJwtSecret))
+
+		adminAuth := admin.Group("", middleware.AdminAuth(adminJwtSecret))
+		{
+			adminAuth.GET("/users", adminUsersHandler(pool))
+			adminAuth.POST("/users/:id/disable", adminUserDisableHandler(pool, true))
+			adminAuth.POST("/users/:id/enable", adminUserDisableHandler(pool, false))
+			adminAuth.POST("/users/:id/reset-password", adminUserResetPasswordHandler(pool))
+
+			adminAuth.GET("/llm", adminLLMListHandler(pool))
+			adminAuth.POST("/llm", adminLLMCreateHandler(pool))
+			adminAuth.PUT("/llm/:id", adminLLMUpdateHandler(pool))
+			adminAuth.DELETE("/llm/:id", adminLLMDeleteHandler(pool))
+			adminAuth.POST("/llm/:id/test", adminLLMTestHandler(pool))
+
+			adminAuth.GET("/stats", adminStatsHandler(pool))
 		}
 	}
 }

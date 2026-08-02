@@ -15,6 +15,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	backend "fatbattle/backend"
 	"fatbattle/backend/internal/api"
 	"fatbattle/backend/internal/repo"
 )
@@ -25,6 +26,9 @@ func main() {
 	dsn := envOr("DATABASE_URL",
 		"postgres://fatbattle:fatbattle@localhost:5432/fatbattle?sslmode=disable")
 	jwtSecret := envOr("JWT_SECRET", "dev-secret-change-me")
+	adminJwtSecret := envOr("ADMIN_JWT_SECRET", "admin-secret-change-me")
+	adminUser := envOr("ADMIN_USER", "admin")
+	adminPass := envOr("ADMIN_PASS", "admin123456")
 
 	if os.Getenv("GIN_MODE") == "release" {
 		gin.SetMode(gin.ReleaseMode)
@@ -39,6 +43,12 @@ func main() {
 		pool = nil
 	} else {
 		log.Println("[ok] PostgreSQL 已连接")
+		// 执行迁移（embed 读取 migrations 按文件名顺序，幂等；兼容老库）
+		if err := backend.RunMigrations(ctx, pool); err != nil {
+			log.Printf("[warn] 迁移执行失败（继续启动）: %v", err)
+		} else if err := backend.SeedAdmin(ctx, pool, adminUser, adminPass); err != nil {
+			log.Printf("[warn] 种子管理员创建失败: %v", err)
+		}
 	}
 	defer func() {
 		if pool != nil {
@@ -47,7 +57,7 @@ func main() {
 	}()
 
 	r := api.NewRouter(pool, jwtSecret)
-	api.RegisterRoutes(r, pool, jwtSecret)
+	api.RegisterRoutes(r, pool, jwtSecret, adminJwtSecret)
 
 	srv := &http.Server{
 		Addr:              ":" + port,
