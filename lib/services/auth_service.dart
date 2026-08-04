@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -38,9 +39,8 @@ class AuthException implements Exception {
 
 /// 认证服务：真实后端账号注册 / 登录 / 刷新 / 登出 / 资料查询
 ///
-/// - token 存储用 SharedPreferences（键 `auth_access_token` / `auth_refresh_token`）。
-///   注意：SharedPreferences 是明文本地存储，**正式版应替换为
-///   flutter_secure_storage**（本阶段保持零新依赖）。
+/// - token 存储用 flutter_secure_storage（Android Keystore 加密），
+///   旧版 SharedPreferences 明文 token 会在首次读取时自动迁移并清除。
 /// - 带 token 的请求遇到 401 时自动尝试 refresh 并重试一次。
 /// - 未配置 API_BASE_URL 时所有方法安全降级（不请求网络）。
 class AuthService {
@@ -48,9 +48,14 @@ class AuthService {
   factory AuthService() => _instance;
   AuthService._internal();
 
-  /// token 存储键（SharedPreferences）
+  /// token 存储键（SecureStorage）
   static const kAccessTokenKey = 'auth_access_token';
   static const kRefreshTokenKey = 'auth_refresh_token';
+
+  /// 加密存储（Android: EncryptedSharedPreferences / Keystore）
+  static const _secure = FlutterSecureStorage(
+    aOptions: AndroidOptions(encryptedSharedPreferences: true),
+  );
 
   /// 请求超时时间
   static const _timeout = Duration(seconds: 20);
@@ -62,10 +67,37 @@ class AuthService {
 
   Uri _uri(String path) => Uri.parse('${ApiConfig.backendBaseUrl}$path');
 
-  /// 读取 access token（null = 未登录）
+  /// 读取 access token（null = 未登录）；自动迁移旧版明文存储
   Future<String?> getAccessToken() async {
+    try {
+      final token = await _secure.read(key: kAccessTokenKey);
+      if (token != null && token.isNotEmpty) return token;
+    } catch (e) {
+      debugPrint('AuthService: 读取安全存储失败，回退旧存储: $e');
+    }
+    // 迁移：旧版存在 SharedPreferences 的明文 token
     final prefs = await _prefs;
-    return prefs.getString(kAccessTokenKey);
+    final legacy = prefs.getString(kAccessTokenKey);
+    if (legacy != null && legacy.isNotEmpty) {
+      await _saveTokens(
+        accessToken: legacy,
+        refreshToken: prefs.getString(kRefreshTokenKey) ?? '',
+      );
+      return legacy;
+    }
+    return null;
+  }
+
+  /// 读取 refresh token
+  Future<String?> _getRefreshToken() async {
+    try {
+      final token = await _secure.read(key: kRefreshTokenKey);
+      if (token != null && token.isNotEmpty) return token;
+    } catch (e) {
+      debugPrint('AuthService: 读取 refresh token 失败: $e');
+    }
+    final prefs = await _prefs;
+    return prefs.getString(kRefreshTokenKey);
   }
 
   /// 注册
@@ -128,21 +160,27 @@ class AuthService {
     return AuthUser.fromJson(Map<String, dynamic>.from(userMap));
   }
 
-  /// 持久化 token 对与本地登录态（is_logged_in 供 main.dart 分流）
+  /// 持久化 token 对（加密存储）与本地登录态（is_logged_in 供 main.dart 分流）
   Future<void> _saveTokens({
     required String accessToken,
     required String refreshToken,
   }) async {
+    try {
+      await _secure.write(key: kAccessTokenKey, value: accessToken);
+      await _secure.write(key: kRefreshTokenKey, value: refreshToken);
+    } catch (e) {
+      debugPrint('AuthService: 安全存储写入失败，回退 SharedPreferences: $e');
+      final prefs = await _prefs;
+      await prefs.setString(kAccessTokenKey, accessToken);
+      await prefs.setString(kRefreshTokenKey, refreshToken);
+    }
     final prefs = await _prefs;
-    await prefs.setString(kAccessTokenKey, accessToken);
-    await prefs.setString(kRefreshTokenKey, refreshToken);
     await prefs.setBool('is_logged_in', true);
   }
 
   /// 用 refresh token 换新的 token 对；成功返回 true
   Future<bool> refresh() async {
-    final prefs = await _prefs;
-    final refreshToken = prefs.getString(kRefreshTokenKey);
+    final refreshToken = await _getRefreshToken();
     if (refreshToken == null || refreshToken.isEmpty) return false;
 
     final resp = await http
@@ -221,6 +259,34 @@ class AuthService {
     return AuthUser.fromJson(Map<String, dynamic>.from(userMap));
   }
 
+  /// 注销账号：调用后端 DELETE /user 永久删除云端数据，成功后清理本地登录态
+  ///
+  /// 返回 true = 云端删除成功（或未配置后端时直接本地清理）；
+  /// 网络失败时返回 false，由调用方决定是否仍清理本地。
+  Future<bool> deleteAccount() async {
+    if (isBackendConfigured) {
+      try {
+        final token = await getAccessToken();
+        final headers = <String, String>{'Content-Type': 'application/json'};
+        if (token != null && token.isNotEmpty) {
+          headers['Authorization'] = 'Bearer $token';
+        }
+        final resp = await http
+            .delete(_uri('/api/v1/user'), headers: headers)
+            .timeout(_timeout);
+        if (resp.statusCode >= 400 && resp.statusCode != 404) {
+          debugPrint('AuthService: 注销账号失败 HTTP ${resp.statusCode}');
+          return false;
+        }
+      } catch (e) {
+        debugPrint('AuthService: 注销账号请求异常: $e');
+        return false;
+      }
+    }
+    await _clearLocalSession();
+    return true;
+  }
+
   /// 退出登录：通知后端（如已配置）+ 清除本地 token 与登录态
   Future<void> logout() async {
     if (isBackendConfigured) {
@@ -230,7 +296,19 @@ class AuthService {
         debugPrint('AuthService: 登出通知失败（忽略，继续清理本地）: $e');
       }
     }
+    await _clearLocalSession();
+  }
+
+  /// 清理本地 token 与登录态（登出/注销共用）
+  Future<void> _clearLocalSession() async {
+    try {
+      await _secure.delete(key: kAccessTokenKey);
+      await _secure.delete(key: kRefreshTokenKey);
+    } catch (e) {
+      debugPrint('AuthService: 清理安全存储失败: $e');
+    }
     final prefs = await _prefs;
+    // 同时清理旧版明文存储（兼容升级用户）
     await prefs.remove(kAccessTokenKey);
     await prefs.remove(kRefreshTokenKey);
     await prefs.setBool('is_logged_in', false);

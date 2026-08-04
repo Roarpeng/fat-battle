@@ -420,7 +420,7 @@ func adminLLMTestHandler(pool *pgxpool.Pool) gin.HandlerFunc {
 		}
 		model := cfg.TextModel
 		if model == "" {
-			model = "glm-4-flash"
+			model = defaultTextModel(cfg.Provider)
 		}
 		start := time.Now()
 		content, err := cfg.chat(c.Request.Context(), model, []gin.H{

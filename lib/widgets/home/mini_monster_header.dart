@@ -1,9 +1,10 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../../theme/forge_theme.dart';
 
 import '../../constants/app_constants.dart';
 import '../../providers/game_provider.dart';
+import '../battle/forge_monster_art.dart';
 import '../hp_bar.dart';
 
 /// 饮食 / 锤炼子页顶栏迷你怪
@@ -39,7 +40,13 @@ class MiniMonsterHeader extends ConsumerWidget {
               ),
             ),
             alignment: Alignment.center,
-            child: Text(gs.monster.emoji, style: const TextStyle(fontSize: 24)),
+            child: ForgeMonsterArt(
+              kind: monsterKindOf(gs.monster.emoji),
+              size: 32,
+              isEnraged: gs.monster.isBoss
+                  ? gs.monster.hpPercent < 0.4
+                  : gs.monster.hpPercent < 0.3,
+            ),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -48,7 +55,7 @@ class MiniMonsterHeader extends ConsumerWidget {
               children: [
                 Text(
                   gs.monster.name,
-                  style: GoogleFonts.figtree(
+                  style: AppFonts.body(
                     fontWeight: FontWeight.w700,
                     fontSize: 14,
                     color: AppColors.text,
@@ -70,7 +77,7 @@ class MiniMonsterHeader extends ConsumerWidget {
           const SizedBox(width: 8),
           Text(
             '${gs.monster.hp}/${gs.monster.maxHp}',
-            style: GoogleFonts.figtree(
+            style: AppFonts.body(
               fontSize: 11,
               color: AppColors.text2,
               fontWeight: FontWeight.w600,

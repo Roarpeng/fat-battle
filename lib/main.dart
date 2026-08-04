@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'providers/game_provider.dart';
-import 'pages/welcome_page.dart';
 import 'pages/home_page.dart';
 import 'pages/setup_page.dart';
 import 'pages/auth_page.dart';
@@ -11,6 +10,9 @@ import 'theme/forge_theme.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // 预热中文字体（后台下载，未就绪时自动回退系统字体）
+  AppFonts.preload();
 
   final prefs = await SharedPreferences.getInstance();
 
@@ -31,6 +33,10 @@ class BodyStudioApp extends ConsumerWidget {
     final prefs = ref.watch(sharedPreferencesProvider);
     final isLoggedIn = prefs?.getBool('is_logged_in') ?? false;
 
+    // 路由分流：
+    // - 未登录 → 登录/注册页
+    // - 已登录且有存档 → 主舞台
+    // - 已登录但无存档（新注册/换设备）→ 直接进入角色创建，避免断链
     return MaterialApp(
       title: '塑身工坊',
       debugShowCheckedModeBanner: false,
@@ -39,9 +45,7 @@ class BodyStudioApp extends ConsumerWidget {
           ? const AuthPage()
           : gameState.hasGame
               ? const MainPage()
-              : gameState.user.height > 0
-                  ? const SetupPage()
-                  : const WelcomePage(),
+              : const SetupPage(),
     );
   }
 }

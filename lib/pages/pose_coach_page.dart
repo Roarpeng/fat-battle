@@ -1,8 +1,8 @@
-import 'dart:math' as math;
+﻿import 'dart:math' as math;
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../theme/forge_theme.dart';
 import '../constants/app_constants.dart';
 import '../widgets/exercise/pose_coach_guide.dart';
 import '../widgets/exercise/pose_overlay.dart';
@@ -153,7 +153,7 @@ class _PoseCoachPageState extends State<PoseCoachPage> {
                   ),
                   child: Text(
                     '${widget.exerciseEmoji} ${widget.exerciseName}',
-                    style: GoogleFonts.figtree(
+                    style: AppFonts.body(
                       color: Colors.white,
                       fontWeight: FontWeight.w700,
                       fontSize: 14,
@@ -194,7 +194,7 @@ class _PoseCoachPageState extends State<PoseCoachPage> {
                       : const Icon(Icons.stop_rounded, size: 18),
                   label: Text(
                     _stopping ? '结算中' : '结束',
-                    style: GoogleFonts.figtree(fontWeight: FontWeight.w700),
+                    style: AppFonts.body(fontWeight: FontWeight.w700),
                   ),
                   style: FilledButton.styleFrom(
                     backgroundColor: AppColors.ember,
@@ -366,7 +366,7 @@ class _CoachHud extends StatelessWidget {
                               children: [
                                 Text(
                                   '$reps',
-                                  style: GoogleFonts.fraunces(
+                                  style: AppFonts.display(
                                     color: AppColors.ember,
                                     fontSize: 28,
                                     fontWeight: FontWeight.w700,
@@ -374,7 +374,7 @@ class _CoachHud extends StatelessWidget {
                                 ),
                                 Text(
                                   unit,
-                                  style: GoogleFonts.figtree(
+                                  style: AppFonts.body(
                                     color: Colors.white70,
                                     fontSize: 11,
                                   ),
@@ -396,7 +396,7 @@ class _CoachHud extends StatelessWidget {
                                 children: [
                                   Text(
                                     '体力 ${s.toInt()}',
-                                    style: GoogleFonts.figtree(
+                                    style: AppFonts.body(
                                       color: Colors.white70,
                                       fontSize: 11,
                                     ),
@@ -421,7 +421,7 @@ class _CoachHud extends StatelessWidget {
                                 fb.isEmpty ? '跟随白色剪影站位' : fb,
                                 maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
-                                style: GoogleFonts.figtree(
+                                style: AppFonts.body(
                                   color: Colors.white,
                                   fontSize: 12,
                                   height: 1.3,
@@ -446,7 +446,7 @@ class _CoachHud extends StatelessWidget {
                               children: [
                                 Text(
                                   '$reps',
-                                  style: GoogleFonts.fraunces(
+                                  style: AppFonts.display(
                                     color: AppColors.ember,
                                     fontSize: 36,
                                     fontWeight: FontWeight.w700,
@@ -454,7 +454,7 @@ class _CoachHud extends StatelessWidget {
                                 ),
                                 Text(
                                   unit,
-                                  style: GoogleFonts.figtree(
+                                  style: AppFonts.body(
                                     color: Colors.white70,
                                     fontSize: 12,
                                   ),
@@ -472,7 +472,7 @@ class _CoachHud extends StatelessWidget {
                           children: [
                             Text(
                               '体力 ${s.toInt()}',
-                              style: GoogleFonts.figtree(
+                              style: AppFonts.body(
                                 color: Colors.white70,
                                 fontSize: 11,
                               ),
@@ -495,7 +495,7 @@ class _CoachHud extends StatelessWidget {
                         valueListenable: feedback,
                         builder: (_, fb, __) => Text(
                           fb.isEmpty ? '跟随白色剪影站位' : fb,
-                          style: GoogleFonts.figtree(
+                          style: AppFonts.body(
                             color: Colors.white,
                             fontSize: 12,
                             height: 1.3,
@@ -521,7 +521,7 @@ class _CoachHud extends StatelessWidget {
       ),
       child: Text(
         text,
-        style: GoogleFonts.figtree(
+        style: AppFonts.body(
           color: color,
           fontWeight: FontWeight.w700,
           fontSize: 12,

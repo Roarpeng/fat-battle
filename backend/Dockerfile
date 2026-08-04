@@ -6,6 +6,8 @@ FROM golang:1.24-alpine AS builder
 WORKDIR /app
 
 # 复制全部源码后统一解析依赖并构建（无本机 Go 环境也可一键构建）
+# 大陆网络使用七牛 Go 代理加速依赖下载
+ENV GOPROXY=https://goproxy.cn,direct
 COPY . .
 RUN go mod tidy && \
     CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /server ./cmd/server

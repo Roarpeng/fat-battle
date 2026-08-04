@@ -69,3 +69,6 @@ screenshot.png
 # Android build
 android/build/
 
+
+# temporary debug artifacts
+tmp/

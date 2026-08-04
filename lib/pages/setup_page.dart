@@ -1,6 +1,6 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../theme/forge_theme.dart';
 import '../constants/app_constants.dart';
 import '../models/game_models.dart';
 import '../providers/game_provider.dart';
@@ -32,15 +32,15 @@ class _SetupPageState extends ConsumerState<SetupPage> {
   int _weeklyFreq = 3;
   Difficulty _difficulty = Difficulty.normal;
 
-  TextStyle get _displayStyle => GoogleFonts.fraunces(
+  TextStyle get _displayStyle => AppFonts.display(
         fontWeight: FontWeight.w600,
         color: AppColors.text,
       );
 
-  TextStyle get _bodyStyle => GoogleFonts.figtree(color: AppColors.text);
+  TextStyle get _bodyStyle => AppFonts.body(color: AppColors.text);
 
   TextStyle get _mutedStyle =>
-      GoogleFonts.figtree(color: AppColors.text2, fontSize: 13);
+      AppFonts.body(color: AppColors.text2, fontSize: 13);
 
   @override
   Widget build(BuildContext context) {
@@ -50,7 +50,7 @@ class _SetupPageState extends ConsumerState<SetupPage> {
         appBar: AppBar(
           title: Text(
             '角色创建',
-            style: GoogleFonts.fraunces(fontWeight: FontWeight.w600),
+            style: AppFonts.display(fontWeight: FontWeight.w600),
           ),
           centerTitle: true,
         ),
@@ -126,7 +126,7 @@ class _SetupPageState extends ConsumerState<SetupPage> {
           ),
           child: Text(
             '$step',
-            style: GoogleFonts.figtree(
+            style: AppFonts.body(
               fontSize: isActive ? 12 : 11,
               fontWeight: FontWeight.w700,
               color: isActive || isDone ? AppColors.text : AppColors.text2,
@@ -541,7 +541,7 @@ class _SetupPageState extends ConsumerState<SetupPage> {
                   Text(
                     label,
                     textAlign: TextAlign.center,
-                    style: GoogleFonts.figtree(
+                    style: AppFonts.body(
                       fontSize: 12,
                       fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
                       color: isSelected ? AppColors.text : AppColors.text2,
@@ -649,7 +649,7 @@ class _SetupPageState extends ConsumerState<SetupPage> {
                 onPressed: () => setState(() => _currentStep--),
                 child: Text(
                   '上一步',
-                  style: GoogleFonts.figtree(fontWeight: FontWeight.w600),
+                  style: AppFonts.body(fontWeight: FontWeight.w600),
                 ),
               ),
             ),
@@ -666,7 +666,7 @@ class _SetupPageState extends ConsumerState<SetupPage> {
               ),
               child: Text(
                 _currentStep == 5 ? '生成关卡' : '下一步',
-                style: GoogleFonts.figtree(
+                style: AppFonts.body(
                   fontWeight: FontWeight.w800,
                   fontSize: 15,
                 ),

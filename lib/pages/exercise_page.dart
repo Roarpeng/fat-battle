@@ -1,9 +1,10 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:camera/camera.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../theme/forge_theme.dart';
+import '../theme/app_icons.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../constants/app_constants.dart';
 import '../models/game_models.dart';
@@ -78,15 +79,15 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
   final ValueNotifier<double> _prepareProgressN = ValueNotifier(0);
   bool _coachPageOpen = false;
 
-  TextStyle get _displayStyle => GoogleFonts.fraunces(
+  TextStyle get _displayStyle => AppFonts.display(
         fontWeight: FontWeight.w600,
         color: AppColors.text,
       );
 
-  TextStyle get _bodyStyle => GoogleFonts.figtree(color: AppColors.text);
+  TextStyle get _bodyStyle => AppFonts.body(color: AppColors.text);
 
   TextStyle get _mutedStyle =>
-      GoogleFonts.figtree(color: AppColors.text2, fontSize: 13);
+      AppFonts.body(color: AppColors.text2, fontSize: 13);
   
   @override
   void initState() {
@@ -382,7 +383,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
                 icon: const Icon(Icons.auto_awesome, size: 16),
                 label: Text(
                   '生成组合',
-                  style: GoogleFonts.figtree(
+                  style: AppFonts.body(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
                   ),
@@ -423,7 +424,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
                           ),
                           child: Text(
                             f.label,
-                            style: GoogleFonts.figtree(
+                            style: AppFonts.body(
                               fontSize: 12,
                               fontWeight:
                                   selected ? FontWeight.w700 : FontWeight.w500,
@@ -509,8 +510,8 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
                                     ),
                                   ),
                                   child: Text(
-                                    '${e.key + 1}. ${ex.emoji}${ex.name}',
-                                    style: GoogleFonts.figtree(
+                                    '${e.key + 1}. ${ex.name}',
+                                    style: AppFonts.body(
                                       fontSize: 12,
                                       fontWeight: FontWeight.w600,
                                       color: selected
@@ -568,12 +569,12 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
                             mainAxisAlignment: MainAxisAlignment.center,
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Text(
-                                exercise.emoji,
-                                style: const TextStyle(
-                                  fontSize: 28,
-                                  height: 1.0,
-                                ),
+                              Icon(
+                                AppIcons.exercise(exercise.type),
+                                size: 28,
+                                color: isSelected
+                                    ? AppColors.copper
+                                    : AppColors.text2,
                               ),
                               const SizedBox(height: 4),
                               Text(
@@ -632,7 +633,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
                             ),
                             child: Text(
                               '$d分钟',
-                              style: GoogleFonts.figtree(
+                              style: AppFonts.body(
                                 color: isSelected ? AppColors.copper : AppColors.text,
                                 fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
                               ),
@@ -688,7 +689,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
               ),
               child: Text(
                 '⚔️ 发动攻击',
-                style: GoogleFonts.figtree(fontWeight: FontWeight.w700, fontSize: 15),
+                style: AppFonts.body(fontWeight: FontWeight.w700, fontSize: 15),
               ),
             ),
             const SizedBox(height: 16),
@@ -716,7 +717,9 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
                               ),
                               child: Row(
                                 children: [
-                                  Text('${ex.emoji} ${ex.name}', style: _bodyStyle.copyWith(fontSize: 13)),
+                                  Icon(AppIcons.exerciseByName(ex.name), size: 16, color: AppColors.copper),
+                                  const SizedBox(width: 4),
+                                  Text(ex.name, style: _bodyStyle.copyWith(fontSize: 13)),
                                   const Spacer(),
                                   Text(
                                     '${ex.duration}分钟 / ${ex.cal}千卡',
@@ -725,7 +728,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
                                   const SizedBox(width: 8),
                                   Text(
                                     '-${ex.damage}',
-                                    style: GoogleFonts.figtree(
+                                    style: AppFonts.body(
                                       color: AppColors.ember,
                                       fontWeight: FontWeight.w600,
                                     ),
@@ -790,7 +793,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
                           foregroundColor: AppColors.ember,
                           side: BorderSide(color: AppColors.ember.withValues(alpha: 0.5)),
                         ),
-                        child: Text('断开', style: GoogleFonts.figtree(fontSize: 13)),
+                        child: Text('断开', style: AppFonts.body(fontSize: 13)),
                       )
                     : OutlinedButton(
                         onPressed: bleService.isScanning
@@ -802,7 +805,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
                         ),
                         child: Text(
                           bleService.isScanning ? '扫描中...' : '扫描设备',
-                          style: GoogleFonts.figtree(fontSize: 13),
+                          style: AppFonts.body(fontSize: 13),
                         ),
                       ),
               ],
@@ -844,7 +847,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
                       itemBuilder: (context, index) {
                         return Text(
                           _bleLogs[index],
-                          style: GoogleFonts.figtree(
+                          style: AppFonts.body(
                             color: AppColors.text2,
                             fontSize: 11,
                             height: 1.35,
@@ -906,7 +909,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
           const SizedBox(height: 2),
           Text(
             value,
-            style: GoogleFonts.figtree(fontWeight: FontWeight.w700, fontSize: 14),
+            style: AppFonts.body(fontWeight: FontWeight.w700, fontSize: 14),
           ),
           Text(unit, style: _mutedStyle.copyWith(fontSize: 10)),
         ],
@@ -923,7 +926,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
       child: Column(
           children: [
             Text(
-              '${exercise.emoji} ${exercise.name}',
+              exercise.name,
               style: _bodyStyle.copyWith(fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 8),
@@ -946,7 +949,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
               ),
               child: Text(
                 '▶️ 开始检测',
-                style: GoogleFonts.figtree(fontWeight: FontWeight.w700),
+                style: AppFonts.body(fontWeight: FontWeight.w700),
               ),
             ),
           ],
@@ -967,7 +970,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
     
     return _sectionCard(
       icon: Icons.sensors_outlined,
-      title: '${exercise?.emoji ?? ''} ${exercise?.name ?? ''} 检测中',
+      title: '${exercise?.name ?? ''} 检测中',
       child: Column(
           children: [
             Text(
@@ -1037,7 +1040,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
               ),
               child: Text(
                 '⏹️ 结束检测',
-                style: GoogleFonts.figtree(fontWeight: FontWeight.w600),
+                style: AppFonts.body(fontWeight: FontWeight.w600),
               ),
             ),
           ],
@@ -1146,7 +1149,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
                   ),
                   child: Text(
                     '🔥 ${_gameLogic.comboCount}连击 · x${_gameLogic.comboMultiplier.toStringAsFixed(1)}',
-                    style: GoogleFonts.figtree(
+                    style: AppFonts.body(
                       color: AppColors.copper,
                       fontWeight: FontWeight.w700,
                     ),
@@ -1182,7 +1185,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
                   ),
                   child: Text(
                     '⏸️ 已暂停',
-                    style: GoogleFonts.figtree(
+                    style: AppFonts.body(
                       color: AppColors.ember,
                       fontWeight: FontWeight.w700,
                     ),
@@ -1286,7 +1289,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
                 icon: const Icon(Icons.screen_rotation_alt_outlined, size: 18),
                 label: Text(
                   _cameraSettling ? '正在打开…' : '打开摄像头教练',
-                  style: GoogleFonts.figtree(fontWeight: FontWeight.w600),
+                  style: AppFonts.body(fontWeight: FontWeight.w600),
                 ),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: AppColors.copper,
@@ -1348,7 +1351,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
                   ),
                   child: Text(
                     '开始摄像头教练',
-                    style: GoogleFonts.figtree(fontWeight: FontWeight.w700),
+                    style: AppFonts.body(fontWeight: FontWeight.w700),
                   ),
                 ),
             ]
@@ -1362,7 +1365,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
                 ),
                 child: Text(
                   '结束教练（结算）',
-                  style: GoogleFonts.figtree(fontWeight: FontWeight.w600),
+                  style: AppFonts.body(fontWeight: FontWeight.w600),
                 ),
               ),
           ],
@@ -1816,7 +1819,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
     
     gameNotifier.addExercise(record);
     _showToast(
-      '${exercise.emoji} ${exercise.name}完成！'
+      '${exercise.name}完成！'
       '${durationMinutes}分钟，$repCount次，消耗${cal}千卡，'
       '造成${damageResult.damage}点伤害！',
     );
@@ -1928,7 +1931,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
     );
     
     gameNotifier.addExercise(record);
-    _showToast('${exercise.emoji} ${exercise.name}完成！${durationMinutes}分钟，消耗${cal}千卡，造成${damageResult.damage}点伤害！');
+    _showToast('${exercise.name}完成！${durationMinutes}分钟，消耗${cal}千卡，造成${damageResult.damage}点伤害！');
     
     setState(() {
       _detectStartTime = null;
@@ -1991,7 +1994,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
             ),
             child: Text(
               _getActionTip(exercise.type),
-              style: GoogleFonts.figtree(color: AppColors.text, fontSize: 12),
+              style: AppFonts.body(color: AppColors.text, fontSize: 12),
             ),
           ),
           const Spacer(),
@@ -2008,8 +2011,8 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
                 _getActionEmoji(exercise.type),
                 const SizedBox(width: 8),
                 Text(
-                  '${exercise.emoji} ${exercise.name}',
-                  style: GoogleFonts.figtree(
+                  exercise.name,
+                  style: AppFonts.body(
                     color: AppColors.text,
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
@@ -2110,7 +2113,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
     );
     
     gameNotifier.addExercise(record);
-    _showToast('${exercise.emoji} ${exercise.name}完成！造成${_calcPreviewDamage()}点伤害！');
+    _showToast('${exercise.name}完成！造成${_calcPreviewDamage()}点伤害！');
   }
   
   /// 模式切换
@@ -2171,7 +2174,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
             RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           ),
           textStyle: WidgetStateProperty.all(
-            GoogleFonts.figtree(fontSize: 12, fontWeight: FontWeight.w600),
+            AppFonts.body(fontSize: 12, fontWeight: FontWeight.w600),
           ),
         ),
       ),
@@ -2233,7 +2236,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
         ),
         child: Text(
           label,
-          style: GoogleFonts.figtree(
+          style: AppFonts.body(
             color: selected ? AppColors.copper : AppColors.text2,
             fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
             fontSize: 13,
@@ -2247,7 +2250,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
   void _showToast(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(message, style: GoogleFonts.figtree()),
+        content: Text(message, style: AppFonts.body()),
         backgroundColor: AppColors.bg3,
         behavior: SnackBarBehavior.floating,
       ),

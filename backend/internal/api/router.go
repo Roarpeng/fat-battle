@@ -16,10 +16,12 @@ func NewRouter(_ *pgxpool.Pool, _ string) *gin.Engine {
 	r := gin.New()
 	r.Use(gin.Logger(), gin.Recovery())
 	r.Use(cors.New(cors.Config{
-		AllowAllOrigins:  true,
-		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
-		AllowCredentials: true,
+		AllowAllOrigins: true,
+		AllowMethods:    []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowHeaders:    []string{"Origin", "Content-Type", "Authorization"},
+		// 鉴权走 Authorization 头（非 Cookie），无需 credentials；
+		// gin-contrib/cors 不允许 AllowAllOrigins 与 AllowCredentials 同时为 true
+		AllowCredentials: false,
 		MaxAge:           12 * time.Hour,
 	}))
 	return r
@@ -42,8 +44,8 @@ func RegisterRoutes(r *gin.Engine, pool *pgxpool.Pool, jwtSecret, adminJwtSecret
 			})
 		})
 
-		// 账号管理（无鉴权）
-		auth := api.Group("/auth")
+		// 账号管理（无鉴权，限流防暴力破解）
+		auth := api.Group("/auth", middleware.RateLimit(10, time.Minute))
 		{
 			auth.POST("/register", registerHandler(pool, jwtSecret))
 			auth.POST("/login", loginHandler(pool, jwtSecret))
@@ -57,8 +59,8 @@ func RegisterRoutes(r *gin.Engine, pool *pgxpool.Pool, jwtSecret, adminJwtSecret
 			protected.GET("/user/me", meHandler(pool))
 			protected.DELETE("/user", deleteAccountHandler(pool))
 
-			// 食物识别代理（GLM 转发，密钥只留服务器）
-			food := protected.Group("/food")
+			// 食物识别代理（GLM 转发，密钥只留服务器；LLM 成本高，严格限流）
+			food := protected.Group("/food", middleware.RateLimit(30, time.Minute))
 			{
 				food.POST("/recognize", recognizeHandler(pool))
 				food.POST("/barcode", barcodeHandler())
@@ -85,7 +87,8 @@ func RegisterRoutes(r *gin.Engine, pool *pgxpool.Pool, jwtSecret, adminJwtSecret
 	// 管理 API（/api/admin，独立 JWT secret）
 	admin := r.Group("/api/admin")
 	{
-		admin.POST("/login", adminLoginHandler(pool, adminJwtSecret))
+		// 管理员登录单独收紧限流，防口令爆破
+		admin.POST("/login", middleware.RateLimit(5, time.Minute), adminLoginHandler(pool, adminJwtSecret))
 
 		adminAuth := admin.Group("", middleware.AdminAuth(adminJwtSecret))
 		{

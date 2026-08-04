@@ -1,6 +1,6 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../theme/forge_theme.dart';
 import '../constants/app_constants.dart';
 import '../providers/companion_provider.dart';
 import '../widgets/home/forge_background.dart';
@@ -25,15 +25,15 @@ class CompanionPage extends ConsumerStatefulWidget {
 }
 
 class _CompanionPageState extends ConsumerState<CompanionPage> {
-  TextStyle get _displayStyle => GoogleFonts.fraunces(
+  TextStyle get _displayStyle => AppFonts.display(
         fontWeight: FontWeight.w600,
         color: AppColors.text,
       );
 
-  TextStyle get _bodyStyle => GoogleFonts.figtree(color: AppColors.text);
+  TextStyle get _bodyStyle => AppFonts.body(color: AppColors.text);
 
   TextStyle get _mutedStyle =>
-      GoogleFonts.figtree(color: AppColors.text2, fontSize: 12);
+      AppFonts.body(color: AppColors.text2, fontSize: 12);
 
   @override
   void initState() {
@@ -189,11 +189,11 @@ class _ActiveCompanionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final display = GoogleFonts.fraunces(
+    final display = AppFonts.display(
       fontWeight: FontWeight.w600,
       color: AppColors.text,
     );
-    final body = GoogleFonts.figtree(color: AppColors.text);
+    final body = AppFonts.body(color: AppColors.text);
     final catalog = _companionCatalog.firstWhere(
       (c) => c.defId == pet.defId,
       orElse: () => (defId: pet.defId, name: pet.name, emoji: pet.emoji, desc: ''),
@@ -272,7 +272,7 @@ class _MiniStat extends StatelessWidget {
         const SizedBox(height: 2),
         Text(
           label,
-          style: GoogleFonts.figtree(color: AppColors.text2, fontSize: 11),
+          style: AppFonts.body(color: AppColors.text2, fontSize: 11),
         ),
       ],
     );
@@ -352,7 +352,7 @@ class _ActionChip extends StatelessWidget {
               const SizedBox(width: 6),
               Text(
                 label,
-                style: GoogleFonts.figtree(
+                style: AppFonts.body(
                   color: fgColor,
                   fontWeight: FontWeight.w600,
                   fontSize: 13,

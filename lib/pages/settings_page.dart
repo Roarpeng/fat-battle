@@ -1,9 +1,10 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../theme/forge_theme.dart';
+import '../theme/app_icons.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -12,9 +13,9 @@ import '../providers/game_provider.dart';
 import '../services/auth_service.dart';
 import '../services/voice_service.dart';
 import '../pages/auth_page.dart';
-import '../pages/welcome_page.dart';
 import '../pages/companion_page.dart';
 import '../pages/achievements_page.dart';
+import '../pages/privacy_page.dart';
 import '../providers/inventory_provider.dart';
 import '../widgets/home/forge_background.dart';
 import '../widgets/meta/shop_item_card.dart';
@@ -39,7 +40,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         appBar: AppBar(
           title: Text(
             '工坊设置',
-            style: GoogleFonts.fraunces(fontWeight: FontWeight.w600),
+            style: AppFonts.display(fontWeight: FontWeight.w600),
           ),
           centerTitle: true,
         ),
@@ -230,11 +231,15 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                                 child: Column(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    Text(style.emoji, style: const TextStyle(fontSize: 18)),
+                                    Icon(
+                                      AppIcons.characterStyle(style),
+                                      size: 20,
+                                      color: isSelected ? AppColors.purple : AppColors.text2,
+                                    ),
                                     const SizedBox(height: 4),
                                     Text(
                                       style.name,
-                                      style: GoogleFonts.figtree(
+                                      style: AppFonts.body(
                                         fontSize: 12,
                                         fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
                                         color: isSelected ? AppColors.purple : AppColors.text,
@@ -261,7 +266,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 const SizedBox(width: 8),
                 Text(
                   '养成与元系统',
-                  style: GoogleFonts.figtree(
+                  style: AppFonts.body(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
                     color: AppColors.text2,
@@ -275,10 +280,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 children: [
                   ListTile(
                     leading: Icon(Icons.pets_outlined, color: AppColors.copper, size: 24),
-                    title: Text('战斗伙伴', style: GoogleFonts.figtree(fontWeight: FontWeight.w600)),
+                    title: Text('战斗伙伴', style: AppFonts.body(fontWeight: FontWeight.w600)),
                     subtitle: Text(
                       '切换宠物、互动与领取掉落',
-                      style: GoogleFonts.figtree(color: AppColors.text2, fontSize: 12),
+                      style: AppFonts.body(color: AppColors.text2, fontSize: 12),
                     ),
                     trailing: Icon(Icons.chevron_right, color: AppColors.copper),
                     onTap: () {
@@ -290,10 +295,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   const Divider(height: 1, color: AppColors.border),
                   ListTile(
                     leading: Icon(Icons.emoji_events_outlined, color: AppColors.copper, size: 24),
-                    title: Text('成就', style: GoogleFonts.figtree(fontWeight: FontWeight.w600)),
+                    title: Text('成就', style: AppFonts.body(fontWeight: FontWeight.w600)),
                     subtitle: Text(
                       '已解锁 ${gameState.achievements.length}/${Achievements.all.length}',
-                      style: GoogleFonts.figtree(color: AppColors.text2, fontSize: 12),
+                      style: AppFonts.body(color: AppColors.text2, fontSize: 12),
                     ),
                     trailing: Icon(Icons.chevron_right, color: AppColors.copper),
                     onTap: () {
@@ -305,10 +310,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   const Divider(height: 1, color: AppColors.border),
                   ListTile(
                     leading: Icon(Icons.storefront_outlined, color: AppColors.copper, size: 24),
-                    title: Text('锻造商店', style: GoogleFonts.figtree(fontWeight: FontWeight.w600)),
+                    title: Text('锻造商店', style: AppFonts.body(fontWeight: FontWeight.w600)),
                     subtitle: Text(
                       '用金币购买道具与装饰',
-                      style: GoogleFonts.figtree(color: AppColors.text2, fontSize: 12),
+                      style: AppFonts.body(color: AppColors.text2, fontSize: 12),
                     ),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
@@ -330,7 +335,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                               const SizedBox(width: 4),
                               Text(
                                 '${gameState.coins}',
-                                style: GoogleFonts.fraunces(
+                                style: AppFonts.display(
                                   color: AppColors.copper,
                                   fontWeight: FontWeight.w600,
                                   fontSize: 13,
@@ -443,7 +448,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 const SizedBox(width: 8),
                 Text(
                   '账号安全与隐私规范',
-                  style: GoogleFonts.figtree(
+                  style: AppFonts.body(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
                     color: AppColors.text2,
@@ -463,6 +468,43 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                       title: 'API 网关服务',
                       subtitle: '食物卡路里识别与大模型加密中转代理',
                       trailing: Icon(Icons.check_circle_outline, color: AppColors.green, size: 20),
+                    ),
+                    const Divider(color: AppColors.border),
+
+                    // 隐私政策入口（商店上架合规）
+                    InkWell(
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const PrivacyPolicyPage()),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        child: Row(
+                          children: [
+                            Icon(Icons.policy_outlined, color: AppColors.copper, size: 20),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    '用户协议与隐私政策',
+                                    style: AppFonts.body(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                      color: AppColors.text,
+                                    ),
+                                  ),
+                                  Text(
+                                    '信息收集、权限用途与注销说明',
+                                    style: AppFonts.body(fontSize: 12, color: AppColors.text2),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Icon(Icons.chevron_right, color: AppColors.text2, size: 20),
+                          ],
+                        ),
+                      ),
                     ),
                     const Divider(color: AppColors.border),
 
@@ -513,11 +555,19 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                                   child: const Text('取消'),
                                 ),
                                 ElevatedButton(
-                                  onPressed: () {
-                                    gameNotifier.resetGame();
+                                  onPressed: () async {
                                     Navigator.of(ctx).pop();
+                                    _showToast('正在注销账号并抹除数据…');
+                                    // 先删云端账号（后端 DELETE /user），成功后再擦本地
+                                    final ok = await AuthService().deleteAccount();
+                                    if (!mounted) return;
+                                    if (!ok) {
+                                      _showToast('网络异常，云端删除失败，请重试');
+                                      return;
+                                    }
+                                    gameNotifier.resetGame();
                                     Navigator.of(context).pushReplacement(
-                                      MaterialPageRoute(builder: (_) => const WelcomePage()),
+                                      MaterialPageRoute(builder: (_) => const AuthPage()),
                                     );
                                     _showToast('账号已安全注销，本地与云端数据已彻底擦除');
                                   },
@@ -581,7 +631,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             Wrap(
               spacing: 4,
               children: unlocked.take(6).map((a) =>
-                Text(a.emoji, style: const TextStyle(fontSize: 16)),
+                Icon(AppIcons.achievement(a.id), size: 16, color: AppColors.gold),
               ).toList(),
             ),
           const SizedBox(height: 6),
@@ -772,11 +822,11 @@ class _ShopPageState extends ConsumerState<ShopPage> {
   Widget build(BuildContext context) {
     final gameState = ref.watch(gameStateProvider);
     final inventory = ref.watch(inventoryProvider);
-    final display = GoogleFonts.fraunces(
+    final display = AppFonts.display(
       fontWeight: FontWeight.w600,
       color: AppColors.text,
     );
-    final body = GoogleFonts.figtree(color: AppColors.text);
+    final body = AppFonts.body(color: AppColors.text);
 
     return ForgeBackground(
       child: Scaffold(

@@ -174,7 +174,13 @@
         <h3>新增 LLM 配置</h3>
         <div class="form-grid">
           <div><label>配置名 *</label><input id="cfName" placeholder="如：智谱 GLM 主服务"></div>
-          <div><label>Provider</label><input id="cfProvider" value="zhipu"></div>
+          <div><label>Provider</label>
+            <select id="cfProvider" onchange="onProviderChange()">
+              <option value="zhipu" selected>zhipu（智谱 GLM）</option>
+              <option value="qwen">qwen（阿里通义千问 DashScope）</option>
+              <option value="openai-compatible">openai-compatible（其他 OpenAI 兼容）</option>
+            </select>
+          </div>
           <div><label>Base URL</label><input id="cfBaseUrl" value="https://open.bigmodel.cn"></div>
           <div><label>API Key *</label><input id="cfApiKey" placeholder="只存服务器"></div>
           <div><label>视觉模型</label><input id="cfVision" value="glm-4.6v-flash"></div>
@@ -313,6 +319,18 @@ function resetPw(id) {
 }
 
 /* ---- LLM 配置 ---- */
+const PROVIDER_DEFAULTS = {
+  'zhipu': { baseUrl: 'https://open.bigmodel.cn', vision: 'glm-4.6v-flash', text: 'glm-4-flash' },
+  'qwen': { baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode', vision: 'qwen-vl-plus', text: 'qwen-turbo' },
+};
+function onProviderChange() {
+  const d = PROVIDER_DEFAULTS[document.getElementById('cfProvider').value];
+  if (!d) return;
+  document.getElementById('cfBaseUrl').value = d.baseUrl;
+  document.getElementById('cfVision').value = d.vision;
+  document.getElementById('cfText').value = d.text;
+}
+
 function loadLlm() {
   api('/llm').then(d => {
     const rows = document.getElementById('llmRows');
@@ -365,7 +383,12 @@ function editLlm(id) {
     if (!c) return;
     editingLlmId = id;
     document.getElementById('cfName').value = c.name;
-    document.getElementById('cfProvider').value = c.provider;
+    const provSel = document.getElementById('cfProvider');
+    if ([...provSel.options].some(o => o.value === c.provider)) {
+      provSel.value = c.provider;
+    } else {
+      provSel.value = 'openai-compatible';
+    }
     document.getElementById('cfBaseUrl').value = c.baseUrl;
     document.getElementById('cfApiKey').value = c.apiKey; // 脱敏值，提交不更新
     document.getElementById('cfApiKey').placeholder = '留空或脱敏值 = 不修改';
@@ -381,9 +404,7 @@ function resetLlmForm() {
   editingLlmId = 0;
   ['cfName','cfApiKey','cfRemark'].forEach(i => document.getElementById(i).value = '');
   document.getElementById('cfProvider').value = 'zhipu';
-  document.getElementById('cfBaseUrl').value = 'https://open.bigmodel.cn';
-  document.getElementById('cfVision').value = 'glm-4.6v-flash';
-  document.getElementById('cfText').value = 'glm-4-flash';
+  onProviderChange();
   document.getElementById('cfPriority').value = '0';
   document.getElementById('cfEnabled').value = '1';
   document.getElementById('cfApiKey').placeholder = '只存服务器';

@@ -1,8 +1,8 @@
-import 'dart:math' as math;
+﻿import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../../theme/forge_theme.dart';
 
 import '../../constants/app_constants.dart';
 import '../../models/game_models.dart';
@@ -161,7 +161,7 @@ class _MonsterStageAvatarState extends State<MonsterStageAvatar>
                   child: Text(
                     'Lv.${widget.monster.level}'
                     '${widget.monster.isBoss ? ' · BOSS' : ''}',
-                    style: GoogleFonts.figtree(
+                    style: AppFonts.body(
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
                       color: AppColors.copper,

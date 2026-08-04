@@ -1,10 +1,9 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:typed_data';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:google_fonts/google_fonts.dart';
-import 'package:mobile_scanner/mobile_scanner.dart';
+import '../theme/forge_theme.dart';
 import 'package:camera/camera.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
@@ -29,15 +28,15 @@ class FoodPage extends ConsumerStatefulWidget {
 }
 
 class _FoodPageState extends ConsumerState<FoodPage> {
-  TextStyle get _displayStyle => GoogleFonts.fraunces(
+  TextStyle get _displayStyle => AppFonts.display(
         color: AppColors.text,
         fontWeight: FontWeight.w600,
       );
 
-  TextStyle get _bodyStyle => GoogleFonts.figtree(color: AppColors.text);
+  TextStyle get _bodyStyle => AppFonts.body(color: AppColors.text);
 
   TextStyle get _mutedStyle =>
-      GoogleFonts.figtree(color: AppColors.text2, fontSize: 13);
+      AppFonts.body(color: AppColors.text2, fontSize: 13);
 
   late final Map<MealType, TextEditingController> _foodNameControllers;
   late final Map<MealType, TextEditingController> _foodCalControllers;
@@ -141,49 +140,6 @@ class _FoodPageState extends ConsumerState<FoodPage> {
     _recommendBarKeys[meal]?.currentState?.refreshRecent();
   }
 
-  Future<void> _startBarcodeScan() async {
-    final status = await Permission.camera.request();
-    if (!status.isGranted) {
-      _showSnack('请授予摄像头权限', isError: true);
-      return;
-    }
-    if (!mounted) return;
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (ctx) => _BarcodeScannerPage(
-          onDetected: (barcode) async {
-            Navigator.of(ctx).pop();
-            _showLoading('正在查询食物信息...');
-            try {
-              final result = await _foodService.lookupByBarcodeDetailed(barcode);
-              if (!mounted) return;
-              Navigator.of(context).pop();
-              if (result.isEmpty) {
-                _showSnack(
-                  '未找到条形码 $barcode 对应的食物\n${result.emptyMessage}',
-                  isError: true,
-                  duration: const Duration(seconds: 5),
-                );
-                return;
-              }
-              _showFoodConfirmDialog(result.items, '扫码识别结果');
-            } catch (e) {
-              if (mounted) {
-                Navigator.of(context).pop();
-                _showSnack('条码查询失败: $e', isError: true);
-              }
-            }
-          },
-          onScanError: (message) {
-            if (mounted) {
-              _showSnack(message, isError: true);
-            }
-          },
-        ),
-      ),
-    );
-  }
-
   Future<void> _startImageRecognition() async {
     if (!_foodService.hasAnyVisionConfig) {
       final proceed = await _confirmProceedWithoutVision();
@@ -235,17 +191,15 @@ class _FoodPageState extends ConsumerState<FoodPage> {
 
         if (recogResult.source == 'local') {
           _showSnack(
-            '在线识别不可用，已展示本地推荐候选（${recogResult.sourceLabel}）',
+            '在线识别不可用，已展示本地推荐候选',
             isError: false,
             duration: const Duration(seconds: 4),
           );
-        } else {
-          _showSnack('识别来源：${recogResult.sourceLabel}', duration: const Duration(seconds: 2));
         }
 
         _showFoodConfirmDialog(
           recogResult.items.take(8).toList(),
-          '拍照识别结果 · ${recogResult.sourceLabel}',
+          '拍照识别结果',
         );
       } catch (e) {
         if (mounted) {
@@ -301,7 +255,7 @@ class _FoodPageState extends ConsumerState<FoodPage> {
     buffer.writeln('\n请尝试：');
     buffer.writeln('1. 拍一盘做好的菜，确保食物占画面主体');
     buffer.writeln('2. 使用「搜索食物」输入名称');
-    buffer.writeln('3. 包装食品可使用「扫码识别」');
+    buffer.writeln('3. 包装食品可拍配料表照片，自动读取卡路里');
     if (!ApiConfig.hasAnyFoodVisionConfig) {
       buffer.writeln('\n${ApiConfig.foodVisionConfigHint}');
     }
@@ -913,7 +867,7 @@ class _FoodPageState extends ConsumerState<FoodPage> {
             ),
             const SizedBox(height: 4),
             Text(
-              '扫码、拍照或搜索，快速记录今日饮食',
+              '拍照或搜索，快速记录今日饮食',
               style: _mutedStyle.copyWith(fontSize: 12),
             ),
             const SizedBox(height: 14),
@@ -921,19 +875,9 @@ class _FoodPageState extends ConsumerState<FoodPage> {
               children: [
                 Expanded(
                   child: _buildRecogButton(
-                    icon: Icons.qr_code_scanner_outlined,
-                    label: '扫码识别',
-                    sub: '包装食品',
-                    accent: AppColors.copper,
-                    onTap: _startBarcodeScan,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: _buildRecogButton(
                     icon: Icons.photo_camera_outlined,
                     label: '拍照识别',
-                    sub: '菜肴/水果',
+                    sub: '菜肴/配料表',
                     accent: AppColors.ember,
                     onTap: _startImageRecognition,
                   ),
@@ -1137,8 +1081,6 @@ class _FoodPageState extends ConsumerState<FoodPage> {
                       '${food.calories} kcal',
                       style: _bodyStyle.copyWith(color: AppColors.copper, fontSize: 12),
                     ),
-                    const SizedBox(width: 6),
-                    Text(food.source, style: _mutedStyle.copyWith(fontSize: 10)),
                   ],
                 ),
               ),
@@ -1152,7 +1094,7 @@ class _FoodPageState extends ConsumerState<FoodPage> {
   Widget _buildFoodItem(FoodItem food, MealType meal, int index, GameStateNotifier gameNotifier) {
     return Container(
       margin: const EdgeInsets.only(bottom: 6),
-      padding: const EdgeInsets.all(10),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
         color: AppColors.bg2,
         borderRadius: BorderRadius.circular(10),
@@ -1160,14 +1102,35 @@ class _FoodPageState extends ConsumerState<FoodPage> {
       ),
       child: Row(
         children: [
-          Expanded(child: Text(food.name, style: _bodyStyle)),
-          Text(food.size.name, style: _mutedStyle),
-          const SizedBox(width: 8),
-          Text(
-            '${food.totalCal}千卡',
-            style: _bodyStyle.copyWith(color: AppColors.copper, fontWeight: FontWeight.w600),
+          // 餐次色点：快速区分记录归属
+          Container(
+            width: 7,
+            height: 7,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: AppColors.copper.withValues(alpha: 0.85),
+            ),
           ),
-          const SizedBox(width: 4),
+          const SizedBox(width: 8),
+          Expanded(child: Text(food.name, style: _bodyStyle.copyWith(fontSize: 13))),
+          Text(food.size.name, style: _mutedStyle.copyWith(fontSize: 11)),
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            decoration: BoxDecoration(
+              color: AppColors.copper.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(9),
+            ),
+            child: Text(
+              '${food.totalCal} kcal',
+              style: _bodyStyle.copyWith(
+                color: AppColors.copper,
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          const SizedBox(width: 2),
           IconButton(
             onPressed: () => gameNotifier.removeFood(meal, index),
             icon: Icon(Icons.close, color: AppColors.ember, size: 18),
@@ -1282,97 +1245,6 @@ class _FoodPageState extends ConsumerState<FoodPage> {
   }
 }
 
-class _BarcodeScannerPage extends StatefulWidget {
-  final Future<void> Function(String) onDetected;
-  final void Function(String message)? onScanError;
-
-  const _BarcodeScannerPage({
-    required this.onDetected,
-    this.onScanError,
-  });
-
-  @override
-  State<_BarcodeScannerPage> createState() => _BarcodeScannerPageState();
-}
-
-class _BarcodeScannerPageState extends State<_BarcodeScannerPage> {
-  bool _detected = false;
-  String? _errorMessage;
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('扫描条形码', style: GoogleFonts.fraunces(fontWeight: FontWeight.w600)),
-        centerTitle: true,
-      ),
-      body: Stack(
-        children: [
-          MobileScanner(
-            errorBuilder: (context, error, child) {
-              final msg = '摄像头不可用：${error.errorCode.name}';
-              widget.onScanError?.call(msg);
-              return Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Text(msg, textAlign: TextAlign.center),
-                ),
-              );
-            },
-            onDetect: (capture) {
-              if (_detected) return;
-              final barcodes = capture.barcodes;
-              if (barcodes.isEmpty) return;
-
-              String? code;
-              for (final barcode in barcodes) {
-                final raw = barcode.rawValue?.trim();
-                if (raw != null && raw.isNotEmpty) {
-                  code = raw;
-                  break;
-                }
-              }
-
-              if (code == null) {
-                setState(() {
-                  _errorMessage = '无法读取条形码，请对准包装条码重试';
-                });
-                return;
-              }
-
-              _detected = true;
-              widget.onDetected(code).catchError((Object e) {
-                _detected = false;
-                widget.onScanError?.call('扫码处理失败: $e');
-              });
-            },
-          ),
-          Positioned(
-            bottom: 40,
-            left: 0,
-            right: 0,
-            child: Center(
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                decoration: BoxDecoration(
-                  color: AppColors.bg3.withValues(alpha: 0.85),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: AppColors.copper.withValues(alpha: 0.35)),
-                ),
-                child: Text(
-                  _errorMessage ?? '将条形码对准扫描框',
-                  style: GoogleFonts.figtree(color: AppColors.text, fontSize: 14),
-                  textAlign: TextAlign.center,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _TakePicturePage extends StatefulWidget {
   final List<CameraDescription> cameras;
   const _TakePicturePage({required this.cameras});
@@ -1421,7 +1293,7 @@ class _TakePicturePageState extends State<_TakePicturePage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('拍照失败: $e', style: GoogleFonts.figtree(color: AppColors.text)),
+            content: Text('拍照失败: $e', style: AppFonts.body(color: AppColors.text)),
             backgroundColor: AppColors.ember,
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -1435,7 +1307,7 @@ class _TakePicturePageState extends State<_TakePicturePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('拍摄食物', style: GoogleFonts.fraunces(fontWeight: FontWeight.w600)),
+        title: Text('拍摄食物', style: AppFonts.display(fontWeight: FontWeight.w600)),
         centerTitle: true,
       ),
       body: _isReady && _controller != null

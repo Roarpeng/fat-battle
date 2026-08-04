@@ -1,7 +1,7 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../theme/forge_theme.dart';
 
 import '../constants/app_constants.dart';
 import '../models/game_models.dart';
@@ -15,6 +15,7 @@ import '../widgets/hub_status_dot.dart';
 import 'exercise_page.dart';
 import 'food_page.dart';
 import 'settings_page.dart';
+import 'setup_page.dart';
 
 /// 方案 A：首页即舞台
 class HomePage extends ConsumerStatefulWidget {
@@ -42,7 +43,39 @@ class _HomePageState extends ConsumerState<HomePage> {
     });
 
     if (!gameState.hasGame) {
-      return const Center(child: Text('请先创建角色'));
+      // 防御性兑底：正常流程已在登录/根路由分流到角色创建页，
+      // 万一到达此处提供直达入口，避免死胡同
+      return ForgeBackground(
+        child: Scaffold(
+          backgroundColor: Colors.transparent,
+          body: Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  '还没有角色档案',
+                  style: AppFonts.display(fontSize: 22, color: AppColors.text),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '创建角色后即可开始今天的战斗',
+                  style: AppFonts.body(fontSize: 13, color: AppColors.text2),
+                ),
+                const SizedBox(height: 20),
+                ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.of(context).pushReplacement(
+                      MaterialPageRoute(builder: (_) => const SetupPage()),
+                    );
+                  },
+                  icon: const Icon(Icons.person_add_alt_1, size: 18),
+                  label: const Text('去创建角色'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
     }
 
     final mealCount =
@@ -62,7 +95,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                   children: [
                     Text(
                       gameState.monster.name,
-                      style: GoogleFonts.fraunces(
+                      style: AppFonts.display(
                         fontSize: 28,
                         fontWeight: FontWeight.w600,
                         color: AppColors.text,
@@ -73,7 +106,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                     Text(
                       _statusLine(gameState),
                       textAlign: TextAlign.center,
-                      style: GoogleFonts.figtree(
+                      style: AppFonts.body(
                         fontSize: 14,
                         color: AppColors.text2,
                         height: 1.35,
@@ -104,7 +137,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                                 duration: const Duration(milliseconds: 200),
                                 child: Text(
                                   _floatLabel!,
-                                  style: GoogleFonts.fraunces(
+                                  style: AppFonts.display(
                                     fontSize: 28,
                                     fontWeight: FontWeight.w700,
                                     color: _floatColor,
@@ -242,7 +275,7 @@ class _HomePageState extends ConsumerState<HomePage> {
         const SizedBox(width: 10),
         Text(
           '第 ${gs.day} 天',
-          style: GoogleFonts.figtree(
+          style: AppFonts.body(
             fontSize: 13,
             color: AppColors.text2,
             fontWeight: FontWeight.w600,
@@ -263,7 +296,7 @@ class _HomePageState extends ConsumerState<HomePage> {
               const SizedBox(width: 4),
               Text(
                 '${gs.coins}',
-                style: GoogleFonts.figtree(
+                style: AppFonts.body(
                   fontSize: 13,
                   fontWeight: FontWeight.w700,
                   color: AppColors.copper,
@@ -310,7 +343,7 @@ class _HomePageState extends ConsumerState<HomePage> {
               children: [
                 Text(
                   title,
-                  style: GoogleFonts.figtree(
+                  style: AppFonts.body(
                     fontWeight: FontWeight.w800,
                     color: color,
                     fontSize: 14,
@@ -318,7 +351,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                 ),
                 Text(
                   subtitle,
-                  style: GoogleFonts.figtree(
+                  style: AppFonts.body(
                     fontSize: 12,
                     color: AppColors.text2,
                   ),
@@ -408,7 +441,7 @@ class _HubConnectionSheetState extends ConsumerState<HubConnectionSheet> {
           const SizedBox(height: 16),
           Text(
             '腰部 Hub',
-            style: GoogleFonts.fraunces(
+            style: AppFonts.display(
               fontSize: 22,
               fontWeight: FontWeight.w600,
             ),
@@ -453,7 +486,7 @@ class _HubConnectionSheetState extends ConsumerState<HubConnectionSheet> {
               reverse: true,
               child: Text(
                 _logs.isEmpty ? '等待操作...' : _logs.join('\n'),
-                style: GoogleFonts.figtree(
+                style: AppFonts.body(
                   fontSize: 12,
                   color: AppColors.text2,
                 ),
@@ -481,7 +514,7 @@ class _HubConnectionSheetState extends ConsumerState<HubConnectionSheet> {
             connected
                 ? (data.name.isEmpty ? 'ESP32-Hub' : data.name)
                 : (_isScanning ? '扫描中…' : '未连接'),
-            style: GoogleFonts.figtree(fontWeight: FontWeight.w700),
+            style: AppFonts.body(fontWeight: FontWeight.w700),
           ),
         ),
       ],

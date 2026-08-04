@@ -1,5 +1,5 @@
-import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+﻿import 'package:flutter/material.dart';
+import '../../theme/forge_theme.dart';
 import '../../constants/app_constants.dart';
 
 /// 通用进度条（饥饿/体力/经验等）— 锻造工坊风格
@@ -19,7 +19,7 @@ class StatBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final body = GoogleFonts.figtree(color: AppColors.text);
+    final body = AppFonts.body(color: AppColors.text);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,

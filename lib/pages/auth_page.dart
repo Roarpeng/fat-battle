@@ -1,22 +1,26 @@
-import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+﻿import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../theme/forge_theme.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../constants/app_constants.dart';
 import '../services/auth_service.dart';
+import '../providers/game_provider.dart';
 import '../widgets/home/forge_background.dart';
-import 'home_page.dart';
+import '../main.dart';
+import 'setup_page.dart';
+import 'privacy_page.dart';
 
 /// 塑身工坊 - 身份认证（注册 / 登录）页面
 ///
 /// 锻造工坊品牌首屏：炉火背景 + 铁砧之锤 + 铜金描边工坊卡
-class AuthPage extends StatefulWidget {
+class AuthPage extends ConsumerStatefulWidget {
   const AuthPage({super.key});
 
   @override
-  State<AuthPage> createState() => _AuthPageState();
+  ConsumerState<AuthPage> createState() => _AuthPageState();
 }
 
-class _AuthPageState extends State<AuthPage> with SingleTickerProviderStateMixin {
+class _AuthPageState extends ConsumerState<AuthPage> with SingleTickerProviderStateMixin {
   late TabController _tabController;
   final _formKey = GlobalKey<FormState>();
 
@@ -26,6 +30,7 @@ class _AuthPageState extends State<AuthPage> with SingleTickerProviderStateMixin
 
   bool _obscurePassword = true;
   bool _isLoading = false;
+  bool _agreedPolicy = false;
 
   @override
   void initState() {
@@ -42,8 +47,30 @@ class _AuthPageState extends State<AuthPage> with SingleTickerProviderStateMixin
     super.dispose();
   }
 
+  /// 登录/注册成功后的统一跳转：
+  /// 有存档 → 主舞台；无存档（新用户）→ 直接进入角色创建，不再出现“请先创建角色”断链
+  void _navigateAfterAuth() {
+    final hasGame = ref.read(gameStateProvider).hasGame;
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(
+        builder: (_) => hasGame ? const MainPage() : const SetupPage(),
+      ),
+    );
+  }
+
   Future<void> _handleSubmit() async {
     if (!_formKey.currentState!.validate()) return;
+
+    // 上架合规：未勾选协议时阻断并提示
+    if (!_agreedPolicy) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('请先阅读并勾选《用户协议与隐私政策》'),
+          backgroundColor: AppColors.red,
+        ),
+      );
+      return;
+    }
 
     setState(() => _isLoading = true);
     final isRegister = _tabController.index == 1;
@@ -78,10 +105,8 @@ class _AuthPageState extends State<AuthPage> with SingleTickerProviderStateMixin
       ),
     );
 
-    // 登录成功跳转主界面
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (_) => const HomePage()),
-    );
+    // 登录成功跳转（有存档进舞台，无存档进角色创建）
+    _navigateAfterAuth();
   }
 
   /// 真实后端注册/登录（成功存 token 后跳转，失败提示 SnackBar）
@@ -119,10 +144,8 @@ class _AuthPageState extends State<AuthPage> with SingleTickerProviderStateMixin
         ),
       );
 
-      // 登录成功跳转主界面
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const HomePage()),
-      );
+      // 登录成功跳转（有存档进舞台，无存档进角色创建）
+      _navigateAfterAuth();
     } on AuthException catch (e) {
       _showBackendError(e.message);
     } catch (e) {
@@ -148,9 +171,7 @@ class _AuthPageState extends State<AuthPage> with SingleTickerProviderStateMixin
     await prefs.setString('user_account', '离线体验勇士');
 
     if (!mounted) return;
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (_) => const HomePage()),
-    );
+    _navigateAfterAuth();
   }
 
   @override
@@ -197,7 +218,7 @@ class _AuthPageState extends State<AuthPage> with SingleTickerProviderStateMixin
                   const SizedBox(height: 18),
                   Text(
                     '塑身工坊',
-                    style: GoogleFonts.fraunces(
+                    style: AppFonts.display(
                       fontSize: 30,
                       fontWeight: FontWeight.w700,
                       color: AppColors.text,
@@ -208,7 +229,7 @@ class _AuthPageState extends State<AuthPage> with SingleTickerProviderStateMixin
                   const SizedBox(height: 8),
                   Text(
                     '你的身体，是你精心雕琢的作品',
-                    style: GoogleFonts.figtree(
+                    style: AppFonts.body(
                       fontSize: 13,
                       color: AppColors.text2,
                     ),
@@ -256,7 +277,7 @@ class _AuthPageState extends State<AuthPage> with SingleTickerProviderStateMixin
                               dividerColor: Colors.transparent,
                               labelColor: const Color(0xFFFFF8F5),
                               unselectedLabelColor: AppColors.text2,
-                              labelStyle: GoogleFonts.figtree(
+                              labelStyle: AppFonts.body(
                                 fontWeight: FontWeight.w700,
                                 fontSize: 13,
                               ),
@@ -300,8 +321,14 @@ class _AuthPageState extends State<AuthPage> with SingleTickerProviderStateMixin
                               border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                             ),
                             validator: (val) {
-                              if (val == null || val.trim().isEmpty) {
+                              final v = val?.trim() ?? '';
+                              if (v.isEmpty) {
                                 return '请输入登录账号/邮箱';
+                              }
+                              final isEmail = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(v);
+                              final isPhone = RegExp(r'^1\d{10}$').hasMatch(v);
+                              if (!isEmail && !isPhone) {
+                                return '请输入正确的邮箱或 11 位手机号';
                               }
                               return null;
                             },
@@ -330,6 +357,9 @@ class _AuthPageState extends State<AuthPage> with SingleTickerProviderStateMixin
                             validator: (val) {
                               if (val == null || val.length < 6) {
                                 return '密码长度不能少于6位';
+                              }
+                              if (val.length > 32) {
+                                return '密码长度不能超过32位';
                               }
                               return null;
                             },
@@ -361,12 +391,65 @@ class _AuthPageState extends State<AuthPage> with SingleTickerProviderStateMixin
                                     )
                                   : Text(
                                       _tabController.index == 0 ? '安全登录' : '立即注册',
-                                      style: GoogleFonts.figtree(
+                                      style: AppFonts.body(
                                         fontSize: 16,
                                         fontWeight: FontWeight.w700,
                                       ),
                                     ),
                             ),
+                          ),
+                          const SizedBox(height: 12),
+
+                          // 协议勾选（商店上架合规要求）
+                          Row(
+                            children: [
+                              SizedBox(
+                                width: 28,
+                                height: 28,
+                                child: Checkbox(
+                                  value: _agreedPolicy,
+                                  onChanged: (v) =>
+                                      setState(() => _agreedPolicy = v ?? false),
+                                  activeColor: AppColors.ember,
+                                  materialTapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap,
+                                  visualDensity: VisualDensity.compact,
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              Expanded(
+                                child: GestureDetector(
+                                  onTap: () => setState(
+                                      () => _agreedPolicy = !_agreedPolicy),
+                                  child: Text.rich(
+                                    TextSpan(
+                                      text: '我已阅读并同意 ',
+                                      style: AppFonts.body(
+                                        fontSize: 12,
+                                        color: AppColors.text2,
+                                      ),
+                                      children: [
+                                        WidgetSpan(
+                                          child: GestureDetector(
+                                            onTap: () => Navigator.of(context)
+                                                .push(MaterialPageRoute(
+                                                    builder: (_) =>
+                                                        const PrivacyPolicyPage())),
+                                            child: Text(
+                                              '《用户协议与隐私政策》',
+                                              style: AppFonts.body(
+                                                fontSize: 12,
+                                                color: AppColors.copper,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
@@ -380,7 +463,7 @@ class _AuthPageState extends State<AuthPage> with SingleTickerProviderStateMixin
                     icon: Icon(Icons.bolt_outlined, color: AppColors.ember, size: 18),
                     label: Text(
                       '免登录离线试用模式',
-                      style: GoogleFonts.figtree(
+                      style: AppFonts.body(
                         color: AppColors.text2,
                         fontSize: 13,
                       ),

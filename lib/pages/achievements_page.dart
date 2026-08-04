@@ -1,6 +1,7 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../theme/forge_theme.dart';
+import '../theme/app_icons.dart';
 import '../constants/app_constants.dart';
 import '../providers/achievement_provider.dart';
 import '../providers/game_provider.dart';
@@ -18,15 +19,15 @@ class AchievementsPage extends ConsumerStatefulWidget {
 }
 
 class _AchievementsPageState extends ConsumerState<AchievementsPage> {
-  TextStyle get _displayStyle => GoogleFonts.fraunces(
+  TextStyle get _displayStyle => AppFonts.display(
         fontWeight: FontWeight.w600,
         color: AppColors.text,
       );
 
-  TextStyle get _bodyStyle => GoogleFonts.figtree(color: AppColors.text);
+  TextStyle get _bodyStyle => AppFonts.body(color: AppColors.text);
 
   TextStyle get _mutedStyle =>
-      GoogleFonts.figtree(color: AppColors.text2, fontSize: 12);
+      AppFonts.body(color: AppColors.text2, fontSize: 12);
 
   @override
   void initState() {
@@ -208,7 +209,11 @@ class _AchievementTile extends StatelessWidget {
           children: [
             Opacity(
               opacity: unlocked ? 1.0 : 0.45,
-              child: Text(achievement.emoji, style: const TextStyle(fontSize: 36)),
+              child: Icon(
+                AppIcons.achievement(achievement.id),
+                size: 36,
+                color: unlocked ? AppColors.gold : AppColors.text2,
+              ),
             ),
             const SizedBox(width: 14),
             Expanded(

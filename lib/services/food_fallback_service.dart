@@ -75,11 +75,14 @@ class FoodFallbackService {
 
     debugPrint('=== 食物识别开始 ===');
     debugPrint('图片大小: ${u8.length} 字节');
-    debugPrint('GLM 已配置: ${ApiConfig.hasGlmConfig}');
+    debugPrint('GLM 已配置: ${_glm.isConfigured} '
+        '(后端代理: ${ApiConfig.isBackendEnabled}, 直连Key: ${ApiConfig.hasGlmConfig})');
     debugPrint('百度已配置: ${_baidu.isConfigured()}');
 
     // ===== 1. GLM-4.6V-Flash（主源） =====
-    if (ApiConfig.hasGlmConfig) {
+    // 后端代理模式（密钥在服务端）或直连 Key 均可进入；
+    // 上架版本只配 API_BASE_URL，走后端代理，APK 内不含任何 LLM 密钥。
+    if (_glm.isConfigured) {
       attempted.add('GLM-4.6V');
       try {
         debugPrint('开始调用 GLM-4.6V-Flash API...');

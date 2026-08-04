@@ -1,5 +1,6 @@
-import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+﻿import 'package:flutter/material.dart';
+import '../../theme/forge_theme.dart';
+import '../../theme/app_icons.dart';
 import '../../constants/app_constants.dart';
 
 /// 商店单项卡片 — 锻造工坊风格
@@ -21,11 +22,11 @@ class ShopItemCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final display = GoogleFonts.fraunces(
+    final display = AppFonts.display(
       fontWeight: FontWeight.w600,
       color: AppColors.text,
     );
-    final body = GoogleFonts.figtree(color: AppColors.text);
+    final body = AppFonts.body(color: AppColors.text);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
@@ -42,7 +43,7 @@ class ShopItemCard extends StatelessWidget {
         padding: const EdgeInsets.all(14),
         child: Row(
           children: [
-            Text(item.emoji, style: const TextStyle(fontSize: 36)),
+            Icon(AppIcons.shop(item.id), size: 36, color: AppColors.gold),
             const SizedBox(width: 14),
             Expanded(
               child: Column(

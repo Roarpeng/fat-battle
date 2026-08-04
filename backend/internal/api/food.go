@@ -17,9 +17,9 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// 智谱 GLM 代理常量（对齐 App 端 GlmFoodService 的契约）
+// LLM 提供商常量
 const (
-	glmProvider     = "zhipu" // 当前支持的 provider
+	glmProvider     = "zhipu" // 智谱 GLM（专属路径），保留用于 X-Provider 响应头兼容
 	glmSystemPrompt = "你是专业的食物识别和营养分析专家。请识别图片中的食物，返回结构化 JSON 结果。\n【重要】只输出 JSON，不要有任何其他文字、解释或代码块标记。\n【输出格式】\n{\"items\":[{\"name\":\"食物名称\",\"calorie\":每100克卡路里数值,\"confidence\":置信度0-1,\"category\":\"食物类别\",\"description\":\"简短描述\"}]}\n【要求】name用中文；calorie为每100g千卡；置信度低于0.3不要返回；最多识别清晰可见的食物。"
 )
 
@@ -37,7 +37,7 @@ type llmConfig struct {
 	Remark      string `json:"remark"`
 }
 
-// pickLLMConfig 取第一条 enabled=true 的 zhipu 配置（按 priority 升序）
+// pickLLMConfig 取第一条 enabled=true 且受支持的配置（按 priority 升序）
 func pickLLMConfig(ctx context.Context, pool *pgxpool.Pool) (*llmConfig, error) {
 	rows, err := pool.Query(ctx, `SELECT id, name, provider, base_url, api_key,
 		vision_model, text_model, enabled, priority, COALESCE(remark, '')
@@ -53,19 +53,83 @@ func pickLLMConfig(ctx context.Context, pool *pgxpool.Pool) (*llmConfig, error) 
 			&cfg.VisionModel, &cfg.TextModel, &cfg.Enabled, &cfg.Priority, &cfg.Remark); err != nil {
 			return nil, err
 		}
-		if cfg.Provider == glmProvider {
+		if isSupportedProvider(cfg.Provider) {
 			return &cfg, nil
 		}
 	}
 	if rows.Err() != nil {
 		return nil, rows.Err()
 	}
-	return nil, pgx.ErrNoRows // 无可用 zhipu 配置
+	return nil, pgx.ErrNoRows // 无可用配置
 }
 
-// chat 调用 GLM 兼容的 chat/completions 接口，返回 choices[0].message.content
+// isSupportedProvider 受支持的 provider：zhipu / qwen（及任意 OpenAI 兼容服务）
+func isSupportedProvider(p string) bool {
+	switch strings.ToLower(strings.TrimSpace(p)) {
+	case "zhipu", "glm", "qwen", "dashscope", "openai", "openai-compatible":
+		return true
+	}
+	return false
+}
+
+// defaultBaseURL provider 的默认 Base URL（配置留空时兑底）
+func defaultBaseURL(provider string) string {
+	switch strings.ToLower(strings.TrimSpace(provider)) {
+	case "qwen", "dashscope":
+		return "https://dashscope.aliyuncs.com/compatible-mode"
+	default:
+		return "https://open.bigmodel.cn"
+	}
+}
+
+// chatEndpoint 根据 provider 拼出 chat/completions 端点
+//   - zhipu：专属路径 /api/paas/v4/chat/completions（Base URL 只填域名）
+//   - 其他（qwen/openai 兼容）：Base URL + /v1/chat/completions；
+//     若用户已把完整路径写进 Base URL（含 chat/completions）则直接使用
+func (cfg *llmConfig) chatEndpoint() string {
+	base := strings.TrimRight(strings.TrimSpace(cfg.BaseURL), "/")
+	if base == "" {
+		base = defaultBaseURL(cfg.Provider)
+	}
+	provider := strings.ToLower(strings.TrimSpace(cfg.Provider))
+	if provider == "zhipu" || provider == "glm" {
+		if strings.Contains(base, "/api/paas") {
+			return base
+		}
+		return base + "/api/paas/v4/chat/completions"
+	}
+	if strings.Contains(base, "chat/completions") {
+		return base
+	}
+	if strings.HasSuffix(base, "/v1") {
+		return base + "/chat/completions"
+	}
+	return base + "/v1/chat/completions"
+}
+
+// defaultVisionModel 按 provider 返回默认视觉模型
+func defaultVisionModel(provider string) string {
+	switch strings.ToLower(strings.TrimSpace(provider)) {
+	case "qwen", "dashscope":
+		return "qwen-vl-plus"
+	default:
+		return "glm-4.6v-flash"
+	}
+}
+
+// defaultTextModel 按 provider 返回默认文本模型
+func defaultTextModel(provider string) string {
+	switch strings.ToLower(strings.TrimSpace(provider)) {
+	case "qwen", "dashscope":
+		return "qwen-turbo"
+	default:
+		return "glm-4-flash"
+	}
+}
+
+// chat 调用 OpenAI 兼容的 chat/completions 接口（zhipu/qwen 等），返回 choices[0].message.content
 func (cfg *llmConfig) chat(ctx context.Context, model string, messages []gin.H) (string, error) {
-	url := strings.TrimRight(cfg.BaseURL, "/") + "/api/paas/v4/chat/completions"
+	url := cfg.chatEndpoint()
 	body, err := json.Marshal(gin.H{
 		"model":      model,
 		"messages":   messages,
@@ -86,12 +150,12 @@ func (cfg *llmConfig) chat(ctx context.Context, model string, messages []gin.H) 
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("调用 GLM 失败: %w", err)
+		return "", fmt.Errorf("调用 LLM 失败(%s): %w", cfg.Provider, err)
 	}
 	defer resp.Body.Close()
 	respBody, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("GLM HTTP %d: %s", resp.StatusCode, truncate(string(respBody), 200))
+		return "", fmt.Errorf("LLM HTTP %d(%s): %s", resp.StatusCode, cfg.Provider, truncate(string(respBody), 200))
 	}
 
 	var result struct {
@@ -105,13 +169,13 @@ func (cfg *llmConfig) chat(ctx context.Context, model string, messages []gin.H) 
 		} `json:"error"`
 	}
 	if err := json.Unmarshal(respBody, &result); err != nil {
-		return "", fmt.Errorf("解析 GLM 响应: %w", err)
+		return "", fmt.Errorf("解析 LLM 响应: %w", err)
 	}
 	if result.Error != nil && result.Error.Message != "" {
-		return "", fmt.Errorf("GLM 错误: %s", result.Error.Message)
+		return "", fmt.Errorf("LLM 错误(%s): %s", cfg.Provider, result.Error.Message)
 	}
 	if len(result.Choices) == 0 {
-		return "", fmt.Errorf("GLM 未返回结果")
+		return "", fmt.Errorf("LLM 未返回结果(%s)", cfg.Provider)
 	}
 
 	raw := result.Choices[0].Message.Content
@@ -132,7 +196,7 @@ func (cfg *llmConfig) chat(ctx context.Context, model string, messages []gin.H) 
 	}
 	var s string
 	if err := json.Unmarshal(raw, &s); err != nil {
-		return "", fmt.Errorf("解析 GLM content: %w", err)
+		return "", fmt.Errorf("解析 LLM content: %w", err)
 	}
 	return s, nil
 }
@@ -287,7 +351,7 @@ func recognizeHandler(pool *pgxpool.Pool) gin.HandlerFunc {
 
 		model := cfg.VisionModel
 		if model == "" {
-			model = "glm-4.6v-flash"
+			model = defaultVisionModel(cfg.Provider)
 		}
 		userContent := []gin.H{
 			{"type": "image_url", "image_url": gin.H{"url": "data:image/jpeg;base64," + req.Image}},
@@ -354,7 +418,7 @@ func searchHandler(pool *pgxpool.Pool) gin.HandlerFunc {
 
 		model := cfg.TextModel
 		if model == "" {
-			model = "glm-4-flash"
+			model = defaultTextModel(cfg.Provider)
 		}
 		// 与 App 端 GlmFoodService._searchDirect 的提示词保持一致（含常见食物卡路里参考表）
 		systemPrompt := fmt.Sprintf(`你是一个食物搜索引擎。用户输入关键词，你必须搜索并返回最匹配的食物。

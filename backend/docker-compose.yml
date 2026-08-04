@@ -3,6 +3,20 @@
 # 验证: curl http://localhost:8080/api/v1/healthz
 
 services:
+  caddy:
+    image: caddy:2-alpine
+    container_name: fatbattle-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"     # HTTP（证书验证 + 自动跳转 HTTPS）
+      - "443:443"   # HTTPS（App 正式接口）
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - api
+
   api:
     build: .
     container_name: fatbattle-api
@@ -83,3 +97,5 @@ volumes:
   pg_data:
   redis_data:
   minio_data:
+  caddy_data:
+  caddy_config:

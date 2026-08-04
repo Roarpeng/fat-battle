@@ -1,8 +1,9 @@
-import 'dart:io';
+﻿import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../theme/forge_theme.dart';
+import '../theme/app_icons.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
@@ -30,15 +31,15 @@ class _StatsPageState extends ConsumerState<StatsPage> {
     super.dispose();
   }
 
-  TextStyle get _displayStyle => GoogleFonts.fraunces(
+  TextStyle get _displayStyle => AppFonts.display(
         fontWeight: FontWeight.w600,
         color: AppColors.text,
       );
 
-  TextStyle get _bodyStyle => GoogleFonts.figtree(color: AppColors.text);
+  TextStyle get _bodyStyle => AppFonts.body(color: AppColors.text);
 
   TextStyle get _mutedStyle =>
-      GoogleFonts.figtree(color: AppColors.text2, fontSize: 13);
+      AppFonts.body(color: AppColors.text2, fontSize: 13);
 
   @override
   Widget build(BuildContext context) {
@@ -165,7 +166,7 @@ class _StatsPageState extends ConsumerState<StatsPage> {
                                 const SizedBox(width: 4),
                                 Text(
                                   d.completed ? '完成' : '未完成',
-                                  style: GoogleFonts.figtree(
+                                  style: AppFonts.body(
                                     fontSize: 12,
                                     color: d.completed
                                         ? AppColors.green
@@ -430,7 +431,7 @@ class _StatsPageState extends ConsumerState<StatsPage> {
             ),
             child: Text(
               bodyType,
-              style: GoogleFonts.figtree(
+              style: AppFonts.body(
                 color: bmiColor,
                 fontWeight: FontWeight.w600,
                 fontSize: 13,
@@ -477,7 +478,7 @@ class _StatsPageState extends ConsumerState<StatsPage> {
       trailing: TextButton.icon(
         onPressed: () => _addProgressPhoto(notifier),
         icon: const Icon(Icons.add_a_photo_outlined, size: 18),
-        label: Text('添加', style: GoogleFonts.figtree(fontSize: 13)),
+        label: Text('添加', style: AppFonts.body(fontSize: 13)),
         style: TextButton.styleFrom(foregroundColor: AppColors.copper),
       ),
       child: gs.progressPhotos.isEmpty
@@ -552,7 +553,7 @@ class _StatsPageState extends ConsumerState<StatsPage> {
                                   photo.date.length > 5
                                       ? photo.date.substring(5)
                                       : photo.date,
-                                  style: GoogleFonts.figtree(
+                                  style: AppFonts.body(
                                     fontSize: 9,
                                     color: AppColors.text2,
                                   ),
@@ -560,7 +561,7 @@ class _StatsPageState extends ConsumerState<StatsPage> {
                                 if (photo.weight > 0)
                                   Text(
                                     '${photo.weight.toStringAsFixed(1)} kg',
-                                    style: GoogleFonts.figtree(
+                                    style: AppFonts.body(
                                       fontSize: 10,
                                       color: AppColors.text,
                                       fontWeight: FontWeight.w600,
@@ -672,7 +673,6 @@ class _StatsPageState extends ConsumerState<StatsPage> {
 
     return top3.map((entry) {
       final name = entry.key;
-      final emoji = entry.value['emoji'] as String;
       final count = entry.value['count'] as int;
       final duration = entry.value['duration'] as int;
       return Container(
@@ -680,7 +680,7 @@ class _StatsPageState extends ConsumerState<StatsPage> {
         padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
         child: Row(
           children: [
-            Text(emoji, style: const TextStyle(fontSize: 22)),
+            Icon(AppIcons.exerciseByName(name), size: 22, color: AppColors.copper),
             const SizedBox(width: 10),
             Expanded(
               child: Column(
@@ -694,7 +694,7 @@ class _StatsPageState extends ConsumerState<StatsPage> {
             ),
             Text(
               '$duration min',
-              style: GoogleFonts.figtree(
+              style: AppFonts.body(
                 color: AppColors.copper,
                 fontWeight: FontWeight.w700,
                 fontSize: 13,
@@ -804,7 +804,7 @@ class WeightChartPainter extends CustomPainter {
       final x = padding + (i / (data.length - 1)) * chartWidth;
       textPainter.text = TextSpan(
         text: data[i].key.substring(5),
-        style: GoogleFonts.figtree(color: AppColors.text2, fontSize: 10),
+        style: AppFonts.body(color: AppColors.text2, fontSize: 10),
       );
       textPainter.layout();
       textPainter.paint(
@@ -816,7 +816,7 @@ class WeightChartPainter extends CustomPainter {
       final y = padding + (chartHeight / 4) * i;
       textPainter.text = TextSpan(
         text: val.toStringAsFixed(1),
-        style: GoogleFonts.figtree(color: AppColors.text2, fontSize: 10),
+        style: AppFonts.body(color: AppColors.text2, fontSize: 10),
       );
       textPainter.layout();
       textPainter.paint(canvas,

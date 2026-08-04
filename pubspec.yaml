@@ -20,6 +20,9 @@ dependencies:
   
   # 本地存储
   shared_preferences: ^2.5.3
+
+  # 加密存储（JWT token 安全存储，上架版不再明文存 SharedPreferences）
+  flutter_secure_storage: ^9.2.2
   
   # BLE蓝牙通信（ESP32腰部Hub）
   flutter_blue_plus: ^1.35.4
@@ -67,9 +70,6 @@ dependencies:
   # 图片压缩（确保百度API图片不超过4MB）
   flutter_image_compress: ^2.1.0
   image: ^4.0.0
-
-  # 条形码扫描
-  mobile_scanner: ^5.1.1
 
   # 图片选择（身体变化相册）
   image_picker: ^1.1.2

@@ -2,15 +2,62 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../constants/app_constants.dart';
 
+/// 锻造工坊字体体系（中文友好）
+///
+/// 原 Fraunces/Figtree 不含中文字形，中文全部回退系统字体导致中西文割裂。
+/// 现改为：标题用「站酷快乐体」（游戏感中文展示字体），正文用「思源黑体」。
+/// 首次启动时字体按需下载，未下载完成前自动回退系统字体。
+class AppFonts {
+  AppFonts._();
+
+  /// 展示字体（标题/品牌字）
+  static TextStyle display({
+    double? fontSize,
+    FontWeight? fontWeight,
+    Color? color,
+    double? height,
+    double? letterSpacing,
+    List<Shadow>? shadows,
+  }) =>
+      GoogleFonts.zcoolKuaiLe(
+        fontSize: fontSize,
+        fontWeight: fontWeight,
+        color: color,
+        height: height,
+        letterSpacing: letterSpacing,
+        shadows: shadows,
+      );
+
+  /// 正文字体
+  static TextStyle body({
+    double? fontSize,
+    FontWeight? fontWeight,
+    Color? color,
+    double? height,
+    double? letterSpacing,
+    List<Shadow>? shadows,
+  }) =>
+      GoogleFonts.notoSansSc(
+        fontSize: fontSize,
+        fontWeight: fontWeight,
+        color: color,
+        height: height,
+        letterSpacing: letterSpacing,
+        shadows: shadows,
+      );
+
+  /// 预热下载两款字体（main.dart 启动时调用，失败静默）
+  static void preload() {
+    GoogleFonts.config.allowRuntimeFetching = true;
+    GoogleFonts.zcoolKuaiLe();
+    GoogleFonts.notoSansSc();
+  }
+}
+
 /// 锻造工坊 ThemeData
 ThemeData buildForgeTheme() {
-  final display = GoogleFonts.fraunces(
-    color: AppColors.text,
-    fontWeight: FontWeight.w600,
-  );
-  final body = GoogleFonts.figtree(
-    color: AppColors.text,
-  );
+  final display = AppFonts.display(color: AppColors.text);
+  final body = AppFonts.body(color: AppColors.text);
 
   return ThemeData(
     useMaterial3: true,
@@ -26,9 +73,9 @@ ThemeData buildForgeTheme() {
       error: AppColors.ember,
     ),
     textTheme: TextTheme(
-      displayLarge: display.copyWith(fontSize: 40, height: 1.1),
-      displayMedium: display.copyWith(fontSize: 32, height: 1.15),
-      headlineMedium: display.copyWith(fontSize: 24, height: 1.2),
+      displayLarge: display.copyWith(fontSize: 40, height: 1.1, fontWeight: FontWeight.w600),
+      displayMedium: display.copyWith(fontSize: 32, height: 1.15, fontWeight: FontWeight.w600),
+      headlineMedium: display.copyWith(fontSize: 24, height: 1.2, fontWeight: FontWeight.w600),
       titleLarge: display.copyWith(fontSize: 20, fontWeight: FontWeight.w600),
       titleMedium: body.copyWith(fontSize: 16, fontWeight: FontWeight.w600),
       bodyLarge: body.copyWith(fontSize: 16, height: 1.45),

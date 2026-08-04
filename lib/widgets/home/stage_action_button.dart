@@ -1,6 +1,6 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../../theme/forge_theme.dart';
 
 import '../../constants/app_constants.dart';
 
@@ -94,7 +94,7 @@ class _StageActionButtonState extends State<StageActionButton> {
                 const Spacer(),
                 Text(
                   widget.label,
-                  style: GoogleFonts.fraunces(
+                  style: AppFonts.display(
                     fontSize: 20,
                     fontWeight: FontWeight.w600,
                     color: widget.tone == StageActionTone.forge
@@ -106,7 +106,7 @@ class _StageActionButtonState extends State<StageActionButton> {
                 const SizedBox(height: 2),
                 Text(
                   widget.subtitle,
-                  style: GoogleFonts.figtree(
+                  style: AppFonts.body(
                     fontSize: 12,
                     color: widget.tone == StageActionTone.forge
                         ? const Color(0xFFFFF8F5).withValues(alpha: 0.78)

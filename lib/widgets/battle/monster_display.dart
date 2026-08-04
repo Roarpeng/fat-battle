@@ -1,6 +1,6 @@
-import 'dart:math' as math;
+﻿import 'dart:math' as math;
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../../theme/forge_theme.dart';
 import '../../constants/app_constants.dart';
 import 'forge_monster_art.dart';
 
@@ -333,8 +333,8 @@ class _MonsterDisplayState extends State<MonsterDisplay>
                     border: Border.all(color: AppColors.copper.withValues(alpha: 0.5)),
                   ),
                   child: Text(
-                    widget.isEnraged ? '🔥 狂暴脂肪霸主' : '😈 卡路里领主',
-                    style: GoogleFonts.figtree(
+                    widget.isEnraged ? '狂暴脂肪霸主' : '卡路里领主',
+                    style: AppFonts.body(
                       color: widget.isEnraged ? AppColors.red : AppColors.gold,
                       fontSize: 9,
                       fontWeight: FontWeight.bold,

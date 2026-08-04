@@ -1,5 +1,5 @@
-import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+﻿import 'package:flutter/material.dart';
+import '../theme/forge_theme.dart';
 import '../constants/app_constants.dart';
 import '../models/food_recommend_models.dart';
 import '../services/city_location_service.dart';
@@ -24,15 +24,15 @@ class CityFoodRecommendBar extends StatefulWidget {
 }
 
 class CityFoodRecommendBarState extends State<CityFoodRecommendBar> {
-  TextStyle get _displayStyle => GoogleFonts.fraunces(
+  TextStyle get _displayStyle => AppFonts.display(
         color: AppColors.text,
         fontWeight: FontWeight.w600,
       );
 
-  TextStyle get _bodyStyle => GoogleFonts.figtree(color: AppColors.text);
+  TextStyle get _bodyStyle => AppFonts.body(color: AppColors.text);
 
   TextStyle get _mutedStyle =>
-      GoogleFonts.figtree(color: AppColors.text2, fontSize: 12);
+      AppFonts.body(color: AppColors.text2, fontSize: 12);
 
   final _location = CityLocationService();
   final _prefs = FoodPreferenceService();
