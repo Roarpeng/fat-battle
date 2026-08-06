@@ -121,9 +121,7 @@ class _FoodPageState extends ConsumerState<FoodPage> {
         });
         if (result.isEmpty) {
           _showSnack(
-            result.emptyMessage.isNotEmpty
-                ? '未找到「$query」\n${result.emptyMessage}'
-                : '未找到「$query」',
+            '未找到「$query」，请换个名称试试',
             isError: true,
           );
         }
@@ -245,13 +243,7 @@ class _FoodPageState extends ConsumerState<FoodPage> {
   }
 
   String _buildRecognitionFailureMessage(FoodRecognitionResult result) {
-    final buffer = StringBuffer('所有识别源均未识别出食物。\n\n');
-    if (result.attemptedSources.isNotEmpty) {
-      buffer.writeln('已尝试：${result.attemptedSources.join(' → ')}');
-    }
-    if (result.failures.isNotEmpty) {
-      buffer.writeln(result.failures.join('\n'));
-    }
+    final buffer = StringBuffer('未能识别出食物。\n\n');
     buffer.writeln('\n请尝试：');
     buffer.writeln('1. 拍一盘做好的菜，确保食物占画面主体');
     buffer.writeln('2. 使用「搜索食物」输入名称');
@@ -356,9 +348,7 @@ class _FoodPageState extends ConsumerState<FoodPage> {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
                           content: Text(
-                            queryResult.emptyMessage.isNotEmpty
-                                ? '未找到相关食物\n${queryResult.emptyMessage}'
-                                : '未找到相关食物',
+                            '未找到相关食物，请换个名称试试',
                             style: _bodyStyle,
                           ),
                           backgroundColor: AppColors.bg3,
@@ -456,7 +446,7 @@ class _FoodPageState extends ConsumerState<FoodPage> {
                                 style: _bodyStyle.copyWith(fontSize: 14),
                               ),
                               subtitle: Text(
-                                '${food.calories} kcal · ${food.source}',
+                                '${food.calories} kcal',
                                 style: _mutedStyle.copyWith(fontSize: 11),
                               ),
                               trailing: Text(
