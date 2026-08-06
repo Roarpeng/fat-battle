@@ -497,6 +497,7 @@ class _FoodPageState extends ConsumerState<FoodPage> {
     List<RecognizedFood> foods,
     String title, {
     List<dynamic>? topDishes,
+    MealType? initialMeal,
   }) {
     final selected = <String, RecognizedFood>{};
     final portions = <String, FoodSize>{};
@@ -506,8 +507,11 @@ class _FoodPageState extends ConsumerState<FoodPage> {
     if (foods.isNotEmpty) {
       selected[foods.first.name] = foods.first;
     }
-    final meal = _getCurrentMeal();
+    // 默认餐次：调用方指定（如在某餐内搜索）优先，否则按时间段推断
+    MealType meal = initialMeal ?? _getCurrentMeal();
     bool expanded = false;
+    // 今日卡路里预算（目标/已摄入/剩余），打开弹窗时快照
+    final budget = ref.read(gameStateProvider);
 
     showDialog(
       context: context,
@@ -544,6 +548,64 @@ class _FoodPageState extends ConsumerState<FoodPage> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // 今日卡路里预算提醒：建议摄入 / 已摄入 / 剩余
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: AppColors.bg2,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: AppColors.border),
+                      ),
+                      child: Column(
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text('今日建议摄入', style: _bodyStyle.copyWith(fontSize: 12, color: AppColors.text2)),
+                              Text('${budget.targetCal} kcal', style: _bodyStyle.copyWith(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.text)),
+                            ],
+                          ),
+                          const SizedBox(height: 3),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                '已摄入 ${budget.todayCalIn} kcal${budget.todayCalExercise > 0 ? ' · 运动消耗 ${budget.todayCalExercise} kcal' : ''}',
+                                style: _bodyStyle.copyWith(fontSize: 12, color: AppColors.text2),
+                              ),
+                              Text('还可摄入 ${budget.remainingCal} kcal', style: _bodyStyle.copyWith(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.green)),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    // 餐次选择器：默认跟随入口（某餐内搜索即默认该餐）
+                    Row(
+                      children: [
+                        Text('记到', style: _mutedStyle.copyWith(fontSize: 12)),
+                        const SizedBox(width: 8),
+                        ...MealType.values.map((m) => GestureDetector(
+                          onTap: () => sb(() => meal = m),
+                          child: Container(
+                            margin: const EdgeInsets.only(right: 6),
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: meal == m
+                                  ? AppColors.copper.withValues(alpha: 0.18)
+                                  : Colors.transparent,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: meal == m ? AppColors.copper : AppColors.border),
+                            ),
+                            child: Text(
+                              m.name,
+                              style: _bodyStyle.copyWith(fontSize: 12, color: meal == m ? AppColors.copper : AppColors.text),
+                            ),
+                          ),
+                        )),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
                     Text(
                       '请确认并勾选要记录的食物：',
                       style: _mutedStyle,
@@ -709,29 +771,57 @@ class _FoodPageState extends ConsumerState<FoodPage> {
                         ),
                       ),
                     const SizedBox(height: 8),
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: AppColors.copper.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                          color: AppColors.copper.withValues(alpha: 0.25),
-                        ),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text('总计:', style: _displayStyle.copyWith(fontSize: 15)),
-                          Text(
-                            '$totalCal 千卡',
-                            style: _displayStyle.copyWith(
-                              color: AppColors.copper,
-                              fontSize: 16,
-                            ),
+                    Builder(builder: (_) {
+                      final leftAfter = budget.remainingCal - totalCal;
+                      return Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: AppColors.copper.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: AppColors.copper.withValues(alpha: 0.25),
                           ),
-                        ],
-                      ),
-                    ),
+                        ),
+                        child: Column(
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text('总计:', style: _displayStyle.copyWith(fontSize: 15)),
+                                Text(
+                                  '$totalCal 千卡',
+                                  style: _displayStyle.copyWith(
+                                    color: AppColors.copper,
+                                    fontSize: 16,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 6),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  leftAfter >= 0 ? '记录后今日还可摄入' : '记录后将超出建议摄入',
+                                  style: _bodyStyle.copyWith(
+                                    fontSize: 12,
+                                    color: leftAfter >= 0 ? AppColors.text2 : AppColors.red,
+                                  ),
+                                ),
+                                Text(
+                                  '${leftAfter.abs()} kcal',
+                                  style: _bodyStyle.copyWith(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                    color: leftAfter >= 0 ? AppColors.green : AppColors.red,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      );
+                    }),
                   ],
                 ),
               ),
@@ -753,7 +843,10 @@ class _FoodPageState extends ConsumerState<FoodPage> {
                           _foodPrefService.recordFoodAdded(entry.key);
                         }
                         _notifyRecommendBarRefresh(meal);
-                        _showSnack('已记录${selected.length}种食物到${meal.name}');
+                        final leftAfterAdd = budget.remainingCal - totalCal;
+                        _showSnack(leftAfterAdd >= 0
+                            ? '已记录${selected.length}种食物到${meal.name}，今日还可摄入 $leftAfterAdd kcal'
+                            : '已记录${selected.length}种食物到${meal.name}，今日已超出建议摄入 ${-leftAfterAdd} kcal');
                       },
                 child: const Text('确认记录'),
               ),
@@ -1062,7 +1155,8 @@ class _FoodPageState extends ConsumerState<FoodPage> {
                 setState(() {
                   _searchResults[meal] = [];
                 });
-                _showFoodConfirmDialog([food], '搜索结果');
+                // 餐内搜索：确认弹窗默认记录到当前餐次
+                _showFoodConfirmDialog([food], '搜索结果', initialMeal: meal);
               },
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
@@ -1215,6 +1309,10 @@ class _FoodPageState extends ConsumerState<FoodPage> {
                 nameController.clear();
                 calController.clear();
                 setState(() => _searchResults[meal] = []);
+                final leftAfter = ref.read(gameStateProvider).remainingCal;
+                _showSnack(leftAfter >= 0
+                    ? '已添加 $name，今日还可摄入 $leftAfter kcal'
+                    : '已添加 $name，今日已超出建议摄入 ${-leftAfter} kcal');
               },
               style: ElevatedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -1239,7 +1337,11 @@ class _FoodPageState extends ConsumerState<FoodPage> {
           totalCal: food.cal,
           meal: meal,
         ));
-        _showSnack('已添加 ${food.name} 到${meal.name}');
+        _foodPrefService.recordFoodAdded(food.name);
+        final leftAfter = ref.read(gameStateProvider).remainingCal;
+        _showSnack(leftAfter >= 0
+            ? '已添加 ${food.name} 到${meal.name}，今日还可摄入 $leftAfter kcal'
+            : '已添加 ${food.name} 到${meal.name}，今日已超出建议摄入 ${-leftAfter} kcal');
       },
     );
   }
