@@ -13,8 +13,10 @@ Write-Host "工作目录: $PSScriptRoot\.." -ForegroundColor Gray
 Set-Location -Path "$PSScriptRoot\.."
 
 # 构建 release APK
+# API_BASE_URL 必须注入，否则 App 无法连接后端（登录/食物识别代理会失效）
 Write-Host "`n开始构建 release APK..." -ForegroundColor Yellow
 flutter build apk --release `
+    --dart-define=API_BASE_URL=http://111.229.178.88:8080 `
     --dart-define=BAIDU_API_KEY=tmZ8dTmfodEts6Ufb6q2QURb `
     --dart-define=BAIDU_SECRET_KEY=UlGJoVVmIRJYIt9aOAXml8nnJhQxJpAl
 
