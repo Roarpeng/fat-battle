@@ -26,6 +26,33 @@ class PoseCoachPage extends StatefulWidget {
   final ValueNotifier<double> prepareProgress;
   final Future<void> Function() onStop;
 
+  /// 连训：当前第几式（1-based）；null 表示非连训。
+  final int? planStep;
+
+  /// 连训总式数。
+  final int? planTotal;
+
+  /// 本式目标数值（次数或秒）。
+  final int? targetCount;
+
+  /// 目标单位文案，如「次」「秒」。
+  final String? targetUnit;
+
+  /// 式间休息倒计时（秒）；>0 时显示休息遮罩。
+  final ValueNotifier<int>? restCountdown;
+
+  /// 外部触发结束（达标自动完成）：为 true 时走 onStop 并 pop，不视为用户中止。
+  final ValueNotifier<bool>? externalComplete;
+
+  /// 免触控阶段：setup / align / countdown / active
+  final ValueNotifier<String>? coachPhase;
+
+  /// 阶段提示文案
+  final ValueNotifier<String>? coachPhaseHint;
+
+  /// 倒计时秒数（countdown 阶段）
+  final ValueNotifier<int>? coachCountdown;
+
   const PoseCoachPage({
     super.key,
     required this.exerciseName,
@@ -43,6 +70,15 @@ class PoseCoachPage extends StatefulWidget {
     required this.preparing,
     required this.prepareProgress,
     required this.onStop,
+    this.planStep,
+    this.planTotal,
+    this.targetCount,
+    this.targetUnit,
+    this.restCountdown,
+    this.externalComplete,
+    this.coachPhase,
+    this.coachPhaseHint,
+    this.coachCountdown,
   });
 
   @override
@@ -63,16 +99,24 @@ class _PoseCoachPageState extends State<PoseCoachPage> {
       DeviceOrientation.landscapeLeft,
       DeviceOrientation.landscapeRight,
     ]);
+    widget.externalComplete?.addListener(_onExternalComplete);
   }
 
   @override
   void dispose() {
+    widget.externalComplete?.removeListener(_onExternalComplete);
     // 退出训练时重置为系统默认布局与竖屏锁定
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     SystemChrome.setPreferredOrientations(const [
       DeviceOrientation.portraitUp,
     ]);
     super.dispose();
+  }
+
+  void _onExternalComplete() {
+    if (widget.externalComplete?.value == true) {
+      _handleStop();
+    }
   }
 
   Future<void> _handleStop() async {
@@ -151,13 +195,32 @@ class _PoseCoachPageState extends State<PoseCoachPage> {
                       color: AppColors.copper.withValues(alpha: 0.5),
                     ),
                   ),
-                  child: Text(
-                    '${widget.exerciseEmoji} ${widget.exerciseName}',
-                    style: AppFonts.body(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 14,
-                    ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        '${widget.exerciseEmoji} ${widget.exerciseName}',
+                        style: AppFonts.body(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 14,
+                        ),
+                      ),
+                      if (widget.planStep != null &&
+                          widget.planTotal != null) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          '第 ${widget.planStep}/${widget.planTotal} 式'
+                          '${widget.targetCount != null ? ' · 目标 ${widget.targetCount}${widget.targetUnit ?? '次'}' : ''}',
+                          style: AppFonts.body(
+                            color: AppColors.copper,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
               ),
@@ -177,9 +240,11 @@ class _PoseCoachPageState extends State<PoseCoachPage> {
                   preparing: widget.preparing,
                   prepareProgress: widget.prepareProgress,
                   compact: isPortrait,
+                  targetCount: widget.targetCount,
+                  targetUnit: widget.targetUnit,
                 ),
               ),
-              // 结束按钮
+              // 结束按钮（仅结束整段时需要走近手机；正常连训会自动完成）
               Positioned(
                 top: 12,
                 right: 16,
@@ -197,7 +262,7 @@ class _PoseCoachPageState extends State<PoseCoachPage> {
                     style: AppFonts.body(fontWeight: FontWeight.w700),
                   ),
                   style: FilledButton.styleFrom(
-                    backgroundColor: AppColors.ember,
+                    backgroundColor: AppColors.ember.withValues(alpha: 0.85),
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(
                       horizontal: 14,
@@ -206,6 +271,72 @@ class _PoseCoachPageState extends State<PoseCoachPage> {
                   ),
                 ),
               ),
+              // 免触控阶段大字引导（架设 / 入镜 / 倒计时）
+              if (widget.coachPhase != null)
+                Positioned.fill(
+                  child: ValueListenableBuilder<String>(
+                    valueListenable: widget.coachPhase!,
+                    builder: (_, phase, __) {
+                      if (phase == 'active') return const SizedBox.shrink();
+                      return IgnorePointer(
+                        child: _HandsFreePhaseOverlay(
+                          phase: phase,
+                          hintListenable: widget.coachPhaseHint,
+                          countdownListenable: widget.coachCountdown,
+                          progressListenable: widget.prepareProgress,
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              // 式间休息遮罩
+              if (widget.restCountdown != null)
+                Positioned.fill(
+                  child: ValueListenableBuilder<int>(
+                    valueListenable: widget.restCountdown!,
+                    builder: (_, secs, __) {
+                      if (secs <= 0) return const SizedBox.shrink();
+                      return ColoredBox(
+                        color: Colors.black.withValues(alpha: 0.72),
+                        child: Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                '休息一下',
+                                style: AppFonts.body(
+                                  color: Colors.white70,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              Text(
+                                '$secs',
+                                style: AppFonts.display(
+                                  color: AppColors.copper,
+                                  fontSize: 64,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                widget.planStep != null &&
+                                        widget.planTotal != null
+                                    ? '下一式准备中（${widget.planStep! + 1}/${widget.planTotal}）'
+                                    : '下一式准备中',
+                                style: AppFonts.body(
+                                  color: Colors.white70,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
             ],
           ),
         ),
@@ -257,6 +388,117 @@ class _PoseCoachPageState extends State<PoseCoachPage> {
   }
 }
 
+/// 架设 / 入镜 / 倒计时 全屏提示（不拦截手势以外的结束按钮——用 IgnorePointer 包住）
+class _HandsFreePhaseOverlay extends StatelessWidget {
+  final String phase;
+  final ValueNotifier<String>? hintListenable;
+  final ValueNotifier<int>? countdownListenable;
+  final ValueNotifier<double> progressListenable;
+
+  const _HandsFreePhaseOverlay({
+    required this.phase,
+    required this.hintListenable,
+    required this.countdownListenable,
+    required this.progressListenable,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final title = switch (phase) {
+      'setup' => '架设手机',
+      'align' => '站进白框',
+      'countdown' => '即将开始',
+      _ => '',
+    };
+
+    return ColoredBox(
+      color: Colors.black.withValues(alpha: phase == 'countdown' ? 0.35 : 0.45),
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                title,
+                style: AppFonts.body(
+                  color: Colors.white70,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 12),
+              if (phase == 'countdown' && countdownListenable != null)
+                ValueListenableBuilder<int>(
+                  valueListenable: countdownListenable!,
+                  builder: (_, n, __) => Text(
+                    n > 0 ? '$n' : 'GO',
+                    style: AppFonts.display(
+                      color: AppColors.copper,
+                      fontSize: 88,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                )
+              else
+                Icon(
+                  phase == 'setup'
+                      ? Icons.phonelink_setup_rounded
+                      : Icons.accessibility_new_rounded,
+                  color: AppColors.copper,
+                  size: 56,
+                ),
+              const SizedBox(height: 16),
+              if (hintListenable != null)
+                ValueListenableBuilder<String>(
+                  valueListenable: hintListenable!,
+                  builder: (_, hint, __) => Text(
+                    hint,
+                    textAlign: TextAlign.center,
+                    style: AppFonts.body(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      height: 1.35,
+                    ),
+                  ),
+                ),
+              const SizedBox(height: 18),
+              SizedBox(
+                width: 180,
+                child: ValueListenableBuilder<double>(
+                  valueListenable: progressListenable,
+                  builder: (_, p, __) => ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: LinearProgressIndicator(
+                      value: p.clamp(0.0, 1.0),
+                      minHeight: 6,
+                      backgroundColor: Colors.white24,
+                      color: AppColors.copper,
+                    ),
+                  ),
+                ),
+              ),
+              if (phase == 'setup') ...[
+                const SizedBox(height: 16),
+                Text(
+                  '点一次后无需再碰手机\n入镜稳定后会自动 3-2-1 开练',
+                  textAlign: TextAlign.center,
+                  style: AppFonts.body(
+                    color: Colors.white60,
+                    fontSize: 12,
+                    height: 1.4,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _CoachHud extends StatelessWidget {
   final ValueNotifier<String> feedback;
   final ValueNotifier<int> repCount;
@@ -267,6 +509,8 @@ class _CoachHud extends StatelessWidget {
   final ValueNotifier<bool> preparing;
   final ValueNotifier<double> prepareProgress;
   final bool compact;
+  final int? targetCount;
+  final String? targetUnit;
 
   const _CoachHud({
     required this.feedback,
@@ -278,7 +522,35 @@ class _CoachHud extends StatelessWidget {
     required this.preparing,
     required this.prepareProgress,
     this.compact = false,
+    this.targetCount,
+    this.targetUnit,
   });
+
+  Widget _repBlock(int reps, String unit) {
+    final target = targetCount;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          target != null ? '$reps / $target' : '$reps',
+          style: AppFonts.display(
+            color: AppColors.ember,
+            fontSize: compact ? 28 : 36,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        Text(
+          target != null
+              ? '${targetUnit ?? unit}'
+              : unit,
+          style: AppFonts.body(
+            color: Colors.white70,
+            fontSize: compact ? 11 : 12,
+          ),
+        ),
+      ],
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -361,26 +633,7 @@ class _CoachHud extends StatelessWidget {
                         builder: (_, reps, __) {
                           return ValueListenableBuilder<String>(
                             valueListenable: countUnit,
-                            builder: (_, unit, __) => Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  '$reps',
-                                  style: AppFonts.display(
-                                    color: AppColors.ember,
-                                    fontSize: 28,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                                Text(
-                                  unit,
-                                  style: AppFonts.body(
-                                    color: Colors.white70,
-                                    fontSize: 11,
-                                  ),
-                                ),
-                              ],
-                            ),
+                            builder: (_, unit, __) => _repBlock(reps, unit),
                           );
                         },
                       ),
@@ -441,26 +694,7 @@ class _CoachHud extends StatelessWidget {
                         builder: (_, reps, __) {
                           return ValueListenableBuilder<String>(
                             valueListenable: countUnit,
-                            builder: (_, unit, __) => Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  '$reps',
-                                  style: AppFonts.display(
-                                    color: AppColors.ember,
-                                    fontSize: 36,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                                Text(
-                                  unit,
-                                  style: AppFonts.body(
-                                    color: Colors.white70,
-                                    fontSize: 12,
-                                  ),
-                                ),
-                              ],
-                            ),
+                            builder: (_, unit, __) => _repBlock(reps, unit),
                           );
                         },
                       ),

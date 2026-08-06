@@ -1,4 +1,6 @@
 ﻿import 'dart:async';
+import 'dart:io';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -20,6 +22,7 @@ import '../widgets/exercise/pose_overlay.dart';
 import '../widgets/exercise/pose_coach_guide.dart';
 import '../widgets/home/forge_background.dart';
 import '../widgets/home/mini_monster_header.dart';
+import 'package:gal/gal.dart';
 import 'pose_coach_page.dart';
 
 /// 锻炼页面
@@ -41,6 +44,25 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
   bool _cameraBleFusion = false;
   WorkoutFocus _workoutFocus = WorkoutFocus.mixed;
   WorkoutPlan? _recommendedPlan;
+
+  /// 连续训练进度：-1 未在连训；>=0 当前进行到组合内第几个动作
+  int _planSeqIndex = -1;
+
+  /// 用户按「结束」时是否中止连训（达标自动完成则为 false）
+  bool _abortPlanOnStop = true;
+
+  /// 本式已达标、正在结算（防重复触发）
+  bool _planTargetHit = false;
+
+  /// 结算后待推进下一式（等教练页 pop 完成再休息/开练）
+  bool _pendingPlanAdvance = false;
+
+  /// 精彩瞬间截屏节流（避免连击时疯狂截图）
+  DateTime _lastHighlightCapture = DateTime.fromMillisecondsSinceEpoch(0);
+
+  final ValueNotifier<int> _restCountdownN = ValueNotifier(0);
+  final ValueNotifier<bool> _coachExternalCompleteN = ValueNotifier(false);
+  Timer? _restTimer;
   
   final MotionRecognitionService _motionService = MotionRecognitionService();
   final FusionRecognitionService _fusionService = FusionRecognitionService();
@@ -79,6 +101,20 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
   final ValueNotifier<double> _prepareProgressN = ValueNotifier(0);
   bool _coachPageOpen = false;
 
+  /// 免触控开练阶段：setup → align → countdown → active
+  final ValueNotifier<String> _coachPhaseN = ValueNotifier('setup');
+  final ValueNotifier<String> _coachPhaseHintN =
+      ValueNotifier('请架好手机，走到运动位置');
+  final ValueNotifier<int> _coachCountdownN = ValueNotifier(0);
+  DateTime? _handsFreeSessionStart;
+  DateTime? _alignGoodSince;
+  DateTime? _countdownStartedAt;
+  Timer? _setupGraceTimer;
+  static const int _setupGraceSec = 8;
+  static const int _alignHoldMs = 2800;
+  static const int _countdownSec = 3;
+  static const double _alignThreshold = 0.62;
+
   TextStyle get _displayStyle => AppFonts.display(
         fontWeight: FontWeight.w600,
         color: AppColors.text,
@@ -112,6 +148,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
           _cameraRepCount = count;
           _repCountN.value = count;
         });
+        _maybeCompletePlanTarget(count);
       }
     };
     _fusionService.onFeedback = (feedback) {
@@ -154,6 +191,8 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
   void _wireCameraCallbacks(dynamic detector) {
     detector.onRepDetected = (count, exercise) {
       if (!mounted || !_isActiveCamera(detector)) return;
+      // 入镜门控未进入 active 前丢弃计次（防 TFLite / 误触发）
+      if (_cameraDetecting && _coachPhaseN.value != 'active') return;
       if (_cameraBleFusion) {
         _fusionService.updateCameraResult(
           exerciseType: exercise,
@@ -166,15 +205,25 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
           _repCountN.value = count;
         });
       }
-      _gameLogic.handleRepSuccess();
+      // 平板按秒累计：不要每秒都抽体力，否则十几秒就「耗尽」
+      final type = _selectedExercise != null
+          ? Exercises.all[_selectedExercise!].type
+          : '';
+      if (type != 'plank') {
+        _gameLogic.handleRepSuccess();
+      } else if (count > 0 && count % 5 == 0) {
+        _gameLogic.handleRepSuccess();
+      }
+      _maybeCompletePlanTarget(count);
     };
     detector.onFeedback = (feedback) {
-      if (mounted && _isActiveCamera(detector)) {
-        setState(() {
-          _cameraFeedback = feedback;
-          _feedbackN.value = feedback;
-        });
-      }
+      if (!mounted || !_isActiveCamera(detector)) return;
+      // 门控阶段用大字提示，避免检测反馈抢话
+      if (_cameraDetecting && _coachPhaseN.value != 'active') return;
+      setState(() {
+        _cameraFeedback = feedback;
+        _feedbackN.value = feedback;
+      });
     };
     detector.onMotionUpdate = (level) {
       if (mounted && _isActiveCamera(detector)) {
@@ -192,6 +241,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
             _currentLandmarks = null;
             _landmarksN.value = null;
           });
+          _onHandsFreePose(null);
           return;
         }
         final converted = <String, Map<String, double>>{};
@@ -202,6 +252,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
           _currentLandmarks = converted;
           _landmarksN.value = converted;
         });
+        _onHandsFreePose(converted);
       };
     } else if (detector is TfliteMotionService) {
       detector.onPoseUpdate = (landmarks) {
@@ -210,8 +261,175 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
           _currentLandmarks = landmarks;
           _landmarksN.value = landmarks;
         });
+        _onHandsFreePose(landmarks);
       };
     }
+  }
+
+  /// 免触控门控：架设宽限 → 入镜稳住 → 3-2-1 → 才开始计次
+  void _resetHandsFreeGate() {
+    _handsFreeSessionStart = DateTime.now();
+    _alignGoodSince = null;
+    _countdownStartedAt = null;
+    _coachPhaseN.value = 'setup';
+    _coachPhaseHintN.value = '请把手机架稳，然后走到镜头前';
+    _coachCountdownN.value = 0;
+    _preparingN.value = true;
+    _prepareProgressN.value = 0;
+    if (_activeCameraDetector is PoseDetectionService) {
+      (_activeCameraDetector as PoseDetectionService).setCountingEnabled(false);
+    }
+    _setupGraceTimer?.cancel();
+    // 即使画面无人，也按时从「架设」进入「入镜」，避免卡死
+    _setupGraceTimer = Timer.periodic(const Duration(milliseconds: 200), (t) {
+      if (!mounted || !_cameraDetecting) {
+        t.cancel();
+        return;
+      }
+      if (_coachPhaseN.value != 'setup') {
+        t.cancel();
+        return;
+      }
+      final start = _handsFreeSessionStart ?? DateTime.now();
+      final elapsed = DateTime.now().difference(start);
+      _prepareProgressN.value =
+          (elapsed.inMilliseconds / (_setupGraceSec * 1000)).clamp(0.0, 1.0);
+      final left =
+          (_setupGraceSec - elapsed.inSeconds).clamp(0, _setupGraceSec);
+      _coachPhaseHintN.value = left > 0
+          ? '请架好手机并走到白框位置（$left）'
+          : '请站进白色虚线框，全身入镜';
+      if (elapsed.inSeconds >= _setupGraceSec) {
+        t.cancel();
+        _coachPhaseN.value = 'align';
+        _alignGoodSince = null;
+        _coachPhaseHintN.value = '请站进白色虚线框，全身入镜';
+        _prepareProgressN.value = 0;
+      }
+    });
+  }
+
+  void _onHandsFreePose(Map<String, Map<String, double>>? landmarks) {
+    if (!_cameraDetecting || _planTargetHit) return;
+    if (_coachPhaseN.value == 'active') return;
+
+    final now = DateTime.now();
+    final isPortrait =
+        MediaQuery.maybeOf(context)?.orientation == Orientation.portrait;
+    final exerciseType = _selectedExercise != null
+        ? Exercises.all[_selectedExercise!].type
+        : 'squat';
+
+    // Phase 1: 架设宽限——给人离开手机、摆姿势的时间，绝不自动开练
+    // （进度由 _setupGraceTimer 推进；此处仅挡住开练）
+    if (_coachPhaseN.value == 'setup') {
+      return;
+    }
+
+    // Phase 2: 入镜对齐
+    if (_coachPhaseN.value == 'align') {
+      if (landmarks == null || landmarks.isEmpty) {
+        _alignGoodSince = null;
+        _coachPhaseHintN.value = '未检测到人，请走进画面';
+        _prepareProgressN.value = 0;
+        return;
+      }
+      if (_isPersonTooClose(landmarks)) {
+        _alignGoodSince = null;
+        _coachPhaseHintN.value = '太近了，请再退后几步';
+        _prepareProgressN.value = 0;
+        return;
+      }
+      final score = PoseCoachGuideMath.alignmentScore(
+        exerciseType: exerciseType,
+        landmarks: landmarks,
+        isPortrait: isPortrait ?? true,
+      );
+      if (score >= _alignThreshold) {
+        _alignGoodSince ??= now;
+        final held = now.difference(_alignGoodSince!).inMilliseconds;
+        _prepareProgressN.value = (held / _alignHoldMs).clamp(0.0, 1.0);
+        _coachPhaseHintN.value = held >= _alignHoldMs
+            ? '入镜成功'
+            : '保持姿势，即将开始…';
+        if (held >= _alignHoldMs) {
+          _coachPhaseN.value = 'countdown';
+          _countdownStartedAt = now;
+          _coachCountdownN.value = _countdownSec;
+          _coachPhaseHintN.value = '准备开始';
+          _feedbackN.value = '$_countdownSec';
+        }
+      } else {
+        _alignGoodSince = null;
+        _prepareProgressN.value = score.clamp(0.0, 1.0);
+        _coachPhaseHintN.value = score < 0.25
+            ? '请全身进入白色虚线框'
+            : '再调整站位，与剪影对齐';
+      }
+      return;
+    }
+
+    // Phase 3: 倒计时 3-2-1
+    if (_coachPhaseN.value == 'countdown') {
+      // 倒计时中若严重出框则退回对齐
+      if (landmarks != null && !_isPersonTooClose(landmarks)) {
+        final score = PoseCoachGuideMath.alignmentScore(
+          exerciseType: exerciseType,
+          landmarks: landmarks,
+          isPortrait: isPortrait ?? true,
+        );
+        if (score < 0.35) {
+          _coachPhaseN.value = 'align';
+          _alignGoodSince = null;
+          _countdownStartedAt = null;
+          _coachCountdownN.value = 0;
+          _coachPhaseHintN.value = '出框了，请重新站进白框';
+          return;
+        }
+      }
+      final started = _countdownStartedAt ?? now;
+      final elapsed = now.difference(started).inMilliseconds;
+      final left =
+          _countdownSec - (elapsed / 1000).floor();
+      if (left > 0) {
+        _coachCountdownN.value = left;
+        _feedbackN.value = '$left';
+        _coachPhaseHintN.value = '不要动，马上开始';
+        _prepareProgressN.value =
+            (1 - left / _countdownSec).clamp(0.0, 1.0);
+      } else {
+        _coachPhaseN.value = 'active';
+        _coachCountdownN.value = 0;
+        _preparingN.value = false;
+        _prepareProgressN.value = 1;
+        _coachPhaseHintN.value = '开始锻炼！跟着剪影做动作';
+        _feedbackN.value = '开始！';
+        if (_activeCameraDetector is PoseDetectionService) {
+          (_activeCameraDetector as PoseDetectionService)
+              .setCountingEnabled(true);
+        }
+      }
+    }
+  }
+
+  /// 肩宽过大 ≈ 贴脸架设，避免误触发开练
+  bool _isPersonTooClose(Map<String, Map<String, double>> landmarks) {
+    final ls = landmarks['leftShoulder'];
+    final rs = landmarks['rightShoulder'];
+    if (ls != null && rs != null) {
+      final w = ((ls['x'] ?? 0) - (rs['x'] ?? 0)).abs();
+      if (w > 0.48) return true;
+    }
+    final nose = landmarks['nose'];
+    final la = landmarks['leftAnkle'];
+    final ra = landmarks['rightAnkle'];
+    if (nose != null && la != null && ra != null) {
+      final ankleY = (((la['y'] ?? 0) + (ra['y'] ?? 0)) / 2);
+      final h = (ankleY - (nose['y'] ?? 0)).abs();
+      // 头到脚几乎占满画面且脚贴近底边 → 太近
+      if (h > 0.92) return true;
+    }
+    return false;
   }
 
   bool _isActiveCamera(dynamic detector) {
@@ -227,6 +445,10 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
   
   @override
   void dispose() {
+    _restTimer?.cancel();
+    _setupGraceTimer?.cancel();
+    _restCountdownN.dispose();
+    _coachExternalCompleteN.dispose();
     _logScrollController.dispose();
     _landmarksN.dispose();
     _feedbackN.dispose();
@@ -237,6 +459,9 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
     _pausedN.dispose();
     _preparingN.dispose();
     _prepareProgressN.dispose();
+    _coachPhaseN.dispose();
+    _coachPhaseHintN.dispose();
+    _coachCountdownN.dispose();
     _cameraDetector.dispose();
     _tfliteDetector.dispose();
     _restoreAppOrientation();
@@ -476,52 +701,111 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            '${_recommendedPlan!.reason} · 约 ${_recommendedPlan!.estimatedMinutes} 分钟',
+                            '${_recommendedPlan!.reason} · 约 ${_recommendedPlan!.estimatedMinutes} 分钟 · 式间休 ${_recommendedPlan!.restSeconds}s',
                             style: _mutedStyle.copyWith(fontSize: 11),
                           ),
+                          if (_recommendedPlan!.targetBurnCal > 0) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              '目标消耗 ${_recommendedPlan!.targetBurnCal} kcal · Lv.${_recommendedPlan!.level}',
+                              style: AppFonts.body(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.ember,
+                              ),
+                            ),
+                          ],
                           const SizedBox(height: 8),
                           Wrap(
                             spacing: 6,
                             runSpacing: 6,
-                            children: _recommendedPlan!.exerciseIndexes
+                            children: _recommendedPlan!.items
                                 .asMap()
                                 .entries
                                 .map((e) {
-                              final idx = e.value;
-                              final ex = Exercises.all[idx];
+                              final item = e.value;
+                              final idx = item.exerciseIndex;
+                              final ex = item.exercise;
                               final selected = _selectedExercise == idx;
+                              final done = _planSeqIndex > e.key;
+                              final current =
+                                  _planSeqIndex == e.key && _planSeqIndex >= 0;
                               return GestureDetector(
-                                onTap: () =>
-                                    setState(() => _selectedExercise = idx),
+                                onTap: () {
+                                  if (_planSeqIndex >= 0) return; // 连训中不可跳选
+                                  setState(() => _selectedExercise = idx);
+                                },
                                 child: Container(
                                   padding: const EdgeInsets.symmetric(
                                     horizontal: 10,
                                     vertical: 6,
                                   ),
                                   decoration: BoxDecoration(
-                                    color: selected
-                                        ? AppColors.ember.withValues(alpha: 0.15)
-                                        : AppColors.bg,
+                                    color: current
+                                        ? AppColors.ember.withValues(alpha: 0.2)
+                                        : done
+                                            ? AppColors.copper
+                                                .withValues(alpha: 0.18)
+                                            : selected
+                                                ? AppColors.ember
+                                                    .withValues(alpha: 0.15)
+                                                : AppColors.bg,
                                     borderRadius: BorderRadius.circular(16),
                                     border: Border.all(
-                                      color: selected
+                                      color: current
                                           ? AppColors.ember
-                                          : AppColors.border,
+                                          : done
+                                              ? AppColors.copper
+                                              : selected
+                                                  ? AppColors.ember
+                                                  : AppColors.border,
+                                      width: current || selected ? 2 : 1,
                                     ),
                                   ),
                                   child: Text(
-                                    '${e.key + 1}. ${ex.name}',
+                                    '${done ? '✓ ' : ''}${e.key + 1}. ${ex.name} · ${item.target}${item.isTimed ? '秒' : '次'}',
                                     style: AppFonts.body(
                                       fontSize: 12,
                                       fontWeight: FontWeight.w600,
-                                      color: selected
+                                      color: current || selected
                                           ? AppColors.ember
-                                          : AppColors.text,
+                                          : done
+                                              ? AppColors.copper
+                                              : AppColors.text,
                                     ),
                                   ),
                                 ),
                               );
                             }).toList(),
+                          ),
+                          const SizedBox(height: 10),
+                          // 按组合顺序连续训练
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton.icon(
+                              onPressed: _planSeqIndex >= 0
+                                  ? null
+                                  : _startPlanSequence,
+                              icon: const Icon(Icons.play_arrow_rounded, size: 18),
+                              label: Text(
+                                _planSeqIndex >= 0
+                                    ? '连训进行中（${_planSeqIndex + 1}/${_recommendedPlan!.items.length}）'
+                                    : '架好手机开练（${_recommendedPlan!.items.length} 式 · 走开即自动开始）',
+                                style: AppFonts.body(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor:
+                                    AppColors.ember.withValues(alpha: 0.9),
+                                foregroundColor: Colors.white,
+                                disabledBackgroundColor:
+                                    AppColors.ember.withValues(alpha: 0.35),
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 10),
+                              ),
+                            ),
                           ),
                         ],
                       ),
@@ -1288,7 +1572,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
                 onPressed: _cameraSettling ? null : _initCamera,
                 icon: const Icon(Icons.screen_rotation_alt_outlined, size: 18),
                 label: Text(
-                  _cameraSettling ? '正在打开…' : '打开摄像头教练',
+                  _cameraSettling ? '正在打开…' : '架好手机 · 走开自动开练',
                   style: AppFonts.body(fontWeight: FontWeight.w600),
                 ),
                 style: OutlinedButton.styleFrom(
@@ -1671,17 +1955,43 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
       _preparingN.value = true;
       _prepareProgressN.value = 0;
       _landmarksN.value = _currentLandmarks;
+      _planTargetHit = false;
+      _coachExternalCompleteN.value = false;
+      _restCountdownN.value = 0;
     });
 
     _gameLogic.reset();
-    _gameLogic.startPrepare();
+    // 不再用 2 秒 prepare；改为架设→入镜→倒计时免触控门控
+    _resetHandsFreeGate();
     if (_cameraBleFusion) {
       _fusionService.startDetection(exercise.type);
     }
-    _activeCameraDetector.startDetection(exercise.type);
+    // ML Kit 引擎：注册精彩瞬间自动截屏回调
+    if (_activeCameraDetector is PoseDetectionService) {
+      (_activeCameraDetector as PoseDetectionService).onHighlightMoment =
+          _captureHighlight;
+    } else {
+      // TFLite 无精彩瞬间能力
+      _cameraDetector.onHighlightMoment = null;
+    }
+    try {
+      await _activeCameraDetector.startDetection(exercise.type);
+    } catch (e) {
+      debugPrint('startDetection failed: $e');
+      setState(() {
+        _cameraDetecting = false;
+        _cameraStartTime = null;
+      });
+      _showToast('姿态检测启动失败，请重试');
+      return;
+    }
     _startCameraTimer();
 
+    final planItem =
+        _planSeqIndex >= 0 ? _recommendedPlan?.itemAt(_planSeqIndex) : null;
+
     _coachPageOpen = true;
+    _abortPlanOnStop = true;
     await Navigator.of(context).push(
       PageRouteBuilder<void>(
         opaque: true,
@@ -1701,7 +2011,18 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
           paused: _pausedN,
           preparing: _preparingN,
           prepareProgress: _prepareProgressN,
-          onStop: _stopCameraDetection,
+          onStop: () => _stopCameraDetection(abortSequence: _abortPlanOnStop),
+          planStep: _planSeqIndex >= 0 ? _planSeqIndex + 1 : null,
+          planTotal: _recommendedPlan?.items.length,
+          targetCount: planItem?.target,
+          targetUnit: planItem == null
+              ? null
+              : (planItem.isTimed ? '秒' : '次'),
+          restCountdown: _restCountdownN,
+          externalComplete: _coachExternalCompleteN,
+          coachPhase: _coachPhaseN,
+          coachPhaseHint: _coachPhaseHintN,
+          coachCountdown: _coachCountdownN,
         ),
         transitionsBuilder: (_, animation, __, child) {
           return FadeTransition(opacity: animation, child: child);
@@ -1710,12 +2031,88 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
     );
     _coachPageOpen = false;
     await _restoreAppOrientation();
+    if (_pendingPlanAdvance) {
+      _pendingPlanAdvance = false;
+      await _advancePlanSequence();
+    }
     if (mounted) setState(() {});
   }
 
+  /// 连训达标：自动结算本式并进入休息/下一式
+  void _maybeCompletePlanTarget(int count) {
+    if (_planTargetHit || _planSeqIndex < 0) return;
+    final item = _recommendedPlan?.itemAt(_planSeqIndex);
+    if (item == null) return;
+    if (count < item.target) return;
+    _planTargetHit = true;
+    _abortPlanOnStop = false;
+    _showToast('✅ ${item.exercise.name} 达标！');
+    // 触发教练页走结束流程（pop + 结算）
+    _coachExternalCompleteN.value = true;
+  }
+
+  /// 按推荐组合顺序连续训练：从第一式开始，每式完成后自动进入下一式
+  Future<void> _startPlanSequence() async {
+    final plan = _recommendedPlan;
+    if (plan == null || plan.items.isEmpty) return;
+    if (_exerciseMode != 'camera') {
+      setState(() => _exerciseMode = 'camera');
+    }
+    // 连训依赖 ML Kit 全动作检测；TFLite 不含平板/弓步/波比/登山者等
+    if (_cameraEngine != 'mlkit') {
+      await _switchCameraEngine('mlkit');
+      if (mounted) _showToast('连训已切换到 ML Kit 姿态引擎');
+    }
+    _planSeqIndex = 0;
+    _planTargetHit = false;
+    _pendingPlanAdvance = false;
+    setState(() => _selectedExercise = plan.items.first.exerciseIndex);
+    final first = plan.items.first;
+    _showToast(
+      '已进入架设模式：把手机放好后走开，站进白框即可自动开练（${first.exercise.name} · ${first.targetLabel}）',
+    );
+    await _startCameraDetection();
+  }
+
+  /// 精彩瞬间（🔥 完美动作）自动截屏并保存到相册
+  Future<void> _captureHighlight() async {
+    // 达标结算 / 未在检测中：禁止截屏，避免与 stopImageStream 竞态
+    if (_planTargetHit || !_cameraDetecting || _cameraSettling) return;
+    final detector = _activeCameraDetector;
+    if (detector is! PoseDetectionService) return;
+    final now = DateTime.now();
+    if (now.difference(_lastHighlightCapture).inSeconds < 12) return;
+    _lastHighlightCapture = now;
+    try {
+      final hasAccess = await Gal.hasAccess();
+      if (!hasAccess) {
+        final granted = await Gal.requestAccess();
+        if (!granted) return;
+      }
+      if (_planTargetHit || !_cameraDetecting) return;
+      final path = await detector.captureStillSafe();
+      if (path == null || !mounted) return;
+      if (_planTargetHit || !_cameraDetecting) return;
+      await Gal.putImage(path);
+      if (!mounted) return;
+      _showToast('📸 精彩动作已自动保存到相册');
+    } catch (e) {
+      debugPrint('精彩瞬间截屏失败: $e');
+    }
+  }
+
   /// 停止摄像头检测
-  Future<void> _stopCameraDetection() async {
+  Future<void> _stopCameraDetection({bool abortSequence = true}) async {
     if (!_cameraDetecting && _cameraStartTime == null) return;
+
+    if (abortSequence && _planSeqIndex >= 0) {
+      _planSeqIndex = -1;
+      _pendingPlanAdvance = false;
+      _restTimer?.cancel();
+      _setupGraceTimer?.cancel();
+      _restCountdownN.value = 0;
+      _showToast('已退出连续训练');
+    }
 
     setState(() {
       _cameraDetecting = false;
@@ -1738,9 +2135,15 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
   }
 
   void _applyBodyPrescription(User user) {
+    final gs = ref.read(gameStateProvider);
+    // 今日待消耗 = 净摄入超出目标的部分（已含运动抵消）；
+    // 为 0 时处方会按渐进等级给基础燃脂目标
+    final pendingBurn = math.max(0, gs.todayCalIn - gs.targetCal);
     final plan = ExercisePrescription.recommendCombo(
       user,
       focus: _workoutFocus,
+      targetBurnCal: pendingBurn,
+      streak: gs.streak,
     );
     if (plan.exerciseIndexes.isEmpty) {
       _showToast('暂无可用的摄像头可识别动作');
@@ -1779,23 +2182,34 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
     
     final exercise = Exercises.all[_selectedExercise!];
     final elapsed = DateTime.now().difference(_cameraStartTime!);
-    final durationMinutes = (elapsed.inSeconds / 60).ceil();
-    if (durationMinutes < 1) {
-      _showToast('运动时间太短，未记录');
-      setState(() {
-        _cameraStartTime = null;
-        _cameraRepCount = 0;
-        _cameraFeedback = '准备开始';
-      });
-      return;
-    }
-    
-    final elapsedMinutes = elapsed.inSeconds / 60.0;
-    final calPerMin = exercise.calPerMin;
-    final calPerRep = calPerMin / 30.0;
     final repCount = _cameraBleFusion
         ? _fusionService.finalRepCount
         : _cameraRepCount;
+    // 达标或已有有效计数时，即使不足 1 秒也按 1 分钟结算，避免打断连训
+    var durationMinutes = (elapsed.inSeconds / 60).ceil();
+    if (durationMinutes < 1) {
+      final planItem =
+          _planSeqIndex >= 0 ? _recommendedPlan?.itemAt(_planSeqIndex) : null;
+      final hitTarget = _planTargetHit ||
+          (planItem != null && repCount >= planItem.target) ||
+          repCount > 0;
+      if (hitTarget) {
+        durationMinutes = 1;
+      } else {
+        _showToast('运动时间太短，未记录');
+        _planSeqIndex = -1;
+        _pendingPlanAdvance = false;
+        setState(() {
+          _cameraStartTime = null;
+          _cameraRepCount = 0;
+          _cameraFeedback = '准备开始';
+        });
+        return;
+      }
+    }
+    final elapsedMinutes = elapsed.inSeconds / 60.0;
+    final calPerMin = exercise.calPerMin;
+    final calPerRep = calPerMin / 30.0;
     final cal = ((calPerMin * elapsedMinutes * 0.3) + (calPerRep * repCount)).round();
     final modeLabel = _cameraEngine == 'tflite' ? 'camera_tflite' : 'camera';
     final damageResult = GameAlgorithm.exerciseImpactOnMonster(
@@ -1823,14 +2237,153 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
       '${durationMinutes}分钟，$repCount次，消耗${cal}千卡，'
       '造成${damageResult.damage}点伤害！',
     );
-    
+
     setState(() {
       _cameraStartTime = null;
       _cameraRepCount = 0;
       _cameraFeedback = '准备开始';
     });
+
+    // 连续训练：标记待推进，等教练页关闭后再休息/开练
+    if (_planSeqIndex >= 0 && _recommendedPlan != null) {
+      final plan = _recommendedPlan!;
+      final next = _planSeqIndex + 1;
+      if (next < plan.items.length) {
+        _planSeqIndex = next;
+        setState(() => _selectedExercise = plan.items[next].exerciseIndex);
+        _pendingPlanAdvance = true;
+      } else {
+        _planSeqIndex = -1;
+        _showToast('🎉 恭喜完成今日全部训练！');
+      }
+    }
   }
-  
+
+  /// 式间休息倒计时结束后的下一式提示
+  Future<void> _advancePlanSequence() async {
+    final plan = _recommendedPlan;
+    if (plan == null || _planSeqIndex < 0) return;
+    final item = plan.itemAt(_planSeqIndex);
+    if (item == null) return;
+    await _awaitPlanRest(plan.restSeconds);
+    if (!mounted || _planSeqIndex < 0) return;
+    _showToast(
+      '下一式自动入镜：${item.exercise.name} · ${item.targetLabel}'
+      '（${_planSeqIndex + 1}/${plan.items.length}）',
+    );
+    await _startCameraDetection();
+  }
+
+  /// 式间休息倒计时
+  Future<void> _awaitPlanRest(int seconds) async {
+    if (seconds <= 0) return;
+    _restTimer?.cancel();
+    final completer = Completer<void>();
+    _restCountdownN.value = seconds;
+    var dialogOpen = false;
+
+    if (mounted) {
+      dialogOpen = true;
+      // ignore: unawaited_futures
+      showGeneralDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        barrierColor: Colors.black54,
+        pageBuilder: (ctx, _, __) {
+          return PopScope(
+            canPop: false,
+            child: Center(
+              child: Material(
+                color: Colors.transparent,
+                child: ValueListenableBuilder<int>(
+                  valueListenable: _restCountdownN,
+                  builder: (_, secs, __) {
+                    return Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 40),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 28,
+                        vertical: 24,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppColors.bg2,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: AppColors.copper.withValues(alpha: 0.45),
+                        ),
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            '式间休息（无需操作，倒计时后自动下一式）',
+                            style: AppFonts.body(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 15,
+                              color: AppColors.text,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          Text(
+                            '$secs',
+                            style: AppFonts.display(
+                              fontSize: 48,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.ember,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            '深呼吸，准备下一式',
+                            style: _mutedStyle.copyWith(fontSize: 12),
+                          ),
+                          const SizedBox(height: 14),
+                          TextButton(
+                            onPressed: () {
+                              _restTimer?.cancel();
+                              _restCountdownN.value = 0;
+                              if (!completer.isCompleted) {
+                                completer.complete();
+                              }
+                              Navigator.of(ctx).pop();
+                            },
+                            child: Text(
+                              '跳过休息',
+                              style: AppFonts.body(
+                                color: AppColors.copper,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+          );
+        },
+      );
+    }
+
+    _restTimer = Timer.periodic(const Duration(seconds: 1), (t) {
+      final next = _restCountdownN.value - 1;
+      if (next <= 0) {
+        t.cancel();
+        _restCountdownN.value = 0;
+        if (!completer.isCompleted) completer.complete();
+        if (dialogOpen && mounted) {
+          final nav = Navigator.of(context, rootNavigator: true);
+          if (nav.canPop()) nav.pop();
+        }
+      } else {
+        _restCountdownN.value = next;
+      }
+    });
+
+    await completer.future;
+  }
+
   /// 摄像头计时器
   void _startCameraTimer() {
     Timer.periodic(const Duration(seconds: 1), (timer) {
@@ -1970,6 +2523,8 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
         return '个深蹲';
       case 'jumping_jack':
         return '个开合跳';
+      case 'plank':
+        return '秒';
       default:
         return '次';
     }

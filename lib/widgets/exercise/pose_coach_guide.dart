@@ -259,8 +259,11 @@ class _PoseCoachGuidePainter extends CustomPainter {
     final borderColor = alignment >= 0.7
         ? AppColors.copper
         : Colors.white.withValues(alpha: 0.92);
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(rect, const Radius.circular(18)),
+    // 虚线引导边框
+    final framePath = Path()
+      ..addRRect(RRect.fromRectAndRadius(rect, const Radius.circular(18)));
+    canvas.drawPath(
+      _dashPath(framePath, dash: 10, gap: 7),
       Paint()
         ..color = borderColor
         ..style = PaintingStyle.stroke
@@ -272,6 +275,44 @@ class _PoseCoachGuidePainter extends CustomPainter {
 
     // 动作剪影（白色半透明火柴人）
     _drawSilhouette(canvas, rect, exerciseType);
+  }
+
+  /// 将路径转换为虚线路径（dash 实线段长 + gap 间隔长）
+  Path _dashPath(Path source, {double dash = 8, double gap = 6}) {
+    final result = Path();
+    for (final metric in source.computeMetrics()) {
+      var distance = 0.0;
+      while (distance < metric.length) {
+        final end = math.min(distance + dash, metric.length);
+        result.addPath(metric.extractPath(distance, end), Offset.zero);
+        distance = end + gap;
+      }
+    }
+    return result;
+  }
+
+  /// 画一条虚线线段
+  void _drawDashedLine(Canvas canvas, Offset a, Offset b, Paint paint,
+      {double dash = 7, double gap = 6}) {
+    canvas.drawPath(
+      _dashPath(Path()..moveTo(a.dx, a.dy)..lineTo(b.dx, b.dy),
+          dash: dash, gap: gap),
+      paint,
+    );
+  }
+
+  /// 画虚线圆环（头部轮廓）
+  void _drawDashedCircle(Canvas canvas, Offset center, double radius,
+      Paint paint, Paint fill) {
+    canvas.drawCircle(center, radius, fill);
+    canvas.drawPath(
+      _dashPath(
+        Path()..addOval(Rect.fromCircle(center: center, radius: radius)),
+        dash: 6,
+        gap: 5,
+      ),
+      paint,
+    );
   }
 
   void _drawCorners(Canvas canvas, Rect rect, Color color) {
@@ -313,66 +354,60 @@ class _PoseCoachGuidePainter extends CustomPainter {
       case 'pushup':
       case 'plank':
       case 'mountainclimber':
-        // 侧身水平支撑
-        canvas.drawCircle(p(0.18, 0.42), rect.height * 0.06, fill);
-        canvas.drawCircle(p(0.18, 0.42), rect.height * 0.06, paint);
-        canvas.drawLine(p(0.24, 0.45), p(0.72, 0.48), paint);
-        canvas.drawLine(p(0.32, 0.48), p(0.30, 0.78), paint);
-        canvas.drawLine(p(0.30, 0.78), p(0.22, 0.82), paint);
-        canvas.drawLine(p(0.68, 0.50), p(0.78, 0.78), paint);
-        canvas.drawLine(p(0.78, 0.78), p(0.88, 0.80), paint);
+        // 侧身水平支撑（虚线剪影）
+        _drawDashedCircle(canvas, p(0.18, 0.42), rect.height * 0.06, paint, fill);
+        _drawDashedLine(canvas, p(0.24, 0.45), p(0.72, 0.48), paint);
+        _drawDashedLine(canvas, p(0.32, 0.48), p(0.30, 0.78), paint);
+        _drawDashedLine(canvas, p(0.30, 0.78), p(0.22, 0.82), paint);
+        _drawDashedLine(canvas, p(0.68, 0.50), p(0.78, 0.78), paint);
+        _drawDashedLine(canvas, p(0.78, 0.78), p(0.88, 0.80), paint);
         break;
       case 'jumping_jack':
-        canvas.drawCircle(p(0.5, 0.14), rect.width * 0.08, fill);
-        canvas.drawCircle(p(0.5, 0.14), rect.width * 0.08, paint);
-        canvas.drawLine(p(0.5, 0.22), p(0.5, 0.48), paint);
-        canvas.drawLine(p(0.5, 0.28), p(0.18, 0.12), paint);
-        canvas.drawLine(p(0.5, 0.28), p(0.82, 0.12), paint);
-        canvas.drawLine(p(0.5, 0.48), p(0.22, 0.88), paint);
-        canvas.drawLine(p(0.5, 0.48), p(0.78, 0.88), paint);
+        _drawDashedCircle(canvas, p(0.5, 0.14), rect.width * 0.08, paint, fill);
+        _drawDashedLine(canvas, p(0.5, 0.22), p(0.5, 0.48), paint);
+        _drawDashedLine(canvas, p(0.5, 0.28), p(0.18, 0.12), paint);
+        _drawDashedLine(canvas, p(0.5, 0.28), p(0.82, 0.12), paint);
+        _drawDashedLine(canvas, p(0.5, 0.48), p(0.22, 0.88), paint);
+        _drawDashedLine(canvas, p(0.5, 0.48), p(0.78, 0.88), paint);
         break;
       case 'lunge':
-        canvas.drawCircle(p(0.48, 0.12), rect.width * 0.08, fill);
-        canvas.drawCircle(p(0.48, 0.12), rect.width * 0.08, paint);
-        canvas.drawLine(p(0.48, 0.20), p(0.48, 0.45), paint);
-        canvas.drawLine(p(0.48, 0.28), p(0.30, 0.42), paint);
-        canvas.drawLine(p(0.48, 0.28), p(0.68, 0.42), paint);
-        canvas.drawLine(p(0.48, 0.45), p(0.32, 0.88), paint);
-        canvas.drawLine(p(0.48, 0.45), p(0.72, 0.72), paint);
-        canvas.drawLine(p(0.72, 0.72), p(0.78, 0.88), paint);
+        _drawDashedCircle(canvas, p(0.48, 0.12), rect.width * 0.08, paint, fill);
+        _drawDashedLine(canvas, p(0.48, 0.20), p(0.48, 0.45), paint);
+        _drawDashedLine(canvas, p(0.48, 0.28), p(0.30, 0.42), paint);
+        _drawDashedLine(canvas, p(0.48, 0.28), p(0.68, 0.42), paint);
+        _drawDashedLine(canvas, p(0.48, 0.45), p(0.32, 0.88), paint);
+        _drawDashedLine(canvas, p(0.48, 0.45), p(0.72, 0.72), paint);
+        _drawDashedLine(canvas, p(0.72, 0.72), p(0.78, 0.88), paint);
         break;
       case 'highknee':
-        canvas.drawCircle(p(0.5, 0.12), rect.width * 0.08, fill);
-        canvas.drawCircle(p(0.5, 0.12), rect.width * 0.08, paint);
-        canvas.drawLine(p(0.5, 0.20), p(0.5, 0.48), paint);
-        canvas.drawLine(p(0.5, 0.28), p(0.28, 0.18), paint);
-        canvas.drawLine(p(0.5, 0.28), p(0.72, 0.38), paint);
-        canvas.drawLine(p(0.5, 0.48), p(0.38, 0.88), paint);
-        canvas.drawLine(p(0.5, 0.48), p(0.62, 0.58), paint);
-        canvas.drawLine(p(0.62, 0.58), p(0.58, 0.42), paint);
+        _drawDashedCircle(canvas, p(0.5, 0.12), rect.width * 0.08, paint, fill);
+        _drawDashedLine(canvas, p(0.5, 0.20), p(0.5, 0.48), paint);
+        _drawDashedLine(canvas, p(0.5, 0.28), p(0.28, 0.18), paint);
+        _drawDashedLine(canvas, p(0.5, 0.28), p(0.72, 0.38), paint);
+        _drawDashedLine(canvas, p(0.5, 0.48), p(0.38, 0.88), paint);
+        _drawDashedLine(canvas, p(0.5, 0.48), p(0.62, 0.58), paint);
+        _drawDashedLine(canvas, p(0.62, 0.58), p(0.58, 0.42), paint);
         break;
       case 'burpee':
-        // 站姿剪影（起始态）
-        canvas.drawCircle(p(0.5, 0.12), rect.width * 0.07, fill);
-        canvas.drawCircle(p(0.5, 0.12), rect.width * 0.07, paint);
-        canvas.drawLine(p(0.5, 0.19), p(0.5, 0.48), paint);
-        canvas.drawLine(p(0.5, 0.28), p(0.32, 0.40), paint);
-        canvas.drawLine(p(0.5, 0.28), p(0.68, 0.40), paint);
-        canvas.drawLine(p(0.5, 0.48), p(0.38, 0.88), paint);
-        canvas.drawLine(p(0.5, 0.48), p(0.62, 0.88), paint);
+        // 站姿剪影（起始态，虚线）
+        _drawDashedCircle(canvas, p(0.5, 0.12), rect.width * 0.07, paint, fill);
+        _drawDashedLine(canvas, p(0.5, 0.19), p(0.5, 0.48), paint);
+        _drawDashedLine(canvas, p(0.5, 0.28), p(0.32, 0.40), paint);
+        _drawDashedLine(canvas, p(0.5, 0.28), p(0.68, 0.40), paint);
+        _drawDashedLine(canvas, p(0.5, 0.48), p(0.38, 0.88), paint);
+        _drawDashedLine(canvas, p(0.5, 0.48), p(0.62, 0.88), paint);
         break;
       case 'squat':
       default:
-        // 半蹲正面
-        canvas.drawCircle(p(0.5, 0.14), rect.width * 0.08, fill);
-        canvas.drawCircle(p(0.5, 0.14), rect.width * 0.08, paint);
-        canvas.drawLine(p(0.5, 0.22), p(0.5, 0.48), paint);
-        canvas.drawLine(p(0.5, 0.30), p(0.28, 0.42), paint);
-        canvas.drawLine(p(0.5, 0.30), p(0.72, 0.42), paint);
-        canvas.drawLine(p(0.5, 0.48), p(0.34, 0.72), paint);
-        canvas.drawLine(p(0.34, 0.72), p(0.32, 0.90), paint);
-        canvas.drawLine(p(0.5, 0.48), p(0.66, 0.72), paint);
-        canvas.drawLine(p(0.66, 0.72), p(0.68, 0.90), paint);
+        // 半蹲正面（虚线剪影）
+        _drawDashedCircle(canvas, p(0.5, 0.14), rect.width * 0.08, paint, fill);
+        _drawDashedLine(canvas, p(0.5, 0.22), p(0.5, 0.48), paint);
+        _drawDashedLine(canvas, p(0.5, 0.30), p(0.28, 0.42), paint);
+        _drawDashedLine(canvas, p(0.5, 0.30), p(0.72, 0.42), paint);
+        _drawDashedLine(canvas, p(0.5, 0.48), p(0.34, 0.72), paint);
+        _drawDashedLine(canvas, p(0.34, 0.72), p(0.32, 0.90), paint);
+        _drawDashedLine(canvas, p(0.5, 0.48), p(0.66, 0.72), paint);
+        _drawDashedLine(canvas, p(0.66, 0.72), p(0.68, 0.90), paint);
         break;
     }
   }

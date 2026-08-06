@@ -74,6 +74,9 @@ dependencies:
   # 图片选择（身体变化相册）
   image_picker: ^1.1.2
 
+  # 精彩动作截屏保存到系统相册
+  gal: ^2.3.1
+
   # 文件系统（相册照片存储 / 数据导出）
   path_provider: ^2.1.4
 

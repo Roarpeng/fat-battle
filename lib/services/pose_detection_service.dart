@@ -95,10 +95,17 @@ class PoseDetectionService {
   Function(bool paused)? onPauseChanged;
   Function(double progress)? onPrepareProgress;
 
+  /// 精彩瞬间回调：完成标准/完美动作时触发（供 UI 自动截屏）
+  Function()? onHighlightMoment;
+
+  /// 是否允许计次（免触控入镜门控通过前为 false，只出姿态不出次数）
+  bool _countingEnabled = false;
+
   // ===== Getters =====
   CameraController? get controller => _controller;
   bool get isInitialized => _isInitialized;
   bool get isDetecting => _isDetecting;
+  bool get countingEnabled => _countingEnabled;
   int get repCount => _repCount;
   String get currentExercise => _currentExercise;
   double get sensitivity => _sensitivity;
@@ -153,7 +160,16 @@ class PoseDetectionService {
 
   /// 开始检测指定运动
   Future<void> startDetection(String exerciseType) async {
-    if (!_isInitialized || _controller == null) return;
+    if (!_isInitialized || _controller == null) {
+      throw StateError('摄像头未初始化');
+    }
+
+    // 若残留推流，先停干净再开，避免 CameraException
+    if (_controller!.value.isStreamingImages) {
+      try {
+        await _controller!.stopImageStream();
+      } catch (_) {}
+    }
 
     _currentExercise = exerciseType;
     _repCount = 0;
@@ -163,6 +179,7 @@ class PoseDetectionService {
     _lastRepTime = DateTime.now();
     _isDetecting = true;
     _isBusy = false;
+    _countingEnabled = false; // 等入镜门控通过后再计次
 
     // 重置动作特定状态
     _squatHipMaxY = 0;
@@ -195,10 +212,21 @@ class PoseDetectionService {
     _currentFps = 30.0;
     _processingLevel = 2;
 
-    // 启动准备倒计时
+    // 启动入镜等待（不计次）；正式计次由 UI 门控 setCountingEnabled(true)
     _startPrepare();
 
     await _controller!.startImageStream(_processCameraImage);
+  }
+
+  /// 免控通过后开启计次；离开入镜时也可再次关闭。
+  void setCountingEnabled(bool enabled) {
+    if (_countingEnabled == enabled) return;
+    _countingEnabled = enabled;
+    if (enabled) {
+      _isPreparing = false;
+      onPrepareProgress?.call(1.0);
+      onFeedback?.call('开始运动！');
+    }
   }
 
   bool _isJumpingExercise(String type) {
@@ -214,6 +242,39 @@ class PoseDetectionService {
       await _controller!.stopImageStream();
     }
     _smoothedLandmarks.clear();
+  }
+
+  /// 安全截屏：若正在推流则先停流再拍照，避免与 ML Kit 抢相机。
+  /// 返回 JPEG 路径；失败返回 null。调用方负责决定是否恢复检测。
+  Future<String?> captureStillSafe() async {
+    final c = _controller;
+    if (c == null || !c.value.isInitialized) return null;
+    final wasStreaming = c.value.isStreamingImages;
+    final wasDetecting = _isDetecting;
+    try {
+      if (wasStreaming) {
+        _isDetecting = false;
+        await c.stopImageStream();
+        // 等最后一帧释放
+        await Future<void>.delayed(const Duration(milliseconds: 80));
+      }
+      final file = await c.takePicture();
+      return file.path;
+    } catch (e) {
+      debugPrint('captureStillSafe failed: $e');
+      return null;
+    } finally {
+      if (wasStreaming && wasDetecting && c.value.isInitialized) {
+        _isDetecting = true;
+        try {
+          if (!c.value.isStreamingImages) {
+            await c.startImageStream(_processCameraImage);
+          }
+        } catch (e) {
+          debugPrint('restart stream after capture failed: $e');
+        }
+      }
+    }
   }
 
   /// 处理每一帧摄像头图像
@@ -362,8 +423,8 @@ class PoseDetectionService {
       final smoothed = _applyEmaSmoothing(pose.landmarks);
       onPoseUpdate?.call(smoothed);
 
-      // 准备阶段跳过动作分析，仅显示姿态
-      if (!_isPreparing) {
+      // 入镜门控未通过前只展示姿态，不计次
+      if (!_isPreparing && _countingEnabled) {
         _analyzePose(smoothed);
       }
     } catch (e) {
@@ -545,6 +606,7 @@ class PoseDetectionService {
     String msg;
     if (angle < 90 && depthRatio > 0.25) {
       msg = '🔥 $_repCount 个！标准深蹲，完美！';
+      onHighlightMoment?.call();
     } else if (angle < 110) {
       msg = '💪 $_repCount 个！不错，继续保持~';
     } else if (angle < 130) {
@@ -637,6 +699,7 @@ class PoseDetectionService {
     String msg;
     if (angle < 80 && bodyLine > 0.7) {
       msg = '🔥 $_repCount 个！标准动作，胸肌炸裂！';
+      onHighlightMoment?.call();
     } else if (angle < 100) {
       msg = '💪 $_repCount 个！节奏不错，继续！';
     } else if (angle < 120) {
@@ -739,6 +802,7 @@ class PoseDetectionService {
     String msg;
     if (jumpHeight > 0.08 && feetSpread > 1.5) {
       msg = '🔥 $_repCount 个！标准开合跳，爆发十足！';
+      onHighlightMoment?.call();
     } else if (jumpHeight > 0.04 || feetSpread > 1.3) {
       msg = '💪 $_repCount 个！节奏不错，继续！';
     } else {
@@ -819,6 +883,7 @@ class PoseDetectionService {
     String msg;
     if (kneeRatio > 0.35) {
       msg = '🔥 $_repCount 个！膝盖抬得真高，完美！';
+      onHighlightMoment?.call();
     } else if (kneeRatio > 0.25) {
       msg = '💪 $_repCount 个！节奏不错，继续保持~';
     } else if (kneeRatio > 0.2) {
@@ -888,10 +953,17 @@ class PoseDetectionService {
             now.difference(_plankStartTime!).inMilliseconds / 1000.0;
         _plankStartTime = now;
       }
+      final secs = _plankAccumulatedSeconds.toInt();
+      // 每整秒推进一次计数（供 UI / 连训达标检测）
+      if (secs > _repCount) {
+        _repCount = secs;
+        onRepDetected?.call(_repCount, '平板支撑');
+        if (secs > 0 && secs % 15 == 0) {
+          onHighlightMoment?.call();
+        }
+      }
       // 每累计5秒提示一次
-      if (_plankAccumulatedSeconds > 0 &&
-          _plankAccumulatedSeconds.toInt() % 5 == 0 &&
-          _debounceOk()) {
+      if (secs > 0 && secs % 5 == 0 && _debounceOk()) {
         _emitPlankFeedback(_plankAccumulatedSeconds);
         _calcQualityScore('plank', 0.9, 0.8, bodyLine);
       }
@@ -1026,6 +1098,7 @@ class PoseDetectionService {
     String msg;
     if (kneeAngle > 170 && hipDiff < 0.06) {
       msg = '🔥 $_repCount 个！标准波比跳，燃脂之王！';
+      onHighlightMoment?.call();
     } else if (kneeAngle > 160) {
       msg = '💪 $_repCount 个！节奏不错，继续燃烧！';
     } else {
@@ -1108,6 +1181,7 @@ class PoseDetectionService {
     String msg;
     if (minAngle < 90 && angleDiff > 35) {
       msg = '🔥 $_repCount 个！标准弓步蹲，腿部力量炸裂！';
+      onHighlightMoment?.call();
     } else if (minAngle < 110 && angleDiff > 25) {
       msg = '💪 $_repCount 个！不错，继续保持~';
     } else if (minAngle < 120) {
@@ -1196,16 +1270,23 @@ class PoseDetectionService {
       _lastRepTime = DateTime.now();
       onRepDetected?.call(_repCount, '登山者');
       _handleRepSuccess();
-      _emitMountainClimberFeedback(leftForward, rightForward);
+      _emitMountainClimberFeedback(leftForward, rightForward, inPlank);
       _calcQualityScore('mountainclimber', inPlank ? 0.9 : 0.5, 0.8, 0.7);
     }
 
     _mountainClimberState = newState;
   }
 
-  void _emitMountainClimberFeedback(bool leftFwd, bool rightFwd) {
+  void _emitMountainClimberFeedback(
+    bool leftFwd,
+    bool rightFwd,
+    bool inPlank,
+  ) {
     String msg;
-    if ((leftFwd || rightFwd)) {
+    if (inPlank && (leftFwd || rightFwd)) {
+      msg = '🔥 $_repCount 次！标准登山跑，核心炸裂！';
+      onHighlightMoment?.call();
+    } else if (leftFwd || rightFwd) {
       msg = '💪 $_repCount 次！节奏真好，继续保持~';
     } else {
       msg = '👍 $_repCount 次！加快速度效果更好';

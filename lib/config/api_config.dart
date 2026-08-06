@@ -90,8 +90,7 @@ class ApiConfig {
 
   /// 未配置在线识别时给用户的构建提示（不含密钥）
   static String get foodVisionConfigHint =>
-      '未检测到在线识别密钥。拍照将使用本地推荐候选；'
-      '构建时请传入 --dart-define=ZHIPU_API_KEY=... '
-      '和/或 --dart-define=BAIDU_API_KEY=... '
-      '--dart-define=BAIDU_SECRET_KEY=...';
+      '未连接到食物识别后端。正常流程是：拍照/搜索 → 发给服务器处理（密钥只在服务端）。'
+      '请使用带 --dart-define=API_BASE_URL=https://你的服务器:端口 的正式包，'
+      '或确认后端已启动且手机能访问该地址。';
 }
