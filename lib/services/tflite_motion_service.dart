@@ -3,6 +3,7 @@ import 'dart:io' show FileSystemException;
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'package:camera/camera.dart';
+import 'package:flutter/foundation.dart';
 import 'package:tflite_flutter/tflite_flutter.dart';
 
 /// 基于 TensorFlow Lite (MoveNet) 的姿态估计与动作分类服务
@@ -120,7 +121,9 @@ class TfliteMotionService {
   /// 初始化摄像头与 TFLite 模型。
   ///
   /// 返回 `true` 表示模型与摄像头均就绪；模型缺失时返回 `false`。
-  Future<bool> initialize() async {
+  Future<bool> initialize({
+    CameraLensDirection preferredLens = CameraLensDirection.front,
+  }) async {
     if (_isInitialized) return modelLoaded && _controller != null;
 
     // 1. 加载模型（即使摄像头不可用也允许加载模型做单帧推理）
@@ -135,26 +138,77 @@ class TfliteMotionService {
       if (_cameras == null || _cameras!.isEmpty) {
         throw Exception('没有找到摄像头');
       }
-
-      final frontCamera = _cameras!.firstWhere(
-        (cam) => cam.lensDirection == CameraLensDirection.front,
-        orElse: () => _cameras!.first,
-      );
-
-      _controller = CameraController(
-        frontCamera,
-        ResolutionPreset.low,
-        enableAudio: false,
-        imageFormatGroup: ImageFormatGroup.yuv420,
-      );
-
-      await _controller!.initialize();
+      _preferredLens = preferredLens;
+      await _openCamera(_pickCamera(_preferredLens));
       _isInitialized = true;
       return true;
     } catch (e) {
       _isInitialized = false;
       rethrow;
     }
+  }
+
+  CameraLensDirection _preferredLens = CameraLensDirection.front;
+
+  CameraLensDirection get lensDirection =>
+      _controller?.description.lensDirection ?? _preferredLens;
+
+  CameraDescription _pickCamera(CameraLensDirection lens) {
+    final cams = _cameras!;
+    return cams.firstWhere(
+      (cam) => cam.lensDirection == lens,
+      orElse: () => cams.first,
+    );
+  }
+
+  Future<void> _openCamera(CameraDescription camera) async {
+    final old = _controller;
+    _controller = null;
+    if (old != null) {
+      try {
+        if (old.value.isInitialized && old.value.isStreamingImages) {
+          await old.stopImageStream();
+        }
+      } catch (_) {}
+      try {
+        await old.dispose();
+      } catch (_) {}
+      await Future<void>.delayed(const Duration(milliseconds: 350));
+    }
+
+    final next = CameraController(
+      camera,
+      ResolutionPreset.medium,
+      enableAudio: false,
+      imageFormatGroup: ImageFormatGroup.yuv420,
+    );
+    await next.initialize();
+    _controller = next;
+    _preferredLens = camera.lensDirection;
+  }
+
+  /// 前置 ↔ 后置切换
+  Future<CameraController?> switchCamera() async {
+    if (_cameras == null || _cameras!.length < 2) {
+      return _controller;
+    }
+    final wasDetecting = _isDetecting;
+    final exercise = _currentExercise;
+    final currentLens =
+        _controller?.description.lensDirection ?? _preferredLens;
+    if (wasDetecting) {
+      try {
+        await stopDetection();
+      } catch (_) {}
+    }
+    final nextLens = currentLens == CameraLensDirection.front
+        ? CameraLensDirection.back
+        : CameraLensDirection.front;
+    await _openCamera(_pickCamera(nextLens));
+    if (wasDetecting && exercise.isNotEmpty) {
+      await startDetection(exercise);
+    }
+    return _controller;
   }
 
   /// 从 assets 加载 MoveNet tflite 模型
@@ -285,16 +339,17 @@ class TfliteMotionService {
     // 输出 buffer：192*192*3 个 int32
     final output = Int32List(kInputSize * kInputSize * 3);
 
-    // 水平镜像（前置摄像头预览需要镜像）
+    // 水平镜像仅前置需要
+    final isFront =
+        _controller?.description.lensDirection == CameraLensDirection.front;
     for (int dy = 0; dy < kInputSize; dy++) {
       final srcY = (dy * height ~/ kInputSize).clamp(0, height - 1);
       for (int dx = 0; dx < kInputSize; dx++) {
-        // 镜像 X
         final srcX = (dx * width ~/ kInputSize).clamp(0, width - 1);
-        final mirrorX = width - 1 - srcX;
+        final sampleX = isFront ? width - 1 - srcX : srcX;
 
-        final yIdx = srcY * yRowStride + mirrorX;
-        final uvX = mirrorX ~/ 2;
+        final yIdx = srcY * yRowStride + sampleX;
+        final uvX = sampleX ~/ 2;
         final uvY = srcY ~/ 2;
         final uIdx = uvY * uRowStride + uvX;
         final vIdx = uvY * vRowStride + uvX;
@@ -328,8 +383,6 @@ class TfliteMotionService {
     if (_interpreter == null) return null;
 
     try {
-      // 输入 shape: [1, 192, 192, 3] int32
-      // 输出 shape: [1, 1, 17, 3] float32
       final output = List<List<List<List<double>>>>.generate(
         1,
         (_) => List<List<List<double>>>.generate(
@@ -341,13 +394,13 @@ class TfliteMotionService {
         ),
       );
 
-      // 将 Int32List reshape 为模型期望的嵌套 List
-      // 性能优化：直接用 ByteBuffer 会更快，但需要处理 shape 映射
-      final input = _reshapeInput(inputBuffer);
+      final inputType = _interpreter!.getInputTensors().first.type;
+      if (inputType == TensorType.float32) {
+        _interpreter!.run(_reshapeInputFloat(inputBuffer), output);
+      } else {
+        _interpreter!.run(_reshapeInput(inputBuffer), output);
+      }
 
-      _interpreter!.run(input, output);
-
-      // 解析输出
       final keypoints = <Keypoint>[];
       for (int i = 0; i < kKeypointCount; i++) {
         final y = output[0][0][i][0];
@@ -361,12 +414,13 @@ class TfliteMotionService {
       }
 
       return Pose(keypoints: keypoints);
-    } catch (_) {
+    } catch (e) {
+      debugPrint('TFLite inference failed: $e');
       return null;
     }
   }
 
-  /// 将一维 Int32List reshape 为 [1, 192, 192, 3]
+  /// 将一维 Int32List reshape 为 [1, 192, 192, 3] int
   List<List<List<List<int>>>> _reshapeInput(Int32List buffer) {
     final result = List<List<List<List<int>>>>.generate(
       1,
@@ -382,6 +436,27 @@ class TfliteMotionService {
       ),
     );
     return result;
+  }
+
+  /// float16/float32 模型：像素值仍用 0–255 浮点
+  List<List<List<List<double>>>> _reshapeInputFloat(Int32List buffer) {
+    return List<List<List<List<double>>>>.generate(
+      1,
+      (_) => List<List<List<double>>>.generate(
+        kInputSize,
+        (y) => List<List<double>>.generate(
+          kInputSize,
+          (x) {
+            final idx = (y * kInputSize + x) * 3;
+            return [
+              buffer[idx].toDouble(),
+              buffer[idx + 1].toDouble(),
+              buffer[idx + 2].toDouble(),
+            ];
+          },
+        ),
+      ),
+    );
   }
 
   /// 计算运动强度（基于关键点帧间位移）

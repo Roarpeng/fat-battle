@@ -1,11 +1,14 @@
 import 'dart:async';
-import 'dart:io' show Platform;
+import 'dart:io' show File, Platform;
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' show Size;
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
+import 'package:path_provider/path_provider.dart';
+import 'pose_coach_diary.dart';
 
 /// 基于 Google ML Kit Pose Detection 的姿态识别服务
 ///
@@ -23,6 +26,8 @@ class PoseDetectionService {
   // ===== 姿态检测器 =====
   late final PoseDetector _poseDetector;
   bool _isBusy = false;
+  DateTime? _lastMlkitDiaryAt;
+  bool _loggedFrameMeta = false;
 
   // ===== 计数与状态 =====
   int _repCount = 0;
@@ -40,10 +45,11 @@ class PoseDetectionService {
 
   // ===== 关键点平滑（EMA 低通滤波 + 异常值过滤） =====
   // alpha 越小越平滑但延迟越高，0.4 是灵敏度和稳定性的平衡点
-  static const double _emaAlpha = 0.4;
+  static const double _emaAlpha = 0.45;
   final Map<PoseLandmarkType, Point3D> _smoothedLandmarks = {};
   final Map<PoseLandmarkType, Point3D> _velocity = {};
-  static const double _maxJumpRatio = 0.15; // 单帧最大位移比例（防跳变）
+  // 放宽跳变阈值：错误初始帧 + 过严阈值会把肩点「粘死」在边缘
+  static const double _maxJumpRatio = 0.35;
 
   // ===== 运动强度 =====
   double _motionLevel = 0;
@@ -69,6 +75,10 @@ class PoseDetectionService {
   int _personFrames = 0;
   static const int _pauseThreshold = 15;
   static const int _resumeThreshold = 5;
+  /// 短暂空检时保留上一帧骨架，避免闪断；超时再清空
+  Map<PoseLandmarkType, Point3D>? _heldLandmarks;
+  DateTime? _heldLandmarksAt;
+  static const int _landmarkHoldMs = 800;
 
   // ===== Prepare 准备系统 =====
   bool _isPreparing = false;
@@ -110,6 +120,8 @@ class PoseDetectionService {
   String get currentExercise => _currentExercise;
   double get sensitivity => _sensitivity;
   double get motionLevel => _motionLevel;
+  CameraLensDirection get lensDirection =>
+      _controller?.description.lensDirection ?? _preferredLens;
 
   // ===== 新增 Getters =====
   int get comboCount => _comboCount;
@@ -119,43 +131,201 @@ class PoseDetectionService {
   bool get isPreparing => _isPreparing;
   double get currentFps => _currentFps;
 
-  /// 初始化摄像头（使用前置摄像头，用户可以看到自己的姿态）
-  Future<void> initialize() async {
+  CameraLensDirection _preferredLens = CameraLensDirection.front;
+  /// Android 优先走官方 YuvImage→JPEG→fromFilePath（绕开坏掉的 fromBitmap）
+  bool _useJpegInput = Platform.isAndroid;
+  /// Android 默认曾用 fromBitmap；JPEG 失败时回退
+  bool _useBitmapInput = false;
+  int _mlkitFailStreak = 0;
+  int _mlkitEmptyStreak = 0;
+  bool _detectorRecreating = false;
+  String? _jpegTempPath;
+  /// fromFilePath 无 metadata；记住缓冲尺寸用于归一化
+  Size? _lastInputImageSize;
+  DeviceOrientation? _lastEmaOrientation;
+  String? _lastEmaSizeKey;
+  /// 竖屏 mapRot 90/270 是否再 +180；冷启动可自动翻转校准
+  bool _portraitFlip180 = true;
+  int _mapBadSpanStreak = 0;
+  /// 开流后前几帧不做跳变过滤，避免首帧脏点锁死 EMA
+  int _emaWarmupLeft = 0;
+  static const int _emaWarmupFrames = 20;
+  static const _mlkitFrameChannel = MethodChannel('fat_battle/mlkit_frame');
+
+  /// 初始化摄像头（默认前置；可用 [switchCamera] 切换）
+  Future<void> initialize({
+    CameraLensDirection preferredLens = CameraLensDirection.front,
+  }) async {
     if (_isInitialized) return;
 
-    _poseDetector = PoseDetector(
-      options: PoseDetectorOptions(
-        mode: PoseDetectionMode.stream,
-        model: PoseDetectionModel.base,
-      ),
-    );
+    _createPoseDetector();
 
     try {
       _cameras = await availableCameras();
       if (_cameras == null || _cameras!.isEmpty) {
         throw Exception('没有找到摄像头');
       }
-
-      final frontCamera = _cameras!.firstWhere(
-        (cam) => cam.lensDirection == CameraLensDirection.front,
-        orElse: () => _cameras!.first,
-      );
-
-      _controller = CameraController(
-        frontCamera,
-        ResolutionPreset.medium,
-        enableAudio: false,
-        imageFormatGroup: Platform.isAndroid
-            ? ImageFormatGroup.yuv420
-            : ImageFormatGroup.bgra8888,
-      );
-
-      await _controller!.initialize();
+      _preferredLens = preferredLens;
+      await _openCamera(_pickCamera(_preferredLens));
       _isInitialized = true;
+      PoseCoachDiary.instance.log(
+        'MLKIT_INIT',
+        'lens=$_preferredLens jpeg=$_useJpegInput bitmap=$_useBitmapInput',
+      );
     } catch (e) {
       _isInitialized = false;
       rethrow;
     }
+  }
+
+  void _createPoseDetector() {
+    _poseDetector = PoseDetector(
+      options: PoseDetectorOptions(
+        mode: PoseDetectionMode.stream,
+        model: PoseDetectionModel.base,
+      ),
+    );
+  }
+
+  Future<void> _recreatePoseDetector(String reason) async {
+    if (_detectorRecreating) return;
+    _detectorRecreating = true;
+    try {
+      try {
+        await _poseDetector.close();
+      } catch (_) {}
+      _createPoseDetector();
+      PoseCoachDiary.instance.log('MLKIT_RECREATE', reason);
+    } finally {
+      _detectorRecreating = false;
+    }
+  }
+
+  CameraDescription _pickCamera(CameraLensDirection lens) {
+    final cams = _cameras!;
+    return cams.firstWhere(
+      (cam) => cam.lensDirection == lens,
+      orElse: () => cams.first,
+    );
+  }
+
+  Future<void> _openCamera(CameraDescription camera) async {
+    // 必须先释放旧相机再开新机：双开 + 预览仍挂已 dispose 的 Controller 会导致永久黑屏
+    final old = _controller;
+    _controller = null;
+    if (old != null) {
+      try {
+        if (old.value.isInitialized && old.value.isStreamingImages) {
+          await old.stopImageStream();
+        }
+      } catch (_) {}
+      try {
+        await old.dispose();
+      } catch (_) {}
+      // 小米等机型释放硬件需要一点时间
+      await Future<void>.delayed(const Duration(milliseconds: 350));
+    }
+
+    final next = CameraController(
+      camera,
+      ResolutionPreset.medium,
+      enableAudio: false,
+      // 本机 camera_android 的 nv21 单平面喂 ML Kit 恒空检；
+      // TFLite 已验证 yuv420 三平面有人，故自转 NV21。
+      imageFormatGroup: Platform.isAndroid
+          ? ImageFormatGroup.yuv420
+          : ImageFormatGroup.bgra8888,
+    );
+    await next.initialize();
+    _controller = next;
+    _isPaused = false;
+    _noPersonFrames = 0;
+    _personFrames = 0;
+    _preferredLens = camera.lensDirection;
+    _portraitFlip180 = true;
+    _resetLandmarkPipeline(reason: 'open_camera');
+    await syncOrientation();
+  }
+
+  void _resetLandmarkPipeline({required String reason}) {
+    _smoothedLandmarks.clear();
+    _velocity.clear();
+    _lastEmaOrientation = null;
+    _lastEmaSizeKey = null;
+    _heldLandmarks = null;
+    _heldLandmarksAt = null;
+    _emaWarmupLeft = _emaWarmupFrames;
+    _mapBadSpanStreak = 0;
+    _loggedFrameMeta = false;
+    PoseCoachDiary.instance.log('EMA_RESET', reason);
+  }
+
+  /// 刷新预览显示方向：pause/resume 比 lockCapture 更能触发 Surface 变换。
+  Future<void> syncOrientation() async {
+    final c = _controller;
+    if (c == null || !c.value.isInitialized) return;
+    try {
+      final orient = c.value.deviceOrientation;
+      final streaming = c.value.isStreamingImages;
+      if (streaming) {
+        try {
+          await c.stopImageStream();
+        } catch (_) {}
+      }
+      try {
+        await c.pausePreview();
+        await Future<void>.delayed(const Duration(milliseconds: 60));
+        await c.resumePreview();
+      } catch (_) {
+        // 部分机型 pause 不可用时退回 lock/unlock
+        await c.lockCaptureOrientation(orient);
+        await Future<void>.delayed(const Duration(milliseconds: 40));
+        await c.unlockCaptureOrientation();
+      }
+      _resetLandmarkPipeline(reason: 'orient_sync');
+      // 竖屏冷启动默认保留 +180；若贴合失败由 span 自动翻转
+      _portraitFlip180 = true;
+      PoseCoachDiary.instance.log(
+        'ORIENT_SYNC',
+        'orient=$orient mapRot=${_computeRotationDegrees()} '
+        'flip180=$_portraitFlip180 pauseResume=true',
+      );
+      if (streaming && _isDetecting) {
+        await c.startImageStream(_processCameraImage);
+      }
+    } catch (e) {
+      PoseCoachDiary.instance.log('ORIENT_SYNC_FAIL', '$e');
+    }
+  }
+
+  /// 前置 ↔ 后置切换；检测中会自动停流再恢复。
+  Future<CameraController?> switchCamera() async {
+    if (_cameras == null || _cameras!.length < 2) {
+      return _controller;
+    }
+    final wasDetecting = _isDetecting;
+    final exercise = _currentExercise;
+    final currentLens =
+        _controller?.description.lensDirection ?? _preferredLens;
+    if (wasDetecting) {
+      try {
+        await stopDetection();
+      } catch (_) {}
+    }
+
+    final nextLens = currentLens == CameraLensDirection.front
+        ? CameraLensDirection.back
+        : CameraLensDirection.front;
+    await _openCamera(_pickCamera(nextLens));
+    PoseCoachDiary.instance.log(
+      'CAMERA_SWITCH',
+      'lens=$nextLens sensor=${_controller!.description.sensorOrientation}',
+    );
+
+    if (wasDetecting && exercise.isNotEmpty) {
+      await startDetection(exercise);
+    }
+    return _controller;
   }
 
   /// 开始检测指定运动
@@ -176,6 +346,8 @@ class PoseDetectionService {
     _motionState = _isJumpingExercise(exerciseType) ? 'closed' : 'up';
     _smoothedLandmarks.clear();
     _velocity.clear();
+    _heldLandmarks = null;
+    _heldLandmarksAt = null;
     _lastRepTime = DateTime.now();
     _isDetecting = true;
     _isBusy = false;
@@ -211,6 +383,7 @@ class PoseDetectionService {
     _frameTimestamps.clear();
     _currentFps = 30.0;
     _processingLevel = 2;
+    _loggedFrameMeta = false;
 
     // 启动入镜等待（不计次）；正式计次由 UI 门控 setCountingEnabled(true)
     _startPrepare();
@@ -284,11 +457,11 @@ class PoseDetectionService {
     // 0. 更新 FPS 统计（每帧都统计以确保准确性）
     _updateFpsStats();
 
-    // 1. 检查/更新暂停状态
+    // 1. 暂停只根据上一帧结果更新状态；绝不能跳过推理，
+    //    否则无人暂停后永远无法再检出人体恢复（死锁）。
     _updatePauseState(_lastFrameHadPerson);
-    if (_isPaused) return;
 
-    // 2. 恢复体力
+    // 2. 恢复体力（暂停时也缓慢恢复）
     _recoverStamina();
 
     // 3. 更新准备状态
@@ -304,38 +477,210 @@ class PoseDetectionService {
     if (_frameCounter < _frameSkip) return;
     _frameCounter = 0;
 
-    final inputImage = _toInputImage(image);
-    if (inputImage == null) return;
-
     _isBusy = true;
-    _runDetection(inputImage);
+    _processCameraImageAsync(image);
   }
 
+  Future<void> _processCameraImageAsync(CameraImage image) async {
+    try {
+      final inputImage = await _toInputImageAsync(image);
+      if (inputImage == null) {
+        _isBusy = false;
+        return;
+      }
+      await _runDetection(inputImage);
+    } catch (e) {
+      debugPrint('PoseDetection 帧处理失败: $e');
+      PoseCoachDiary.instance.log('FRAME_FAIL', '$e');
+      _isBusy = false;
+    }
+  }
+
+  Future<String> _ensureJpegTempPath() async {
+    if (_jpegTempPath != null) return _jpegTempPath!;
+    final dir = await getTemporaryDirectory();
+    _jpegTempPath = '${dir.path}/mlkit_pose_frame.jpg';
+    return _jpegTempPath!;
+  }
+
+  int _computeRotationDegrees() {
+    final camera = _controller!.description;
+    final sensorOrientation = camera.sensorOrientation;
+    if (Platform.isIOS) return sensorOrientation;
+    var rotationCompensation =
+        _orientations[_controller!.value.deviceOrientation] ?? 0;
+    if (camera.lensDirection == CameraLensDirection.front) {
+      return (sensorOrientation + rotationCompensation) % 360;
+    }
+    return (sensorOrientation - rotationCompensation + 360) % 360;
+  }
+
+  Future<InputImage?> _toInputImageAsync(CameraImage image) async {
+    if (!Platform.isAndroid || !_useJpegInput || image.planes.length < 3) {
+      return _toInputImage(image);
+    }
+
+    try {
+      final rotationDeg = _computeRotationDegrees();
+      final nv21 = _yuv420ToNv21(image);
+      // 冻结：不旋转 JPEG。关键点保持缓冲坐标，与 preview 内 RotatedBox 同系。
+      final jpeg = await _mlkitFrameChannel.invokeMethod<Uint8List>(
+        'nv21ToJpeg',
+        {
+          'nv21': nv21,
+          'width': image.width,
+          'height': image.height,
+          'rotation': 0,
+          'quality': 80,
+        },
+      );
+      if (jpeg == null || jpeg.isEmpty) {
+        PoseCoachDiary.instance.log('JPEG_EMPTY', 'channel returned empty');
+        return _toInputImage(image);
+      }
+
+      final path = await _ensureJpegTempPath();
+      await File(path).writeAsBytes(jpeg, flush: true);
+
+      _lastInputImageSize =
+          Size(image.width.toDouble(), image.height.toDouble());
+
+      if (!_loggedFrameMeta) {
+        _loggedFrameMeta = true;
+        final planeLens = image.planes
+            .map((p) => '${p.bytes.length}/${p.bytesPerRow}/${p.bytesPerPixel}')
+            .join(';');
+        PoseCoachDiary.instance.log(
+          'CAMERA_FRAME',
+          'rawFmt=${image.format.raw} planes=${image.planes.length} '
+          'size=${image.width}x${image.height} mapRot=$rotationDeg '
+          'sensor=${_controller!.description.sensorOrientation} '
+          'orient=${_controller!.value.deviceOrientation} '
+          'planeLens=$planeLens path=jpeg_buffer jpegBytes=${jpeg.length}',
+        );
+      }
+
+      return InputImage.fromFilePath(path);
+    } catch (e) {
+      PoseCoachDiary.instance.log('JPEG_FAIL', '$e');
+      // 不永久关闭 JPEG
+      return _toInputImage(image);
+    }
+  }
+
+  static const _orientations = {
+    DeviceOrientation.portraitUp: 0,
+    DeviceOrientation.landscapeLeft: 90,
+    DeviceOrientation.portraitDown: 180,
+    DeviceOrientation.landscapeRight: 270,
+  };
+
   /// 将 CameraImage 转换为 ML Kit 可识别的 InputImage
+  /// 对齐 google_ml_kit 官方 camera_view 示例（Android 必须 nv21）。
   InputImage? _toInputImage(CameraImage image) {
     try {
       final camera = _controller!.description;
       final sensorOrientation = camera.sensorOrientation;
-      final isFront = camera.lensDirection == CameraLensDirection.front;
 
-      int rotationInt;
-      if (Platform.isAndroid) {
-        rotationInt = isFront
-            ? (360 - sensorOrientation) % 360
-            : sensorOrientation;
+      InputImageRotation? rotation;
+      if (Platform.isIOS) {
+        rotation = InputImageRotationValue.fromRawValue(sensorOrientation);
       } else {
-        rotationInt = isFront ? sensorOrientation : sensorOrientation;
+        var rotationCompensation =
+            _orientations[_controller!.value.deviceOrientation];
+        if (rotationCompensation == null) {
+          // 方向尚未就绪时用传感器默认，避免整段检测空转
+          rotationCompensation = 0;
+        }
+        if (camera.lensDirection == CameraLensDirection.front) {
+          rotationCompensation =
+              (sensorOrientation + rotationCompensation) % 360;
+        } else {
+          rotationCompensation =
+              (sensorOrientation - rotationCompensation + 360) % 360;
+        }
+        rotation = InputImageRotationValue.fromRawValue(rotationCompensation);
       }
+      if (rotation == null) return null;
 
-      final rotation = InputImageRotationValue.fromRawValue(rotationInt) ??
-          InputImageRotation.rotation0deg;
-
+      final format = InputImageFormatValue.fromRawValue(image.format.raw);
       final size = Size(image.width.toDouble(), image.height.toDouble());
 
-      if (Platform.isIOS) {
-        final plane = image.planes.first;
+      if (!_loggedFrameMeta) {
+        _loggedFrameMeta = true;
+        final planeLens = image.planes
+            .map((p) => '${p.bytes.length}/${p.bytesPerRow}/${p.bytesPerPixel}')
+            .join(';');
+        PoseCoachDiary.instance.log(
+          'CAMERA_FRAME',
+          'rawFmt=${image.format.raw} mapped=$format '
+          'planes=${image.planes.length} size=${image.width}x${image.height} '
+          'rot=$rotation sensor=$sensorOrientation '
+          'orient=${_controller!.value.deviceOrientation} '
+          'planeLens=$planeLens',
+        );
+      }
+
+      // Android：优先三平面 yuv420 → 自转 NV21（本机插件 nv21 单平面对 Pose 恒空）
+      if (Platform.isAndroid && image.planes.length >= 3) {
+        final nv21 = _yuv420ToNv21(image);
+        if (_useBitmapInput) {
+          final rgba = _yuv420ToRgba(image);
+          return InputImage.fromBitmap(
+            bitmap: rgba,
+            width: image.width,
+            height: image.height,
+            rotation: rotation.rawValue,
+          );
+        }
         return InputImage.fromBytes(
-          bytes: plane.bytes,
+          bytes: nv21,
+          metadata: InputImageMetadata(
+            size: size,
+            rotation: rotation,
+            format: InputImageFormat.nv21,
+            bytesPerRow: image.width,
+          ),
+        );
+      }
+
+      // 兼容：相机直接输出 nv21 单平面
+      if (Platform.isAndroid &&
+          image.planes.length == 1 &&
+          (format == null ||
+              format == InputImageFormat.nv21 ||
+              format == InputImageFormat.yuv_420_888)) {
+        final plane = image.planes.first;
+        final bytes = Uint8List.fromList(plane.bytes);
+
+        if (_useBitmapInput) {
+          final rgba = _nv21ToRgba(bytes, image.width, image.height);
+          return InputImage.fromBitmap(
+            bitmap: rgba,
+            width: image.width,
+            height: image.height,
+            rotation: rotation.rawValue,
+          );
+        }
+
+        return InputImage.fromBytes(
+          bytes: bytes,
+          metadata: InputImageMetadata(
+            size: size,
+            rotation: rotation,
+            format: InputImageFormat.nv21,
+            bytesPerRow: plane.bytesPerRow,
+          ),
+        );
+      }
+
+      if (Platform.isIOS &&
+          format == InputImageFormat.bgra8888 &&
+          image.planes.length == 1) {
+        final plane = image.planes.first;
+        final bytes = Uint8List.fromList(plane.bytes);
+        return InputImage.fromBytes(
+          bytes: bytes,
           metadata: InputImageMetadata(
             size: size,
             rotation: rotation,
@@ -345,23 +690,31 @@ class PoseDetectionService {
         );
       }
 
-      final nv21 = _yuv420ToNv21(image);
-      return InputImage.fromBytes(
-        bytes: nv21,
-        metadata: InputImageMetadata(
-          size: size,
-          rotation: rotation,
-          format: InputImageFormat.nv21,
-          bytesPerRow: image.width,
-        ),
+      PoseCoachDiary.instance.log(
+        'INPUT_IMAGE_SKIP',
+        'format=${image.format.raw} planes=${image.planes.length} '
+        'size=${image.width}x${image.height}',
       );
+      return null;
     } catch (e) {
       debugPrint('PoseDetection: InputImage 转换失败: $e');
+      PoseCoachDiary.instance.log('INPUT_IMAGE_FAIL', '$e');
       return null;
     }
   }
 
+  void _diaryMlkitThrottled(String event, String detail) {
+    final now = DateTime.now();
+    if (_lastMlkitDiaryAt != null &&
+        now.difference(_lastMlkitDiaryAt!) < const Duration(milliseconds: 800)) {
+      return;
+    }
+    _lastMlkitDiaryAt = now;
+    PoseCoachDiary.instance.log(event, detail);
+  }
+
   /// 将 Android CameraImage (YUV_420_888) 转换为 NV21 单缓冲格式
+  /// 对齐 googlesamples/mlkit BitmapUtils.yuv420ThreePlanesToNV21
   Uint8List _yuv420ToNv21(CameraImage image) {
     final width = image.width;
     final height = image.height;
@@ -374,13 +727,18 @@ class PoseDetectionService {
 
     // 1. 拷贝 Y 平面（处理行步长 padding）
     final yRowStride = yPlane.bytesPerRow;
-    if (yRowStride == width) {
-      nv21.setRange(0, ySize, yPlane.bytes);
+    final yPixelStride = yPlane.bytesPerPixel ?? 1;
+    if (yRowStride == width && yPixelStride == 1) {
+      final copy = ySize < yPlane.bytes.length ? ySize : yPlane.bytes.length;
+      nv21.setRange(0, copy, yPlane.bytes);
     } else {
+      var out = 0;
       for (int row = 0; row < height; row++) {
-        final srcStart = row * yRowStride;
-        final dstStart = row * width;
-        nv21.setRange(dstStart, dstStart + width, yPlane.bytes, srcStart);
+        var inputPos = row * yRowStride;
+        for (int col = 0; col < width; col++) {
+          nv21[out++] = yPlane.bytes[inputPos.clamp(0, yPlane.bytes.length - 1)];
+          inputPos += yPixelStride;
+        }
       }
     }
 
@@ -391,15 +749,70 @@ class PoseDetectionService {
     final halfWidth = width ~/ 2;
     int uvIndex = ySize;
 
+    // 快路径：UV 已是 NV21 交错（pixelStride=2 且 V 在 U 前 1 字节）
+    if (uvPixelStride == 2 &&
+        vPlane.bytesPerPixel == 2 &&
+        identical(uPlane.bytes, vPlane.bytes) == false) {
+      // 仍逐点取，兼容小米等机型 buffer 布局
+    }
+
     for (int row = 0; row < halfHeight; row++) {
+      final uRowStart = row * uvRowStride;
+      final vRowStart = row * (vPlane.bytesPerRow);
       for (int col = 0; col < halfWidth; col++) {
-        final idx = row * uvRowStride + col * uvPixelStride;
-        nv21[uvIndex++] = vPlane.bytes[idx];
-        nv21[uvIndex++] = uPlane.bytes[idx];
+        final uIdx = uRowStart + col * uvPixelStride;
+        final vIdx = vRowStart + col * (vPlane.bytesPerPixel ?? uvPixelStride);
+        final v = vPlane.bytes[vIdx.clamp(0, vPlane.bytes.length - 1)];
+        final u = uPlane.bytes[uIdx.clamp(0, uPlane.bytes.length - 1)];
+        if (uvIndex + 1 >= nv21.length) break;
+        nv21[uvIndex++] = v;
+        nv21[uvIndex++] = u;
       }
     }
 
     return nv21;
+  }
+
+  /// YUV420 三平面 → RGBA（与 TFLite 同源采样，供 fromBitmap）
+  Uint8List _yuv420ToRgba(CameraImage image) {
+    final width = image.width;
+    final height = image.height;
+    final yPlane = image.planes[0];
+    final uPlane = image.planes[1];
+    final vPlane = image.planes[2];
+    final yBytes = yPlane.bytes;
+    final uBytes = uPlane.bytes;
+    final vBytes = vPlane.bytes;
+    final yRowStride = yPlane.bytesPerRow;
+    final uRowStride = uPlane.bytesPerRow;
+    final vRowStride = vPlane.bytesPerRow;
+    final uPixelStride = uPlane.bytesPerPixel ?? 1;
+    final vPixelStride = vPlane.bytesPerPixel ?? 1;
+
+    final out = Uint8List(width * height * 4);
+    for (int y = 0; y < height; y++) {
+      for (int x = 0; x < width; x++) {
+        final yIdx = y * yRowStride + x;
+        final uvX = x ~/ 2;
+        final uvY = y ~/ 2;
+        final uIdx = uvY * uRowStride + uvX * uPixelStride;
+        final vIdx = uvY * vRowStride + uvX * vPixelStride;
+        final yVal = yIdx < yBytes.length ? (yBytes[yIdx] & 0xff) : 0;
+        final uVal = uIdx < uBytes.length ? (uBytes[uIdx] & 0xff) : 128;
+        final vVal = vIdx < vBytes.length ? (vBytes[vIdx] & 0xff) : 128;
+        final r = (yVal + 1.402 * (vVal - 128)).round().clamp(0, 255);
+        final g = (yVal - 0.344136 * (uVal - 128) - 0.714136 * (vVal - 128))
+            .round()
+            .clamp(0, 255);
+        final b = (yVal + 1.772 * (uVal - 128)).round().clamp(0, 255);
+        final o = (y * width + x) * 4;
+        out[o] = r;
+        out[o + 1] = g;
+        out[o + 2] = b;
+        out[o + 3] = 255;
+      }
+    }
+    return out;
   }
 
   /// 执行姿态推理并分析
@@ -408,71 +821,238 @@ class PoseDetectionService {
       final poses = await _poseDetector.processImage(inputImage);
       if (poses.isEmpty) {
         _lastFrameHadPerson = false;
-        onPoseUpdate?.call(null);
-        _motionLevel = 0;
-        onMotionUpdate?.call(0);
-        onFeedback?.call('请将全身入镜');
-        _isBusy = false;
+        _mlkitEmptyStreak++;
+        final now = DateTime.now();
+        final holdOk = _heldLandmarks != null &&
+            _heldLandmarksAt != null &&
+            now.difference(_heldLandmarksAt!).inMilliseconds < _landmarkHoldMs;
+        if (holdOk) {
+          // 短时空检：继续展示上一帧，避免点位闪灭
+          onPoseUpdate?.call(_heldLandmarks);
+        } else {
+          _heldLandmarks = null;
+          _heldLandmarksAt = null;
+          onPoseUpdate?.call(null);
+          _motionLevel = 0;
+          onMotionUpdate?.call(0);
+          onFeedback?.call('请将全身入镜');
+        }
+        final sz = inputImage.metadata?.size;
+        // 不在空检时切 Bitmap：会污染会话且 JPEG 路径下无益
+        _diaryMlkitThrottled(
+          'MLKIT_EMPTY',
+          'img=${sz?.width.toInt()}x${sz?.height.toInt()} '
+          'rot=${inputImage.metadata?.rotation} '
+          'fmt=${inputImage.metadata?.format} '
+          'jpeg=$_useJpegInput empty=$_mlkitEmptyStreak '
+          'paused=$_isPaused hold=$holdOk',
+        );
+        if (_mlkitEmptyStreak == 25 || _mlkitEmptyStreak == 60) {
+          await _recreatePoseDetector('empty=$_mlkitEmptyStreak');
+        }
         return;
       }
 
       _lastFrameHadPerson = true;
+      _mlkitFailStreak = 0;
+      _mlkitEmptyStreak = 0;
 
       final pose = poses.first;
-      // EMA 平滑
-      final smoothed = _applyEmaSmoothing(pose.landmarks);
+      // fromFilePath 无 metadata.size，用 JPEG 摆正尺寸兜底
+      final imageSize = inputImage.metadata?.size ?? _lastInputImageSize;
+      // EMA 平滑（像素 → 归一化 0..1，供 UI / 门控 / 阈值共用）
+      final smoothed = _applyEmaSmoothing(pose.landmarks, imageSize);
+      _heldLandmarks = smoothed;
+      _heldLandmarksAt = DateTime.now();
       onPoseUpdate?.call(smoothed);
 
-      // 入镜门控未通过前只展示姿态，不计次
-      if (!_isPreparing && _countingEnabled) {
+      // 暂停时仍展示姿态，但不计次
+      if (!_isPreparing && _countingEnabled && !_isPaused) {
         _analyzePose(smoothed);
       }
     } catch (e) {
       debugPrint('PoseDetection 推理失败: $e');
+      final sz = inputImage.metadata?.size;
+      _mlkitFailStreak++;
+      final err = '$e';
+      if (err.contains('Internal error') || err.contains('PoseDetectorError')) {
+        // 不切 Bitmap：会污染 JPEG 会话；仅重建 detector
+        if (_mlkitFailStreak == 3 || _mlkitFailStreak == 10) {
+          await _recreatePoseDetector('fails=$_mlkitFailStreak err=$err');
+        }
+      }
+      _diaryMlkitThrottled(
+        'MLKIT_FAIL',
+        'err=$e img=${sz?.width.toInt()}x${sz?.height.toInt()} '
+        'rot=${inputImage.metadata?.rotation} '
+        'fmt=${inputImage.metadata?.format} '
+        'bitmap=$_useBitmapInput streak=$_mlkitFailStreak',
+      );
     } finally {
       _isBusy = false;
     }
   }
 
-  /// 对关键点应用 EMA 平滑 + 异常值过滤，抑制抖动
-  /// 前置摄像头需要镜像翻转 X 坐标
+  /// NV21 → RGBA（供 InputImage.fromBitmap，绕开部分机型 NV21 fromBytes Internal error）
+  Uint8List _nv21ToRgba(Uint8List nv21, int width, int height) {
+    final frameSize = width * height;
+    final out = Uint8List(frameSize * 4);
+    for (int y = 0; y < height; y++) {
+      final uvRow = frameSize + (y >> 1) * width;
+      for (int x = 0; x < width; x++) {
+        final yi = y * width + x;
+        final yVal = nv21[yi] & 0xff;
+        final uvIndex = uvRow + (x & ~1);
+        final v = nv21[uvIndex.clamp(0, nv21.length - 1)] & 0xff;
+        final u = nv21[(uvIndex + 1).clamp(0, nv21.length - 1)] & 0xff;
+        final r = (yVal + 1.370705 * (v - 128)).round().clamp(0, 255);
+        final g = (yVal - 0.337633 * (u - 128) - 0.698001 * (v - 128))
+            .round()
+            .clamp(0, 255);
+        final b = (yVal + 1.732446 * (u - 128)).round().clamp(0, 255);
+        final o = yi * 4;
+        out[o] = r;
+        out[o + 1] = g;
+        out[o + 2] = b;
+        out[o + 3] = 255;
+      }
+    }
+    return out;
+  }
+
+  /// 缓冲像素 → CameraPreview.child 归一化坐标。
+  /// jpeg_buffer 关键点在传感器缓冲空间；按 ML Kit rotation 顺时针摆正。
+  /// 竖屏（rot 90/270）默认再 +180；冷启动若肩宽虚高会自动翻转 [_portraitFlip180]。
+  /// 横屏 rot=0 已贴合，禁止加补偿。
+  (double, double) _bufferPixelToPreviewNorm(
+    double px,
+    double py,
+    double bufW,
+    double bufH,
+    int rotationDeg,
+  ) {
+    var rot = rotationDeg % 360;
+    if ((rot == 90 || rot == 270) && _portraitFlip180) {
+      rot = (rot + 180) % 360;
+    }
+    late final double dx;
+    late final double dy;
+    late final double dw;
+    late final double dh;
+    switch (rot) {
+      case 90:
+        dw = bufH;
+        dh = bufW;
+        dx = py;
+        dy = bufW - px;
+        break;
+      case 270:
+        dw = bufH;
+        dh = bufW;
+        dx = bufH - py;
+        dy = px;
+        break;
+      case 180:
+        dw = bufW;
+        dh = bufH;
+        dx = bufW - px;
+        dy = bufH - py;
+        break;
+      default:
+        dw = bufW;
+        dh = bufH;
+        dx = px;
+        dy = py;
+        break;
+    }
+    return (
+      (dx / dw).clamp(0.0, 1.0),
+      (dy / dh).clamp(0.0, 1.0),
+    );
+  }
+
+  /// 前置预览一般为镜像自拍；jpeg_buffer 关键点未镜像，需水平翻转对齐。
+  (double, double) _toPreviewNorm(
+    double px,
+    double py,
+    double bufW,
+    double bufH,
+    int rotationDeg,
+  ) {
+    var (x, y) = _bufferPixelToPreviewNorm(px, py, bufW, bufH, rotationDeg);
+    if (_controller?.description.lensDirection == CameraLensDirection.front) {
+      x = 1.0 - x;
+    }
+    return (x, y);
+  }
+
+  /// 对关键点应用 EMA 平滑 + 异常值过滤，抑制抖动。
+  /// jpeg_buffer 像素 → 预览 child 归一化（供 CameraPreview.child 叠层）。
   Map<PoseLandmarkType, Point3D> _applyEmaSmoothing(
     Map<PoseLandmarkType, PoseLandmark> landmarks,
+    Size? imageSize,
   ) {
     final result = <PoseLandmarkType, Point3D>{};
-    final isFront = _controller!.description.lensDirection == CameraLensDirection.front;
+    var bufW = imageSize?.width ?? 0;
+    var bufH = imageSize?.height ?? 0;
+    if (bufW <= 0 || bufH <= 0) {
+      bufW = _lastInputImageSize?.width ?? 0;
+      bufH = _lastInputImageSize?.height ?? 0;
+    }
+    if (bufW <= 0 || bufH <= 0) {
+      bufW = 720;
+      bufH = 480;
+    }
+
+    final orient = _controller?.value.deviceOrientation;
+    final rot = _computeRotationDegrees();
+    final isFront =
+        _controller?.description.lensDirection == CameraLensDirection.front;
+    final sizeKey =
+        '${bufW.round()}x${bufH.round()}@$rot|f=${_portraitFlip180 ? 1 : 0}|cam=${isFront ? 'F' : 'B'}';
+    if (orient != _lastEmaOrientation || sizeKey != _lastEmaSizeKey) {
+      _smoothedLandmarks.clear();
+      _velocity.clear();
+      _emaWarmupLeft = _emaWarmupFrames;
+      _lastEmaOrientation = orient;
+      _lastEmaSizeKey = sizeKey;
+    }
+
+    final ls = landmarks[PoseLandmarkType.leftShoulder];
+    final rs = landmarks[PoseLandmarkType.rightShoulder];
+    if (ls != null && rs != null && bufW > 0) {
+      final span = ((ls.x - rs.x) / bufW).abs();
+      if (span > 0.7) {
+        _smoothedLandmarks.clear();
+        _velocity.clear();
+        _emaWarmupLeft = _emaWarmupFrames;
+      }
+    }
+
+    final warmup = _emaWarmupLeft > 0;
+    if (warmup) _emaWarmupLeft--;
 
     landmarks.forEach((type, lm) {
-      var x = lm.x;
-      if (isFront) {
-        x = 1.0 - x;
-      }
-      final curr = Point3D(x, lm.y, lm.z);
+      final (x, y) = _toPreviewNorm(lm.x, lm.y, bufW, bufH, rot);
+      final curr = Point3D(x, y, lm.z);
       final prev = _smoothedLandmarks[type];
 
-      if (prev == null) {
+      if (prev == null || warmup) {
         _smoothedLandmarks[type] = curr;
         _velocity[type] = Point3D(0, 0, 0);
         result[type] = curr;
         return;
       }
 
-      // 异常值检测：单帧位移过大说明检测跳变，用预测值替代
       final dx = curr.x - prev.x;
       final dy = curr.y - prev.y;
       final dist = math.sqrt(dx * dx + dy * dy);
 
       Point3D filtered;
       if (dist > _maxJumpRatio) {
-        // 跳变过大，用前一帧 + 速度预测代替当前帧
-        final vel = _velocity[type] ?? Point3D(0, 0, 0);
-        filtered = Point3D(
-          prev.x + vel.x * 0.5,
-          prev.y + vel.y * 0.5,
-          prev.z + vel.z * 0.5,
-        );
+        // 大跳变：直接采纳新点，避免脏首帧把肩锁在边缘（旧逻辑用速度拖住）
+        filtered = curr;
       } else {
-        // 正常范围，EMA 平滑
         filtered = Point3D(
           prev.x + (curr.x - prev.x) * _emaAlpha,
           prev.y + (curr.y - prev.y) * _emaAlpha,
@@ -480,7 +1060,6 @@ class PoseDetectionService {
         );
       }
 
-      // 更新速度估计
       _velocity[type] = Point3D(
         filtered.x - prev.x,
         filtered.y - prev.y,
@@ -490,6 +1069,41 @@ class PoseDetectionService {
       _smoothedLandmarks[type] = filtered;
       result[type] = filtered;
     });
+
+    // 预览肩宽虚高 → 映射可能差 180°，自动翻转并清空 EMA
+    final outLs = result[PoseLandmarkType.leftShoulder];
+    final outRs = result[PoseLandmarkType.rightShoulder];
+    if (outLs != null && outRs != null) {
+      final previewSpan = (outLs.x - outRs.x).abs();
+      final portraitRot = rot == 90 || rot == 270;
+      if (portraitRot && previewSpan > 0.55) {
+        _mapBadSpanStreak++;
+        if (_mapBadSpanStreak >= 2) {
+          _portraitFlip180 = !_portraitFlip180;
+          _mapBadSpanStreak = 0;
+          _smoothedLandmarks.clear();
+          _velocity.clear();
+          _emaWarmupLeft = _emaWarmupFrames;
+          PoseCoachDiary.instance.log(
+            'MAP_FLIP',
+            'flip180=$_portraitFlip180 span=${previewSpan.toStringAsFixed(3)} '
+            'mapRot=$rot',
+          );
+          // 用新翻转重映射本帧
+          result.clear();
+          landmarks.forEach((type, lm) {
+            final (x, y) = _toPreviewNorm(lm.x, lm.y, bufW, bufH, rot);
+            final curr = Point3D(x, y, lm.z);
+            _smoothedLandmarks[type] = curr;
+            _velocity[type] = Point3D(0, 0, 0);
+            result[type] = curr;
+          });
+        }
+      } else if (previewSpan > 0.05 && previewSpan < 0.45) {
+        _mapBadSpanStreak = 0;
+      }
+    }
+
     return result;
   }
 

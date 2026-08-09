@@ -6,6 +6,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:camera/camera.dart';
 import '../theme/forge_theme.dart';
+import '../theme/forge_routes.dart';
+import '../theme/tokens.dart';
 import '../theme/app_icons.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../constants/app_constants.dart';
@@ -18,8 +20,10 @@ import '../services/pose_detection_service.dart';
 import '../services/tflite_motion_service.dart';
 import '../services/exercise_game_logic.dart';
 import '../services/exercise_prescription.dart';
+import '../services/pose_coach_diary.dart';
 import '../widgets/exercise/pose_overlay.dart';
 import '../widgets/exercise/pose_coach_guide.dart';
+import '../widgets/forge_pressable.dart';
 import '../widgets/home/forge_background.dart';
 import '../widgets/home/mini_monster_header.dart';
 import 'package:gal/gal.dart';
@@ -40,7 +44,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
   int? _selectedExercise;
   int? _selectedDuration;
   String _exerciseMode = 'manual'; // 'manual' | 'camera' | 'imu'
-  String _cameraEngine = 'mlkit'; // 'mlkit' | 'tflite'
+  String _cameraEngine = 'mlkit'; // 修复 ML Kit；不再默认跳过到 TFLite
   bool _cameraBleFusion = false;
   WorkoutFocus _workoutFocus = WorkoutFocus.mixed;
   WorkoutPlan? _recommendedPlan;
@@ -271,6 +275,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
     _handsFreeSessionStart = DateTime.now();
     _alignGoodSince = null;
     _countdownStartedAt = null;
+    PoseCoachDiary.instance.logPhase('-', 'setup', 'reset_gate');
     _coachPhaseN.value = 'setup';
     _coachPhaseHintN.value = '请把手机架稳，然后走到镜头前';
     _coachCountdownN.value = 0;
@@ -301,6 +306,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
           : '请站进白色虚线框，全身入镜';
       if (elapsed.inSeconds >= _setupGraceSec) {
         t.cancel();
+        PoseCoachDiary.instance.logPhase('setup', 'align', 'grace_done');
         _coachPhaseN.value = 'align';
         _alignGoodSince = null;
         _coachPhaseHintN.value = '请站进白色虚线框，全身入镜';
@@ -311,7 +317,20 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
 
   void _onHandsFreePose(Map<String, Map<String, double>>? landmarks) {
     if (!_cameraDetecting || _planTargetHit) return;
-    if (_coachPhaseN.value == 'active') return;
+    if (_coachPhaseN.value == 'active') {
+      // active 阶段降频记一条心跳，确认仍有关键点
+      if (landmarks != null && landmarks.isNotEmpty) {
+        PoseCoachDiary.instance.logPoseFrame(
+          phase: 'active',
+          keypointCount: landmarks.length,
+          alignment: 1,
+          tooClose: false,
+          hint: 'counting',
+          sample: _diarySample(landmarks),
+        );
+      }
+      return;
+    }
 
     final now = DateTime.now();
     final isPortrait =
@@ -319,25 +338,50 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
     final exerciseType = _selectedExercise != null
         ? Exercises.all[_selectedExercise!].type
         : 'squat';
+    final phase = _coachPhaseN.value;
 
     // Phase 1: 架设宽限——给人离开手机、摆姿势的时间，绝不自动开练
-    // （进度由 _setupGraceTimer 推进；此处仅挡住开练）
-    if (_coachPhaseN.value == 'setup') {
+    if (phase == 'setup') {
+      PoseCoachDiary.instance.logPoseFrame(
+        phase: 'setup',
+        keypointCount: landmarks?.length ?? 0,
+        alignment: 0,
+        tooClose: false,
+        hint: _coachPhaseHintN.value,
+        sample: landmarks == null ? 'null' : _diarySample(landmarks),
+      );
       return;
     }
 
     // Phase 2: 入镜对齐
-    if (_coachPhaseN.value == 'align') {
+    if (phase == 'align') {
       if (landmarks == null || landmarks.isEmpty) {
         _alignGoodSince = null;
         _coachPhaseHintN.value = '未检测到人，请走进画面';
         _prepareProgressN.value = 0;
+        PoseCoachDiary.instance.logPoseFrame(
+          phase: 'align',
+          keypointCount: 0,
+          alignment: 0,
+          tooClose: false,
+          hint: 'no_person',
+          sample: 'null',
+        );
         return;
       }
-      if (_isPersonTooClose(landmarks)) {
+      final tooClose = _isPersonTooClose(landmarks);
+      if (tooClose) {
         _alignGoodSince = null;
         _coachPhaseHintN.value = '太近了，请再退后几步';
         _prepareProgressN.value = 0;
+        PoseCoachDiary.instance.logPoseFrame(
+          phase: 'align',
+          keypointCount: landmarks.length,
+          alignment: 0,
+          tooClose: true,
+          hint: 'too_close',
+          sample: _diarySample(landmarks),
+        );
         return;
       }
       final score = PoseCoachGuideMath.alignmentScore(
@@ -352,7 +396,16 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
         _coachPhaseHintN.value = held >= _alignHoldMs
             ? '入镜成功'
             : '保持姿势，即将开始…';
+        PoseCoachDiary.instance.logPoseFrame(
+          phase: 'align',
+          keypointCount: landmarks.length,
+          alignment: score,
+          tooClose: false,
+          hint: 'holding_${held}ms',
+          sample: _diarySample(landmarks),
+        );
         if (held >= _alignHoldMs) {
+          PoseCoachDiary.instance.logPhase('align', 'countdown', 'score=$score');
           _coachPhaseN.value = 'countdown';
           _countdownStartedAt = now;
           _coachCountdownN.value = _countdownSec;
@@ -365,20 +418,40 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
         _coachPhaseHintN.value = score < 0.25
             ? '请全身进入白色虚线框'
             : '再调整站位，与剪影对齐';
+        PoseCoachDiary.instance.logPoseFrame(
+          phase: 'align',
+          keypointCount: landmarks.length,
+          alignment: score,
+          tooClose: false,
+          hint: score < 0.25 ? 'out_of_frame' : 'adjusting',
+          sample: _diarySample(landmarks),
+        );
       }
       return;
     }
 
     // Phase 3: 倒计时 3-2-1
-    if (_coachPhaseN.value == 'countdown') {
-      // 倒计时中若严重出框则退回对齐
+    if (phase == 'countdown') {
       if (landmarks != null && !_isPersonTooClose(landmarks)) {
         final score = PoseCoachGuideMath.alignmentScore(
           exerciseType: exerciseType,
           landmarks: landmarks,
           isPortrait: isPortrait ?? true,
         );
+        PoseCoachDiary.instance.logPoseFrame(
+          phase: 'countdown',
+          keypointCount: landmarks.length,
+          alignment: score,
+          tooClose: false,
+          hint: 'countdown',
+          sample: _diarySample(landmarks),
+        );
         if (score < 0.35) {
+          PoseCoachDiary.instance.logPhase(
+            'countdown',
+            'align',
+            'score=$score left_frame',
+          );
           _coachPhaseN.value = 'align';
           _alignGoodSince = null;
           _countdownStartedAt = null;
@@ -386,6 +459,15 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
           _coachPhaseHintN.value = '出框了，请重新站进白框';
           return;
         }
+      } else {
+        PoseCoachDiary.instance.logPoseFrame(
+          phase: 'countdown',
+          keypointCount: landmarks?.length ?? 0,
+          alignment: 0,
+          tooClose: landmarks != null && _isPersonTooClose(landmarks),
+          hint: landmarks == null ? 'lost_person' : 'too_close',
+          sample: landmarks == null ? 'null' : _diarySample(landmarks),
+        );
       }
       final started = _countdownStartedAt ?? now;
       final elapsed = now.difference(started).inMilliseconds;
@@ -398,6 +480,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
         _prepareProgressN.value =
             (1 - left / _countdownSec).clamp(0.0, 1.0);
       } else {
+        PoseCoachDiary.instance.logPhase('countdown', 'active', 'go');
         _coachPhaseN.value = 'active';
         _coachCountdownN.value = 0;
         _preparingN.value = false;
@@ -412,13 +495,30 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
     }
   }
 
+  String _diarySample(Map<String, Map<String, double>> landmarks) {
+    String fmt(String key) {
+      final p = landmarks[key];
+      if (p == null) return '$key:-';
+      return '$key=(${(p['x'] ?? 0).toStringAsFixed(2)},${(p['y'] ?? 0).toStringAsFixed(2)})';
+    }
+
+    return [
+      fmt('nose'),
+      fmt('leftShoulder'),
+      fmt('rightShoulder'),
+      fmt('leftAnkle'),
+      fmt('rightAnkle'),
+    ].join(' ');
+  }
+
   /// 肩宽过大 ≈ 贴脸架设，避免误触发开练
   bool _isPersonTooClose(Map<String, Map<String, double>> landmarks) {
     final ls = landmarks['leftShoulder'];
     final rs = landmarks['rightShoulder'];
     if (ls != null && rs != null) {
       final w = ((ls['x'] ?? 0) - (rs['x'] ?? 0)).abs();
-      if (w > 0.48) return true;
+      // 坐标未对齐时肩宽易虚高；仅在极端值才判太近
+      if (w > 0.72) return true;
     }
     final nose = landmarks['nose'];
     final la = landmarks['leftAnkle'];
@@ -427,7 +527,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
       final ankleY = (((la['y'] ?? 0) + (ra['y'] ?? 0)) / 2);
       final h = (ankleY - (nose['y'] ?? 0)).abs();
       // 头到脚几乎占满画面且脚贴近底边 → 太近
-      if (h > 0.92) return true;
+      if (h > 0.95) return true;
     }
     return false;
   }
@@ -561,23 +661,23 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
             : null,
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
+        padding: AppSpace.page,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _buildModeSelector(),
-            const SizedBox(height: 16),
+            const SizedBox(height: AppSpace.lg),
             
             // IMU模式显示BLE连接状态和检测界面
             if (_exerciseMode == 'imu') ...[
               _buildBleStatus(bleService, isConnected, imuDataAsync),
-              const SizedBox(height: 8),
+              const SizedBox(height: AppSpace.sm),
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.all(12),
+                padding: AppSpace.card,
                 decoration: BoxDecoration(
                   color: AppColors.bg,
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: AppRadii.smAll,
                   border: Border.all(color: AppColors.border),
                 ),
                 child: Text(
@@ -586,7 +686,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
                   style: _mutedStyle.copyWith(fontSize: 12),
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: AppSpace.lg),
               if (_isDetecting)
                 _buildDetectionPanel(isConnected)
               else if (isConnected && _selectedExercise != null)
@@ -596,7 +696,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
             // 摄像头模式
             if (_exerciseMode == 'camera') ...[
               _buildCameraPanel(),
-              const SizedBox(height: 16),
+              const SizedBox(height: AppSpace.lg),
             ],
             
             // 运动选择
@@ -616,31 +716,32 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
                 style: TextButton.styleFrom(
                   foregroundColor: AppColors.copper,
                   visualDensity: VisualDensity.compact,
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: AppSpace.sm),
                 ),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text('锻炼偏好', style: _mutedStyle.copyWith(fontSize: 12)),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: AppSpace.sm),
                   Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
+                    spacing: AppSpace.sm,
+                    runSpacing: AppSpace.sm,
                     children: WorkoutFocus.values.map((f) {
                       final selected = _workoutFocus == f;
-                      return GestureDetector(
+                      return ForgePressable(
                         onTap: () => setState(() => _workoutFocus = f),
+                        borderRadius: BorderRadius.circular(AppRadii.pill),
                         child: Container(
                           padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 7,
+                            horizontal: AppSpace.md,
+                            vertical: AppSpace.xs + 3,
                           ),
                           decoration: BoxDecoration(
                             color: selected
                                 ? AppColors.copper.withValues(alpha: 0.14)
                                 : AppColors.bg2,
-                            borderRadius: BorderRadius.circular(20),
+                            borderRadius: BorderRadius.circular(AppRadii.pill),
                             border: Border.all(
                               color: selected
                                   ? AppColors.copper
@@ -662,13 +763,13 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
                       );
                     }).toList(),
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: AppSpace.xs + 2),
                   Text(
                     _workoutFocus.hint,
                     style: _mutedStyle.copyWith(fontSize: 11),
                   ),
                   if (_exerciseMode == 'camera') ...[
-                    const SizedBox(height: 8),
+                    const SizedBox(height: AppSpace.sm),
                     Text(
                       '摄像头模式只显示可姿态识别的动作；跑步/骑行等请用「手动」或「IMU」记录。',
                       style: _mutedStyle.copyWith(
@@ -678,13 +779,13 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
                     ),
                   ],
                   if (_recommendedPlan != null) ...[
-                    const SizedBox(height: 12),
+                    const SizedBox(height: AppSpace.md),
                     Container(
                       width: double.infinity,
-                      padding: const EdgeInsets.all(12),
+                      padding: AppSpace.card,
                       decoration: BoxDecoration(
                         color: AppColors.copper.withValues(alpha: 0.08),
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: AppRadii.smAll,
                         border: Border.all(
                           color: AppColors.copper.withValues(alpha: 0.35),
                         ),
@@ -699,13 +800,13 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
                               fontSize: 13,
                             ),
                           ),
-                          const SizedBox(height: 4),
+                          const SizedBox(height: AppSpace.xs),
                           Text(
                             '${_recommendedPlan!.reason} · 约 ${_recommendedPlan!.estimatedMinutes} 分钟 · 式间休 ${_recommendedPlan!.restSeconds}s',
                             style: _mutedStyle.copyWith(fontSize: 11),
                           ),
                           if (_recommendedPlan!.targetBurnCal > 0) ...[
-                            const SizedBox(height: 4),
+                            const SizedBox(height: AppSpace.xs),
                             Text(
                               '目标消耗 ${_recommendedPlan!.targetBurnCal} kcal · Lv.${_recommendedPlan!.level}',
                               style: AppFonts.body(
@@ -715,10 +816,10 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
                               ),
                             ),
                           ],
-                          const SizedBox(height: 8),
+                          const SizedBox(height: AppSpace.sm),
                           Wrap(
-                            spacing: 6,
-                            runSpacing: 6,
+                            spacing: AppSpace.xs + 2,
+                            runSpacing: AppSpace.xs + 2,
                             children: _recommendedPlan!.items
                                 .asMap()
                                 .entries
@@ -730,15 +831,16 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
                               final done = _planSeqIndex > e.key;
                               final current =
                                   _planSeqIndex == e.key && _planSeqIndex >= 0;
-                              return GestureDetector(
+                              return ForgePressable(
                                 onTap: () {
                                   if (_planSeqIndex >= 0) return; // 连训中不可跳选
                                   setState(() => _selectedExercise = idx);
                                 },
+                                borderRadius: AppRadii.mdAll,
                                 child: Container(
                                   padding: const EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                    vertical: 6,
+                                    horizontal: AppSpace.md,
+                                    vertical: AppSpace.xs + 2,
                                   ),
                                   decoration: BoxDecoration(
                                     color: current
@@ -750,7 +852,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
                                                 ? AppColors.ember
                                                     .withValues(alpha: 0.15)
                                                 : AppColors.bg,
-                                    borderRadius: BorderRadius.circular(16),
+                                    borderRadius: AppRadii.mdAll,
                                     border: Border.all(
                                       color: current
                                           ? AppColors.ember
@@ -778,7 +880,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
                               );
                             }).toList(),
                           ),
-                          const SizedBox(height: 10),
+                          const SizedBox(height: AppSpace.md),
                           // 按组合顺序连续训练
                           SizedBox(
                             width: double.infinity,
@@ -803,7 +905,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
                                 disabledBackgroundColor:
                                     AppColors.ember.withValues(alpha: 0.35),
                                 padding:
-                                    const EdgeInsets.symmetric(vertical: 10),
+                                    const EdgeInsets.symmetric(vertical: AppSpace.md),
                               ),
                             ),
                           ),
@@ -811,13 +913,13 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
                       ),
                     ),
                   ],
-                  const SizedBox(height: 12),
+                  const SizedBox(height: AppSpace.md),
                   GridView.count(
                     shrinkWrap: true,
                     physics: const NeverScrollableScrollPhysics(),
                     crossAxisCount: 2,
-                    mainAxisSpacing: 10,
-                    crossAxisSpacing: 10,
+                    mainAxisSpacing: AppSpace.md,
+                    crossAxisSpacing: AppSpace.md,
                     childAspectRatio: 1.28,
                     children: _visibleExercises().map((entry) {
                       final index = entry.key;
@@ -827,19 +929,20 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
                               .contains(index) ??
                           false;
 
-                      return GestureDetector(
+                      return ForgePressable(
                         onTap: () =>
                             setState(() => _selectedExercise = index),
+                        borderRadius: AppRadii.smAll,
                         child: Container(
                           padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 8,
+                            horizontal: AppSpace.md,
+                            vertical: AppSpace.sm,
                           ),
                           decoration: BoxDecoration(
                             color: isSelected
                                 ? AppColors.copper.withValues(alpha: 0.1)
                                 : AppColors.bg2,
-                            borderRadius: BorderRadius.circular(12),
+                            borderRadius: AppRadii.smAll,
                             border: Border.all(
                               color: isSelected
                                   ? AppColors.copper
@@ -860,7 +963,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
                                     ? AppColors.copper
                                     : AppColors.text2,
                               ),
-                              const SizedBox(height: 4),
+                              const SizedBox(height: AppSpace.xs),
                               Text(
                                 exercise.name,
                                 maxLines: 1,
@@ -891,26 +994,27 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
                 ],
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: AppSpace.lg),
             
             // 时长选择
             _sectionCard(
               icon: Icons.timer_outlined,
               title: '选择时长',
               child: Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
+                      spacing: AppSpace.sm,
+                      runSpacing: AppSpace.sm,
                       children: durations.map((d) {
                         final isSelected = _selectedDuration == d;
-                        return GestureDetector(
+                        return ForgePressable(
                           onTap: () => setState(() => _selectedDuration = d),
+                          borderRadius: AppRadii.smAll,
                           child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                            padding: const EdgeInsets.symmetric(horizontal: AppSpace.lg, vertical: AppSpace.sm),
                             decoration: BoxDecoration(
                               color: isSelected
                                   ? AppColors.copper.withValues(alpha: 0.12)
                                   : AppColors.bg2,
-                              borderRadius: BorderRadius.circular(10),
+                              borderRadius: AppRadii.smAll,
                               border: Border.all(
                                 color: isSelected ? AppColors.copper : AppColors.border,
                               ),
@@ -927,7 +1031,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
                       }).toList(),
                     ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: AppSpace.lg),
             
             // 预览
             if (_selectedExercise != null && _selectedDuration != null)
@@ -944,7 +1048,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
                         ),
                       ),
                       Text('预计消耗千卡', style: _mutedStyle),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: AppSpace.sm),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
@@ -961,7 +1065,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
                     ],
                   ),
               ),
-            const SizedBox(height: 16),
+            const SizedBox(height: AppSpace.lg),
             
             // 发动攻击按钮
             ElevatedButton(
@@ -976,7 +1080,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
                 style: AppFonts.body(fontWeight: FontWeight.w700, fontSize: 15),
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: AppSpace.lg),
             
             // 今日锻炼记录
             _sectionCard(
@@ -985,31 +1089,31 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
               child: gameState.exercises.isEmpty
                       ? Center(
                           child: Padding(
-                            padding: const EdgeInsets.all(10),
+                            padding: const EdgeInsets.all(AppSpace.md),
                             child: Text('今天还没有锻炼', style: _mutedStyle),
                           ),
                         )
                       : Column(
                           children: gameState.exercises.map((ex) => 
                             Container(
-                              margin: const EdgeInsets.only(bottom: 6),
-                              padding: const EdgeInsets.all(10),
+                              margin: const EdgeInsets.only(bottom: AppSpace.xs + 2),
+                              padding: const EdgeInsets.all(AppSpace.md),
                               decoration: BoxDecoration(
                                 color: AppColors.bg,
-                                borderRadius: BorderRadius.circular(10),
+                                borderRadius: AppRadii.smAll,
                                 border: Border.all(color: AppColors.border),
                               ),
                               child: Row(
                                 children: [
                                   Icon(AppIcons.exerciseByName(ex.name), size: 16, color: AppColors.copper),
-                                  const SizedBox(width: 4),
+                                  const SizedBox(width: AppSpace.xs),
                                   Text(ex.name, style: _bodyStyle.copyWith(fontSize: 13)),
                                   const Spacer(),
                                   Text(
                                     '${ex.duration}分钟 / ${ex.cal}千卡',
                                     style: _mutedStyle.copyWith(fontSize: 12),
                                   ),
-                                  const SizedBox(width: 8),
+                                  const SizedBox(width: AppSpace.sm),
                                   Text(
                                     '-${ex.damage}',
                                     style: AppFonts.body(
@@ -1815,6 +1919,10 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
 
     setState(() => _cameraSettling = true);
     try {
+      // 必须先解锁横竖，再 initialize：否则竖屏冷启动 SurfaceTexture
+      // 要等到第一次物理旋转才与 mapRot 对齐。
+      await _enableSensorOrientations();
+      await Future<void>.delayed(const Duration(milliseconds: 120));
       final ready = await _initializeActiveCameraEngine();
       if (!ready) return;
 
@@ -1937,6 +2045,11 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
     // 跟随手机姿态，不强制横/竖
     await _enableSensorOrientations();
     if (!mounted) return;
+    // 相机可能在竖屏锁定下已打开：再同步一次预览方向
+    if (_activeCameraDetector is PoseDetectionService) {
+      await (_activeCameraDetector as PoseDetectionService).syncOrientation();
+    }
+    if (!mounted) return;
 
     final preferLandscape = PoseCoachGuideMath.prefersLandscape(exercise.type);
     setState(() {
@@ -1962,6 +2075,11 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
 
     _gameLogic.reset();
     // 不再用 2 秒 prepare；改为架设→入镜→倒计时免触控门控
+    await PoseCoachDiary.instance.startSession(
+      engine: _cameraEngine,
+      exerciseType: exercise.type,
+      note: 'preferLandscape=$preferLandscape',
+    );
     _resetHandsFreeGate();
     if (_cameraBleFusion) {
       _fusionService.startDetection(exercise.type);
@@ -1993,10 +2111,8 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
     _coachPageOpen = true;
     _abortPlanOnStop = true;
     await Navigator.of(context).push(
-      PageRouteBuilder<void>(
-        opaque: true,
-        fullscreenDialog: true,
-        pageBuilder: (_, __, ___) => PoseCoachPage(
+      forgePageRoute(
+        builder: (_) => PoseCoachPage(
           exerciseName: exercise.name,
           exerciseEmoji: exercise.emoji,
           exerciseType: exercise.type,
@@ -2012,6 +2128,16 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
           preparing: _preparingN,
           prepareProgress: _prepareProgressN,
           onStop: () => _stopCameraDetection(abortSequence: _abortPlanOnStop),
+          onFlipCamera: () async {
+            final d = _activeCameraDetector;
+            if (d is PoseDetectionService) {
+              return d.switchCamera();
+            }
+            if (d is TfliteMotionService) {
+              return d.switchCamera();
+            }
+            return null;
+          },
           planStep: _planSeqIndex >= 0 ? _planSeqIndex + 1 : null,
           planTotal: _recommendedPlan?.items.length,
           targetCount: planItem?.target,
@@ -2023,10 +2149,22 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
           coachPhase: _coachPhaseN,
           coachPhaseHint: _coachPhaseHintN,
           coachCountdown: _coachCountdownN,
+          diaryStatus: PoseCoachDiary.instance.liveStatus,
+          onWarmPreview: () async {
+            final d = _activeCameraDetector;
+            if (d is PoseDetectionService) {
+              await d.syncOrientation();
+            }
+          },
+          onShareDiary: () async {
+            try {
+              await PoseCoachDiary.instance.share();
+              if (mounted) _showToast('请把日记文件发给开发排查');
+            } catch (e) {
+              if (mounted) _showToast('分享日记失败: $e');
+            }
+          },
         ),
-        transitionsBuilder: (_, animation, __, child) {
-          return FadeTransition(opacity: animation, child: child);
-        },
       ),
     );
     _coachPageOpen = false;
@@ -2058,7 +2196,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
     if (_exerciseMode != 'camera') {
       setState(() => _exerciseMode = 'camera');
     }
-    // 连训依赖 ML Kit 全动作检测；TFLite 不含平板/弓步/波比/登山者等
+    // 连训用 ML Kit（全动作规则）；本机已修 beta 降级
     if (_cameraEngine != 'mlkit') {
       await _switchCameraEngine('mlkit');
       if (mounted) _showToast('连训已切换到 ML Kit 姿态引擎');
@@ -2123,6 +2261,11 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
     await _activeCameraDetector.stopDetection();
     if (_cameraBleFusion) {
       _fusionService.stopDetection();
+    }
+    final diaryPath =
+        await PoseCoachDiary.instance.endSession(reason: 'stop_camera');
+    if (diaryPath != null) {
+      debugPrint('[PoseCoachDiary] saved: $diaryPath');
     }
 
     if (!mounted) return;
@@ -2726,7 +2869,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
             const BorderSide(color: AppColors.border),
           ),
           shape: WidgetStateProperty.all(
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            RoundedRectangleBorder(borderRadius: AppRadii.smAll),
           ),
           textStyle: WidgetStateProperty.all(
             AppFonts.body(fontSize: 12, fontWeight: FontWeight.w600),
@@ -2744,14 +2887,14 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
   }) {
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: AppSpace.card,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
                 Icon(icon, color: AppColors.copper, size: 20),
-                const SizedBox(width: 8),
+                const SizedBox(width: AppSpace.sm),
                 Expanded(
                   child: Text(
                     title,
@@ -2761,7 +2904,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
                 if (trailing != null) trailing,
               ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: AppSpace.md),
             child,
           ],
         ),
@@ -2774,16 +2917,17 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
     required bool selected,
     required VoidCallback onTap,
   }) {
-    return GestureDetector(
+    return ForgePressable(
       onTap: onTap,
+      borderRadius: AppRadii.smAll,
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 10),
+        padding: const EdgeInsets.symmetric(vertical: AppSpace.md),
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: selected
               ? AppColors.copper.withValues(alpha: 0.15)
               : AppColors.bg2,
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: AppRadii.smAll,
           border: Border.all(
             color: selected ? AppColors.copper : AppColors.border,
             width: selected ? 1.5 : 1,

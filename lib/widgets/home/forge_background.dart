@@ -68,13 +68,13 @@ class _ForgeBackgroundState extends State<ForgeBackground>
     return Container(
       decoration: const BoxDecoration(
         gradient: RadialGradient(
-          center: Alignment(0, -0.35),
-          radius: 1.15,
+          center: Alignment(0, -0.42),
+          radius: 1.05,
           colors: [
-            Color(0xFF2A1E16),
+            Color(0xFF1A1410),
             AppColors.bg,
           ],
-          stops: [0.0, 0.72],
+          stops: [0.0, 0.68],
         ),
       ),
       child: Stack(

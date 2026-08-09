@@ -1,8 +1,10 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../theme/forge_theme.dart';
+import '../theme/tokens.dart';
 import '../constants/app_constants.dart';
 import '../providers/companion_provider.dart';
+import '../widgets/forge_pressable.dart';
 import '../widgets/home/forge_background.dart';
 import '../widgets/meta/stat_bar.dart';
 
@@ -63,10 +65,10 @@ class _CompanionPageState extends ConsumerState<CompanionPage> {
           centerTitle: true,
         ),
         body: ListView(
-          padding: const EdgeInsets.all(16),
+          padding: AppSpace.page.copyWith(bottom: AppSpace.xxl),
           children: [
             if (active != null) _ActiveCompanionCard(pet: active, state: state),
-            const SizedBox(height: 16),
+            const SizedBox(height: AppSpace.lg),
             _ActionRow(
               onPet: () {
                 notifier.pet();
@@ -89,24 +91,16 @@ class _CompanionPageState extends ConsumerState<CompanionPage> {
                   : null,
               pendingDrops: state.pendingDrops,
             ),
-            const SizedBox(height: 20),
-            Row(
-              children: [
-                Icon(Icons.pets_outlined, color: AppColors.copper, size: 20),
-                const SizedBox(width: 8),
-                Text('切换伙伴', style: _displayStyle.copyWith(fontSize: 16)),
-              ],
+            const SizedBox(height: AppSpace.xl),
+            const ForgeSectionHeader(
+              title: '切换伙伴',
+              subtitle: '点选已解锁伙伴出战',
             ),
-            const SizedBox(height: 8),
             ..._buildPetList(state, notifier),
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: AppColors.bg2,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppColors.border),
-              ),
+            const SizedBox(height: AppSpace.md),
+            ForgeSurface(
+              color: AppColors.surface,
+              borderRadius: AppRadii.smAll,
               child: Text(
                 '提示：伙伴进度已写入本地存档（fat_battle_companion），'
                 '与主存档独立保存，重装应用会清空。',
@@ -124,55 +118,79 @@ class _CompanionPageState extends ConsumerState<CompanionPage> {
     for (var i = 0; i < state.pets.length; i++) {
       final pet = state.pets[i];
       final isActive = i == state.activeIndex;
+      final canSwitch = pet.owned && !isActive;
       widgets.add(
-        Container(
-          margin: const EdgeInsets.only(bottom: 8),
-          decoration: BoxDecoration(
-            color: isActive
-                ? AppColors.copper.withValues(alpha: 0.1)
-                : AppColors.card,
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(
+        Padding(
+          padding: const EdgeInsets.only(bottom: AppSpace.sm),
+          child: ForgePressable(
+            enabled: canSwitch,
+            onTap: canSwitch ? () => notifier.switchPet(i) : null,
+            borderRadius: AppRadii.lgAll,
+            child: ForgeSurface(
               color: isActive
+                  ? AppColors.copper.withValues(alpha: 0.1)
+                  : AppColors.elevated,
+              borderColor: isActive
                   ? AppColors.copper.withValues(alpha: 0.45)
                   : AppColors.border,
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpace.md,
+                vertical: AppSpace.sm,
+              ),
+              child: Row(
+                children: [
+                  Text(pet.emoji, style: const TextStyle(fontSize: 28)),
+                  const SizedBox(width: AppSpace.md),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          pet.name,
+                          style: _bodyStyle.copyWith(fontWeight: FontWeight.w600),
+                        ),
+                        Text(
+                          pet.owned
+                              ? 'Lv.${pet.level} · ${pet.mood.label}'
+                              : '未解锁',
+                          style: _mutedStyle,
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (pet.owned)
+                    isActive
+                        ? Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: AppSpace.md - 2,
+                              vertical: AppSpace.xs,
+                            ),
+                            decoration: BoxDecoration(
+                              color: AppColors.ember.withValues(alpha: 0.15),
+                              borderRadius: AppRadii.smAll,
+                              border: Border.all(
+                                color: AppColors.ember.withValues(alpha: 0.4),
+                              ),
+                            ),
+                            child: Text(
+                              '出战',
+                              style: _bodyStyle.copyWith(
+                                fontSize: 11,
+                                color: AppColors.ember,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          )
+                        : TextButton(
+                            onPressed: () => notifier.switchPet(i),
+                            style: TextButton.styleFrom(
+                              foregroundColor: AppColors.copper,
+                            ),
+                            child: const Text('切换'),
+                          ),
+                ],
+              ),
             ),
-          ),
-          child: ListTile(
-            leading: Text(pet.emoji, style: const TextStyle(fontSize: 28)),
-            title: Text(pet.name, style: _bodyStyle.copyWith(fontWeight: FontWeight.w600)),
-            subtitle: pet.owned
-                ? Text('Lv.${pet.level} · ${pet.mood.label}', style: _mutedStyle)
-                : Text('未解锁', style: _mutedStyle),
-            trailing: pet.owned
-                ? (isActive
-                    ? Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: AppColors.ember.withValues(alpha: 0.15),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: AppColors.ember.withValues(alpha: 0.4),
-                          ),
-                        ),
-                        child: Text(
-                          '出战',
-                          style: _bodyStyle.copyWith(
-                            fontSize: 11,
-                            color: AppColors.ember,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      )
-                    : TextButton(
-                        onPressed: () => notifier.switchPet(i),
-                        style: TextButton.styleFrom(
-                          foregroundColor: AppColors.copper,
-                        ),
-                        child: const Text('切换'),
-                      ))
-                : null,
-            onTap: pet.owned && !isActive ? () => notifier.switchPet(i) : null,
           ),
         ),
       );
@@ -196,63 +214,66 @@ class _ActiveCompanionCard extends StatelessWidget {
     final body = AppFonts.body(color: AppColors.text);
     final catalog = _companionCatalog.firstWhere(
       (c) => c.defId == pet.defId,
-      orElse: () => (defId: pet.defId, name: pet.name, emoji: pet.emoji, desc: ''),
+      orElse: () =>
+          (defId: pet.defId, name: pet.name, emoji: pet.emoji, desc: ''),
     );
 
-    return Container(
-      decoration: BoxDecoration(
-        color: AppColors.card,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.copper.withValues(alpha: 0.35)),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          children: [
-            Text(pet.emoji, style: const TextStyle(fontSize: 64)),
-            const SizedBox(height: 8),
-            Text(pet.name, style: display.copyWith(fontSize: 20)),
-            Text(
-              catalog.desc,
-              style: body.copyWith(color: AppColors.text2, fontSize: 12),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              '${pet.mood.emoji} ${pet.mood.label}',
-              style: body.copyWith(color: AppColors.copper, fontSize: 13),
-            ),
-            const SizedBox(height: 16),
-            StatBar(
-              label: '经验',
-              valueText: '${pet.xp}/${pet.xpToNext}',
-              progress: pet.xpToNext > 0 ? pet.xp / pet.xpToNext : 0,
-              color: AppColors.copper,
-            ),
-            const SizedBox(height: 10),
-            StatBar(
-              label: '饥饿度',
-              valueText: '${pet.hunger}/100',
-              progress: pet.hunger / 100,
-              color: pet.hunger > 80 ? AppColors.ember : AppColors.green,
-            ),
-            const SizedBox(height: 10),
-            StatBar(
-              label: '体力',
-              valueText: '${pet.energy}/100',
-              progress: pet.energy / 100,
-              color: pet.energy < 20 ? AppColors.ember : AppColors.green,
-            ),
-            const SizedBox(height: 12),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                _MiniStat(icon: Icons.auto_awesome_outlined, label: '皮肤 Lv.${pet.skinLevel}'),
-                _MiniStat(icon: Icons.chat_bubble_outline, label: '对话 Lv.${pet.dialogueLevel}'),
-                _MiniStat(icon: Icons.card_giftcard_outlined, label: '掉落 ${state.monsterDrops}'),
-              ],
-            ),
-          ],
-        ),
+    return ForgeSurface(
+      borderColor: AppColors.copper.withValues(alpha: 0.35),
+      child: Column(
+        children: [
+          Text(pet.emoji, style: const TextStyle(fontSize: 64)),
+          const SizedBox(height: AppSpace.sm),
+          Text(pet.name, style: display.copyWith(fontSize: 20)),
+          Text(
+            catalog.desc,
+            style: body.copyWith(color: AppColors.text2, fontSize: 12),
+          ),
+          const SizedBox(height: AppSpace.xs),
+          Text(
+            '${pet.mood.emoji} ${pet.mood.label}',
+            style: body.copyWith(color: AppColors.copper, fontSize: 13),
+          ),
+          const SizedBox(height: AppSpace.lg),
+          StatBar(
+            label: '经验',
+            valueText: '${pet.xp}/${pet.xpToNext}',
+            progress: pet.xpToNext > 0 ? pet.xp / pet.xpToNext : 0,
+            color: AppColors.copper,
+          ),
+          const SizedBox(height: AppSpace.md),
+          StatBar(
+            label: '饥饿度',
+            valueText: '${pet.hunger}/100',
+            progress: pet.hunger / 100,
+            color: pet.hunger > 80 ? AppColors.ember : AppColors.green,
+          ),
+          const SizedBox(height: AppSpace.md),
+          StatBar(
+            label: '体力',
+            valueText: '${pet.energy}/100',
+            progress: pet.energy / 100,
+            color: pet.energy < 20 ? AppColors.ember : AppColors.green,
+          ),
+          const SizedBox(height: AppSpace.md),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              _MiniStat(
+                icon: Icons.auto_awesome_outlined,
+                label: '皮肤 Lv.${pet.skinLevel}',
+              ),
+              _MiniStat(
+                icon: Icons.chat_bubble_outline,
+                label: '对话 Lv.${pet.dialogueLevel}',
+              ),
+              _MiniStat(
+                icon: Icons.card_giftcard_outlined,
+                label: '掉落 ${state.monsterDrops}',
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -269,7 +290,7 @@ class _MiniStat extends StatelessWidget {
     return Column(
       children: [
         Icon(icon, color: AppColors.copper, size: 18),
-        const SizedBox(height: 2),
+        const SizedBox(height: AppSpace.xs - 2),
         Text(
           label,
           style: AppFonts.body(color: AppColors.text2, fontSize: 11),
@@ -297,13 +318,17 @@ class _ActionRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Wrap(
-      spacing: 8,
-      runSpacing: 8,
+      spacing: AppSpace.sm,
+      runSpacing: AppSpace.sm,
       alignment: WrapAlignment.center,
       children: [
         _ActionChip(label: '抚摸', icon: Icons.favorite_outline, onTap: onPet),
         _ActionChip(label: '喂食', icon: Icons.restaurant_outlined, onTap: onFeed),
-        _ActionChip(label: '锻炼', icon: Icons.directions_run_outlined, onTap: onExercise),
+        _ActionChip(
+          label: '锻炼',
+          icon: Icons.directions_run_outlined,
+          onTap: onExercise,
+        ),
         if (pendingDrops > 0)
           _ActionChip(
             label: '领取掉落 ($pendingDrops)',
@@ -331,35 +356,40 @@ class _ActionChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final borderColor = highlight ? AppColors.ember : AppColors.copper.withValues(alpha: 0.4);
+    final borderColor =
+        highlight ? AppColors.ember : AppColors.copper.withValues(alpha: 0.4);
     final bgColor = highlight
         ? AppColors.ember.withValues(alpha: 0.12)
-        : AppColors.card;
+        : AppColors.elevated;
     final fgColor = highlight ? AppColors.ember : AppColors.copper;
 
-    return Material(
-      color: bgColor,
-      shape: StadiumBorder(side: BorderSide(color: borderColor)),
-      child: InkWell(
-        onTap: onTap,
-        customBorder: const StadiumBorder(),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 16, color: fgColor),
-              const SizedBox(width: 6),
-              Text(
-                label,
-                style: AppFonts.body(
-                  color: fgColor,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 13,
-                ),
+    return ForgePressable(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(AppRadii.pill),
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpace.md,
+          vertical: AppSpace.sm,
+        ),
+        decoration: BoxDecoration(
+          color: bgColor,
+          borderRadius: BorderRadius.circular(AppRadii.pill),
+          border: Border.all(color: borderColor),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 16, color: fgColor),
+            const SizedBox(width: AppSpace.sm - 2),
+            Text(
+              label,
+              style: AppFonts.body(
+                color: fgColor,
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

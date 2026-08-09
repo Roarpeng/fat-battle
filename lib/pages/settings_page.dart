@@ -5,6 +5,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../theme/forge_theme.dart';
 import '../theme/app_icons.dart';
+import '../theme/forge_routes.dart';
+import '../theme/tokens.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -17,6 +19,7 @@ import '../pages/companion_page.dart';
 import '../pages/achievements_page.dart';
 import '../pages/privacy_page.dart';
 import '../providers/inventory_provider.dart';
+import '../widgets/forge_pressable.dart';
 import '../widgets/home/forge_background.dart';
 import '../widgets/meta/shop_item_card.dart';
 
@@ -45,15 +48,13 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           centerTitle: true,
         ),
         body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
+        padding: AppSpace.page.copyWith(bottom: AppSpace.xxxl),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // 游戏设置
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
+            ForgeSurface(
+              child: Column(
                   children: [
                     // 游戏难度
                     _buildSettingItem(
@@ -90,7 +91,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     // 勿扰时间段
                     if (gameState.dndMode)
                       Padding(
-                        padding: const EdgeInsets.only(top: 8),
+                        padding: const EdgeInsets.only(top: AppSpace.sm),
                         child: Row(
                           children: [
                             Expanded(
@@ -105,7 +106,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                                 },
                               ),
                             ),
-                            const SizedBox(width: 12),
+                            const SizedBox(width: AppSpace.md),
                             Expanded(
                               child: TextField(
                                 decoration: InputDecoration(
@@ -179,19 +180,15 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     ),
                   ],
                 ),
-              ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: AppSpace.lg),
             
             // 角色风格选择
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
+            ForgeSurface(
+              child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('角色风格', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.text)),
-                    const SizedBox(height: 12),
+                    const ForgeSectionHeader(title: '角色风格', subtitle: '影响战斗语音风格'),
                     Row(
                       children: CharacterStyle.values.map((style) {
                         final currentVoice = VoiceService().style;
@@ -205,22 +202,22 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
                         return Expanded(
                           child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 3),
-                            child: InkWell(
+                            padding: const EdgeInsets.symmetric(horizontal: AppSpace.xs - 1),
+                            child: ForgePressable(
                               onTap: () {
                                 VoiceService().setStyle(voiceStyleMap[style]!);
                                 setState(() {});
                                 _showToast('已切换为${style.name}风格');
                               },
-                              borderRadius: BorderRadius.circular(10),
+                              borderRadius: AppRadii.smAll,
                               child: AnimatedContainer(
                                 duration: const Duration(milliseconds: 200),
-                                padding: const EdgeInsets.symmetric(vertical: 10),
+                                padding: const EdgeInsets.symmetric(vertical: AppSpace.md - 2),
                                 decoration: BoxDecoration(
                                   color: isSelected
                                       ? AppColors.purple.withValues(alpha: 0.25)
-                                      : AppColors.card,
-                                  borderRadius: BorderRadius.circular(10),
+                                      : AppColors.surface,
+                                  borderRadius: AppRadii.smAll,
                                   border: Border.all(
                                     color: isSelected
                                         ? AppColors.purple
@@ -236,7 +233,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                                       size: 20,
                                       color: isSelected ? AppColors.purple : AppColors.text2,
                                     ),
-                                    const SizedBox(height: 4),
+                                    const SizedBox(height: AppSpace.xs),
                                     Text(
                                       style.name,
                                       style: AppFonts.body(
@@ -255,84 +252,62 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     ),
                   ],
                 ),
-              ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: AppSpace.lg),
 
             // 养成与元系统
-            Row(
-              children: [
-                Icon(Icons.auto_awesome_outlined, color: AppColors.copper, size: 18),
-                const SizedBox(width: 8),
-                Text(
-                  '养成与元系统',
-                  style: AppFonts.body(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.text2,
-                  ),
-                ),
-              ],
+            const ForgeSectionHeader(
+              title: '养成与元系统',
+              subtitle: '伙伴、成就与商店',
             ),
-            const SizedBox(height: 8),
-            Card(
+            ForgeSurface(
+              padding: EdgeInsets.zero,
               child: Column(
                 children: [
-                  ListTile(
-                    leading: Icon(Icons.pets_outlined, color: AppColors.copper, size: 24),
-                    title: Text('战斗伙伴', style: AppFonts.body(fontWeight: FontWeight.w600)),
-                    subtitle: Text(
-                      '切换宠物、互动与领取掉落',
-                      style: AppFonts.body(color: AppColors.text2, fontSize: 12),
-                    ),
-                    trailing: Icon(Icons.chevron_right, color: AppColors.copper),
+                  _navRow(
+                    icon: Icons.pets_outlined,
+                    title: '战斗伙伴',
+                    subtitle: '切换宠物、互动与领取掉落',
                     onTap: () {
                       Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => const CompanionPage()),
+                        forgePageRoute(builder: (_) => const CompanionPage()),
                       );
                     },
                   ),
                   const Divider(height: 1, color: AppColors.border),
-                  ListTile(
-                    leading: Icon(Icons.emoji_events_outlined, color: AppColors.copper, size: 24),
-                    title: Text('成就', style: AppFonts.body(fontWeight: FontWeight.w600)),
-                    subtitle: Text(
-                      '已解锁 ${gameState.achievements.length}/${Achievements.all.length}',
-                      style: AppFonts.body(color: AppColors.text2, fontSize: 12),
-                    ),
-                    trailing: Icon(Icons.chevron_right, color: AppColors.copper),
+                  _navRow(
+                    icon: Icons.emoji_events_outlined,
+                    title: '成就',
+                    subtitle:
+                        '已解锁 ${gameState.achievements.length}/${Achievements.all.length}',
                     onTap: () {
                       Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => const AchievementsPage()),
+                        forgePageRoute(builder: (_) => const AchievementsPage()),
                       );
                     },
                   ),
                   const Divider(height: 1, color: AppColors.border),
-                  ListTile(
-                    leading: Icon(Icons.storefront_outlined, color: AppColors.copper, size: 24),
-                    title: Text('锻造商店', style: AppFonts.body(fontWeight: FontWeight.w600)),
-                    subtitle: Text(
-                      '用金币购买道具与装饰',
-                      style: AppFonts.body(color: AppColors.text2, fontSize: 12),
-                    ),
+                  _navRow(
+                    icon: Icons.storefront_outlined,
+                    title: '锻造商店',
+                    subtitle: '用金币购买道具与装饰',
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: AppColors.copper.withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: AppColors.copper.withValues(alpha: 0.35),
-                            ),
+                        ForgeSurface(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: AppSpace.sm,
+                            vertical: AppSpace.xs,
                           ),
+                          borderRadius: BorderRadius.circular(AppRadii.pill),
+                          color: AppColors.copper.withValues(alpha: 0.12),
+                          borderColor: AppColors.copper.withValues(alpha: 0.35),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.monetization_on_outlined,
+                              const Icon(Icons.monetization_on_outlined,
                                   color: AppColors.copper, size: 14),
-                              const SizedBox(width: 4),
+                              const SizedBox(width: AppSpace.xs),
                               Text(
                                 '${gameState.coins}',
                                 style: AppFonts.display(
@@ -344,36 +319,31 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                             ],
                           ),
                         ),
-                        Icon(Icons.chevron_right, color: AppColors.copper),
+                        const Icon(Icons.chevron_right, color: AppColors.copper),
                       ],
                     ),
                     onTap: () {
                       Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => const ShopPage()),
+                        forgePageRoute(builder: (_) => const ShopPage()),
                       );
                     },
                   ),
                 ],
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: AppSpace.lg),
             
             // 成就分享卡片
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
+            ForgeSurface(
+              child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('🏆 成就分享', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                    const SizedBox(height: 4),
-                    Text(
-                      '将你的雕刻成就分享给朋友',
-                      style: TextStyle(color: AppColors.text2, fontSize: 12),
+                    const ForgeSectionHeader(
+                      title: '成就分享',
+                      subtitle: '将你的雕刻成就分享给朋友',
                     ),
-                    const SizedBox(height: 12),
                     _buildAchievementCard(gameState),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: AppSpace.md),
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton.icon(
@@ -388,24 +358,18 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     ),
                   ],
                 ),
-              ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: AppSpace.lg),
 
             // 数据导出/备份
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
+            ForgeSurface(
+              child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('💾 数据管理', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                    const SizedBox(height: 4),
-                    Text(
-                      '导出数据备份或从备份恢复',
-                      style: TextStyle(color: AppColors.text2, fontSize: 12),
+                    const ForgeSectionHeader(
+                      title: '数据管理',
+                      subtitle: '导出数据备份或从备份恢复',
                     ),
-                    const SizedBox(height: 12),
                     Row(
                       children: [
                         Expanded(
@@ -419,7 +383,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                             ),
                           ),
                         ),
-                        const SizedBox(width: 10),
+                        const SizedBox(width: AppSpace.md),
                         Expanded(
                           child: OutlinedButton.icon(
                             onPressed: () => _importData(context),
@@ -435,32 +399,16 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     ),
                   ],
                 ),
-              ),
             ),
-            const SizedBox(height: 16),
-
-            const SizedBox(height: 16),
+            const SizedBox(height: AppSpace.lg),
 
             // 账号管理与隐私合规 (App Store / Google Play / 国内市场强制上架要求)
-            Row(
-              children: [
-                Icon(Icons.verified_user_outlined, color: AppColors.copper, size: 18),
-                const SizedBox(width: 8),
-                Text(
-                  '账号安全与隐私规范',
-                  style: AppFonts.body(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.text2,
-                  ),
-                ),
-              ],
+            const ForgeSectionHeader(
+              title: '账号安全与隐私规范',
+              subtitle: '合规入口与账号操作',
             ),
-            const SizedBox(height: 8),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
+            ForgeSurface(
+              child: Column(
                   children: [
                     // 后端 API 网关配置 (防秘钥外泄)
                     _buildSettingItem(
@@ -472,16 +420,16 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     const Divider(color: AppColors.border),
 
                     // 隐私政策入口（商店上架合规）
-                    InkWell(
+                    ForgePressable(
                       onTap: () => Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => const PrivacyPolicyPage()),
+                        forgePageRoute(builder: (_) => const PrivacyPolicyPage()),
                       ),
                       child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        padding: const EdgeInsets.symmetric(vertical: AppSpace.md),
                         child: Row(
                           children: [
-                            Icon(Icons.policy_outlined, color: AppColors.copper, size: 20),
-                            const SizedBox(width: 12),
+                            const Icon(Icons.policy_outlined, color: AppColors.copper, size: 20),
+                            const SizedBox(width: AppSpace.md),
                             Expanded(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -501,7 +449,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                                 ],
                               ),
                             ),
-                            Icon(Icons.chevron_right, color: AppColors.text2, size: 20),
+                            const Icon(Icons.chevron_right, color: AppColors.text2, size: 20),
                           ],
                         ),
                       ),
@@ -522,7 +470,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                           await prefs.setBool('is_logged_in', false);
                           if (context.mounted) {
                             Navigator.of(context).pushAndRemoveUntil(
-                              MaterialPageRoute(builder: (_) => const AuthPage()),
+                              forgePageRoute(builder: (_) => const AuthPage()),
                               (route) => false,
                             );
                           }
@@ -533,7 +481,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                         ),
                       ),
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: AppSpace.md),
 
                     // 账号注销 (刚性合规项)
                     SizedBox(
@@ -567,7 +515,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                                     }
                                     gameNotifier.resetGame();
                                     Navigator.of(context).pushReplacement(
-                                      MaterialPageRoute(builder: (_) => const AuthPage()),
+                                      forgePageRoute(builder: (_) => const AuthPage()),
                                     );
                                     _showToast('账号已安全注销，本地与云端数据已彻底擦除');
                                   },
@@ -587,7 +535,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     ),
                   ],
                 ),
-              ),
             ),
           ],
         ),
@@ -749,6 +696,48 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     }
   }
 
+  /// 设置导航行
+  Widget _navRow({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+    Widget? trailing,
+  }) {
+    return ForgePressable(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpace.lg,
+          vertical: AppSpace.md,
+        ),
+        child: Row(
+          children: [
+            Icon(icon, color: AppColors.copper, size: 24),
+            const SizedBox(width: AppSpace.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: AppFonts.body(fontWeight: FontWeight.w600),
+                  ),
+                  Text(
+                    subtitle,
+                    style: AppFonts.body(color: AppColors.text2, fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+            trailing ??
+                const Icon(Icons.chevron_right, color: AppColors.copper),
+          ],
+        ),
+      ),
+    );
+  }
+
   /// 设置项
   Widget _buildSettingItem({
     required String icon,
@@ -836,23 +825,22 @@ class _ShopPageState extends ConsumerState<ShopPage> {
           centerTitle: true,
           actions: [
             Padding(
-              padding: const EdgeInsets.only(right: 16),
+              padding: const EdgeInsets.only(right: AppSpace.lg),
               child: Center(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: AppColors.copper.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: AppColors.copper.withValues(alpha: 0.35),
-                    ),
+                child: ForgeSurface(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpace.md - 2,
+                    vertical: AppSpace.xs,
                   ),
+                  borderRadius: BorderRadius.circular(AppRadii.pill),
+                  color: AppColors.copper.withValues(alpha: 0.12),
+                  borderColor: AppColors.copper.withValues(alpha: 0.35),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.monetization_on_outlined,
+                      const Icon(Icons.monetization_on_outlined,
                           color: AppColors.copper, size: 16),
-                      const SizedBox(width: 4),
+                      const SizedBox(width: AppSpace.xs),
                       Text(
                         '${gameState.coins}',
                         style: display.copyWith(
@@ -868,21 +856,18 @@ class _ShopPageState extends ConsumerState<ShopPage> {
           ],
         ),
         body: ListView(
-          padding: const EdgeInsets.all(16),
+          padding: AppSpace.page.copyWith(bottom: AppSpace.xxl),
           children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              margin: const EdgeInsets.only(bottom: 12),
-              decoration: BoxDecoration(
-                color: AppColors.bg2,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppColors.border),
-              ),
+            ForgeSurface(
+              color: AppColors.surface,
+              borderRadius: AppRadii.smAll,
+              padding: AppSpace.card,
               child: Text(
                 '购买后金币从主存档扣除；物品栏数量写入本地 inventory 存档。',
                 style: body.copyWith(color: AppColors.text2, fontSize: 11),
               ),
             ),
+            const SizedBox(height: AppSpace.md),
             ...ShopItems.all.map((item) {
               return ShopItemCard(
                 item: item,

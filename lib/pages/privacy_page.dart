@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../constants/app_constants.dart';
 import '../theme/forge_theme.dart';
+import '../theme/tokens.dart';
 import '../widgets/home/forge_background.dart';
 
 /// 隐私政策与用户协议页（上架合规）
@@ -17,7 +18,7 @@ class PrivacyPolicyPage extends StatelessWidget {
     return Scaffold(
       backgroundColor: AppColors.bg,
       appBar: AppBar(
-        backgroundColor: AppColors.bg2,
+        backgroundColor: AppColors.surface,
         foregroundColor: AppColors.text,
         title: Text(
           '隐私政策与用户协议',
@@ -27,13 +28,13 @@ class PrivacyPolicyPage extends StatelessWidget {
       ),
       body: ForgeBackground(
         child: ListView(
-          padding: const EdgeInsets.all(20),
+          padding: AppSpace.page.copyWith(bottom: AppSpace.xxxl),
           children: [
             Text(
               '生效日期：2026 年 8 月 1 日',
               style: AppFonts.body(fontSize: 12, color: AppColors.text2),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: AppSpace.lg),
             _section('一、我们是谁', [
               '「塑身工坊」（下称"本应用"）是一款游戏化体重管理应用，'
                   '通过"击败脂肪怪"的玩法帮助你记录饮食、坚持锻炼。',
@@ -78,7 +79,7 @@ class PrivacyPolicyPage extends StatelessWidget {
             _section('九、联系我们', [
               '如有任何隐私相关问题，请联系：support@bodystudio.app',
             ]),
-            const SizedBox(height: 24),
+            const SizedBox(height: AppSpace.xxl),
             Text(
               '使用本应用即表示你已阅读并同意以上内容。',
               style: AppFonts.body(
@@ -87,7 +88,7 @@ class PrivacyPolicyPage extends StatelessWidget {
               ),
               textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 32),
+            const SizedBox(height: AppSpace.xxxl),
           ],
         ),
       ),
@@ -96,33 +97,35 @@ class PrivacyPolicyPage extends StatelessWidget {
 
   Widget _section(String title, List<String> paragraphs) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 18),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: AppFonts.display(
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
-              color: AppColors.copper,
+      padding: const EdgeInsets.only(bottom: AppSpace.lg),
+      child: ForgeSurface(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              title,
+              style: AppFonts.display(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: AppColors.copper,
+              ),
             ),
-          ),
-          const SizedBox(height: 8),
-          ...paragraphs.map(
-            (p) => Padding(
-              padding: const EdgeInsets.only(bottom: 6),
-              child: Text(
-                p,
-                style: AppFonts.body(
-                  fontSize: 13,
-                  color: AppColors.text,
-                  height: 1.6,
+            const SizedBox(height: AppSpace.sm),
+            ...paragraphs.map(
+              (p) => Padding(
+                padding: const EdgeInsets.only(bottom: AppSpace.sm - 2),
+                child: Text(
+                  p,
+                  style: AppFonts.body(
+                    fontSize: 13,
+                    color: AppColors.text,
+                    height: 1.6,
+                  ),
                 ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

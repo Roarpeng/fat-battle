@@ -1,35 +1,47 @@
 import 'package:flutter/material.dart';
 
-/// 锻造工坊色板（Forge Workshop）
+/// 锻造工坊 2.0 色板（Forge Workshop）
 ///
-/// 暖炭黑底 + 铜金 + 炉火赤红；避开通用蓝紫暗色壳。
+/// 更深暖炭分层 + 克制炉火赤（主 CTA）+ 铜金次强调。
+/// 字段名保持兼容，避免全仓无意义重命名。
 class AppColors {
-  static const Color bg = Color(0xFF14110E);
-  static const Color bg2 = Color(0xFF1C1814);
-  static const Color bg3 = Color(0xFF2A241C);
+  /// 最深炭底
+  static const Color bg = Color(0xFF0C0A08);
+  /// 表面层（导航 / 输入底）
+  static const Color bg2 = Color(0xFF161210);
+  /// 抬升层（分区底）
+  static const Color bg3 = Color(0xFF1F1A15);
   /// 炉火赤红（主行动 / 伤害）
-  static const Color red = Color(0xFFE85D4C);
+  static const Color red = Color(0xFFFF5C45);
   /// 铜金（金币 / 强调）
-  static const Color gold = Color(0xFFC4A574);
+  static const Color gold = Color(0xFFD4B483);
   /// 鼠尾草绿（正向 / 安全）
-  static const Color green = Color(0xFF7D9B76);
+  static const Color green = Color(0xFF8BAF82);
   /// 钢青（护盾；保留 purple 字段名以兼容旧调用）
-  static const Color purple = Color(0xFF6B9BB8);
-  static const Color text = Color(0xFFF2EBE3);
-  static const Color text2 = Color(0xFF9A9084);
-  static const Color card = Color(0xFF24201A);
-  static const Color border = Color(0xFF3D3429);
+  static const Color purple = Color(0xFF7AA8C4);
+  static const Color text = Color(0xFFF7F0E8);
+  static const Color text2 = Color(0xFFA89C8E);
+  static const Color card = Color(0xFF221C17);
+  static const Color border = Color(0xFF3A3229);
+
+  /// 表面语义别名
+  static const Color surface = bg2;
+  static const Color elevated = card;
+  static const Color overlay = Color(0xCC0C0A08);
 
   static const Color ember = red;
   static const Color copper = gold;
-  static const Color forgeGlow = Color(0xFFFF8A5B);
+  static const Color forgeGlow = Color(0xFFFF9A6B);
   static const Color shield = purple;
   /// 扣血残影条（滞后缓动颜色）
-  static const Color ghostBar = Color(0xFFFF9E80);
+  static const Color ghostBar = Color(0xFFFFA888);
   /// 受击/暴击高亮火花
-  static const Color hitSpark = Color(0xFFFFF176);
+  static const Color hitSpark = Color(0xFFFFE082);
   /// 多巴胺活力霓虹橙
-  static const Color dopamineOrange = Color(0xFFFF7043);
+  static const Color dopamineOrange = Color(0xFFFF7A45);
+
+  /// 主 CTA 上的文字
+  static const Color onEmber = Color(0xFFFFF8F5);
 }
 
 // 怪物配置

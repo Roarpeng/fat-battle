@@ -4,6 +4,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../theme/forge_theme.dart';
 import '../theme/app_icons.dart';
+import '../theme/motion.dart';
+import '../theme/tokens.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
@@ -11,6 +13,7 @@ import '../constants/app_constants.dart';
 import '../models/game_models.dart';
 import '../providers/game_provider.dart';
 import '../services/game_algorithm.dart';
+import '../widgets/forge_pressable.dart';
 import '../widgets/home/forge_background.dart';
 import '../widgets/hp_bar.dart';
 
@@ -73,122 +76,140 @@ class _StatsPageState extends ConsumerState<StatsPage> {
           centerTitle: true,
         ),
         body: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+          padding: AppSpace.page.copyWith(bottom: AppSpace.xxl),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildHero(),
-              const SizedBox(height: 20),
-              _sectionCard(
-                icon: Icons.track_changes_outlined,
-                title: '雕琢进度',
+              ForgeStagger(index: 0, child: _buildHero(progress, user)),
+              const SizedBox(height: AppSpace.xl),
+              ForgeStagger(
+                index: 1,
+                child: _sectionCard(
+                  icon: Icons.track_changes_outlined,
+                  title: '雕琢进度',
+                  subtitle: '当前体重到目标的锻造进度',
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text('当前 ${user.weight.toInt()} kg', style: _mutedStyle),
+                          Text('目标 ${user.targetWeight.toInt()} kg',
+                              style: _mutedStyle),
+                        ],
+                      ),
+                      const SizedBox(height: AppSpace.md),
+                      ProgressBar(
+                        percent: progress / 100,
+                        text: '${progress.toStringAsFixed(1)}%',
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: AppSpace.lg),
+              ForgeStagger(
+                index: 2,
+                child: _buildWaterCard(gameState, gameNotifier),
+              ),
+              const SizedBox(height: AppSpace.lg),
+              ForgeStagger(
+                index: 3,
+                child: _buildBmiCard(bmi, bodyType),
+              ),
+              const SizedBox(height: AppSpace.lg),
+              ForgeStagger(
+                index: 4,
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text('当前 ${user.weight.toInt()} kg', style: _mutedStyle),
-                        Text('目标 ${user.targetWeight.toInt()} kg',
-                            style: _mutedStyle),
+                        _buildStatCard('${gameState.kills}', '击杀怪物',
+                            Icons.local_fire_department_outlined),
+                        const SizedBox(width: AppSpace.md),
+                        _buildStatCard('${gameState.user.totalDamage.toInt()}',
+                            '总伤害', Icons.bolt_outlined),
                       ],
                     ),
-                    const SizedBox(height: 10),
-                    ProgressBar(
-                      percent: progress / 100,
-                      text: '${progress.toStringAsFixed(1)}%',
+                    const SizedBox(height: AppSpace.md),
+                    Row(
+                      children: [
+                        _buildStatCard('${gameState.user.totalExercise.toInt()}',
+                            '总消耗(千卡)', Icons.fitness_center_outlined),
+                        const SizedBox(width: AppSpace.md),
+                        _buildStatCard('${gameState.streak}', '连续天数',
+                            Icons.calendar_today_outlined),
+                      ],
                     ),
                   ],
                 ),
               ),
-              const SizedBox(height: 14),
-              _buildWaterCard(gameState, gameNotifier),
-              const SizedBox(height: 14),
-              _buildBmiCard(bmi, bodyType),
-              const SizedBox(height: 14),
-              Row(
-                children: [
-                  _buildStatCard('${gameState.kills}', '击杀怪物',
-                      Icons.local_fire_department_outlined),
-                  const SizedBox(width: 10),
-                  _buildStatCard('${gameState.user.totalDamage.toInt()}',
-                      '总伤害', Icons.bolt_outlined),
-                ],
-              ),
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  _buildStatCard('${gameState.user.totalExercise.toInt()}',
-                      '总消耗(千卡)', Icons.fitness_center_outlined),
-                  const SizedBox(width: 10),
-                  _buildStatCard('${gameState.streak}', '连续天数',
-                      Icons.calendar_today_outlined),
-                ],
-              ),
-              const SizedBox(height: 14),
+              const SizedBox(height: AppSpace.lg),
               _sectionCard(
                 icon: Icons.view_week_outlined,
                 title: '本周概览',
                 child: gameState.weekData.isEmpty
                     ? Center(
                         child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          padding: const EdgeInsets.symmetric(vertical: AppSpace.md),
                           child: Text('暂无数据', style: _mutedStyle),
                         ),
                       )
                     : Column(
                         children: gameState.weekData.map((d) {
-                          return Container(
-                            margin: const EdgeInsets.only(bottom: 6),
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 10),
-                            decoration: BoxDecoration(
-                              color: AppColors.bg2,
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(color: AppColors.border),
-                            ),
-                            child: Row(
-                              children: [
-                                Text(
-                                  'Day ${d.day} · ${d.date}',
-                                  style: _bodyStyle.copyWith(fontSize: 13),
-                                ),
-                                const Spacer(),
-                                Icon(
-                                  d.completed
-                                      ? Icons.check_circle_outline
-                                      : Icons.radio_button_unchecked,
-                                  size: 16,
-                                  color: d.completed
-                                      ? AppColors.green
-                                      : AppColors.text2,
-                                ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  d.completed ? '完成' : '未完成',
-                                  style: AppFonts.body(
-                                    fontSize: 12,
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: AppSpace.sm),
+                            child: ForgeSurface(
+                              color: AppColors.surface,
+                              borderRadius: AppRadii.smAll,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: AppSpace.md,
+                                vertical: AppSpace.md - 2,
+                              ),
+                              child: Row(
+                                children: [
+                                  Text(
+                                    'Day ${d.day} · ${d.date}',
+                                    style: _bodyStyle.copyWith(fontSize: 13),
+                                  ),
+                                  const Spacer(),
+                                  Icon(
+                                    d.completed
+                                        ? Icons.check_circle_outline
+                                        : Icons.radio_button_unchecked,
+                                    size: 16,
                                     color: d.completed
                                         ? AppColors.green
                                         : AppColors.text2,
                                   ),
-                                ),
-                                const SizedBox(width: 10),
-                                Text(
-                                  '${d.calIn}入/${d.calExercise}出',
-                                  style: _mutedStyle.copyWith(fontSize: 12),
-                                ),
-                              ],
+                                  const SizedBox(width: AppSpace.xs),
+                                  Text(
+                                    d.completed ? '完成' : '未完成',
+                                    style: AppFonts.body(
+                                      fontSize: 12,
+                                      color: d.completed
+                                          ? AppColors.green
+                                          : AppColors.text2,
+                                    ),
+                                  ),
+                                  const SizedBox(width: AppSpace.md),
+                                  Text(
+                                    '${d.calIn}入/${d.calExercise}出',
+                                    style: _mutedStyle.copyWith(fontSize: 12),
+                                  ),
+                                ],
+                              ),
                             ),
                           );
                         }).toList(),
                       ),
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: AppSpace.lg),
               _buildProgressGallery(gameState, gameNotifier),
-              const SizedBox(height: 14),
+              const SizedBox(height: AppSpace.lg),
               _buildExerciseTrends(gameState),
-              const SizedBox(height: 14),
+              const SizedBox(height: AppSpace.lg),
               _sectionCard(
                 icon: Icons.monitor_weight_outlined,
                 title: '记录今日体重',
@@ -205,7 +226,7 @@ class _StatsPageState extends ConsumerState<StatsPage> {
                         ),
                       ),
                     ),
-                    const SizedBox(width: 10),
+                    const SizedBox(width: AppSpace.md),
                     ElevatedButton(
                       onPressed: () {
                         final weight =
@@ -223,14 +244,14 @@ class _StatsPageState extends ConsumerState<StatsPage> {
                   ],
                 ),
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: AppSpace.lg),
               _sectionCard(
                 icon: Icons.show_chart_outlined,
                 title: '体重趋势 (7日移动平均)',
                 child: gameState.weightRecords.length < 2
                     ? Center(
                         child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 20),
+                          padding: const EdgeInsets.symmetric(vertical: AppSpace.xl),
                           child: Text('需要至少 2 天记录', style: _mutedStyle),
                         ),
                       )
@@ -246,9 +267,9 @@ class _StatsPageState extends ConsumerState<StatsPage> {
     );
   }
 
-  Widget _buildHero() {
-    return Padding(
-      padding: const EdgeInsets.only(top: 4),
+  Widget _buildHero(double progress, User user) {
+    return ForgeSurface(
+      borderColor: AppColors.copper.withValues(alpha: 0.35),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -256,10 +277,57 @@ class _StatsPageState extends ConsumerState<StatsPage> {
             '本周雕琢',
             style: _displayStyle.copyWith(fontSize: 28, height: 1.15),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: AppSpace.sm),
           Text(
             '称重、补水与回顾——在炉火旁记录每一刻变化',
             style: _mutedStyle.copyWith(height: 1.45),
+          ),
+          const SizedBox(height: AppSpace.lg),
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('进度', style: _mutedStyle.copyWith(fontSize: 11)),
+                    Text(
+                      '${progress.toStringAsFixed(0)}%',
+                      style: _displayStyle.copyWith(
+                        fontSize: 22,
+                        color: AppColors.ember,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('当前', style: _mutedStyle.copyWith(fontSize: 11)),
+                    Text(
+                      '${user.weight.toStringAsFixed(1)} kg',
+                      style: _displayStyle.copyWith(fontSize: 18),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('目标', style: _mutedStyle.copyWith(fontSize: 11)),
+                    Text(
+                      '${user.targetWeight.toStringAsFixed(1)} kg',
+                      style: _displayStyle.copyWith(
+                        fontSize: 18,
+                        color: AppColors.copper,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -270,31 +338,29 @@ class _StatsPageState extends ConsumerState<StatsPage> {
     required IconData icon,
     required String title,
     required Widget child,
+    String? subtitle,
     Widget? trailing,
   }) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+    return ForgeSurface(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ForgeSectionHeader(
+            title: title,
+            subtitle: subtitle,
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(icon, color: AppColors.copper, size: 20),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    title,
-                    style: _displayStyle.copyWith(fontSize: 17),
-                  ),
-                ),
-                if (trailing != null) trailing,
+                if (trailing != null) ...[
+                  const SizedBox(width: AppSpace.sm),
+                  trailing,
+                ],
               ],
             ),
-            const SizedBox(height: 12),
-            child,
-          ],
-        ),
+          ),
+          child,
+        ],
       ),
     );
   }
@@ -347,9 +413,9 @@ class _StatsPageState extends ConsumerState<StatsPage> {
               ),
             ],
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: AppSpace.lg),
           ClipRRect(
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: AppRadii.smAll,
             child: LinearProgressIndicator(
               value: percent,
               minHeight: 8,
@@ -357,7 +423,7 @@ class _StatsPageState extends ConsumerState<StatsPage> {
               valueColor: const AlwaysStoppedAnimation<Color>(AppColors.shield),
             ),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: AppSpace.sm),
           Align(
             alignment: Alignment.centerRight,
             child: Text(
@@ -374,12 +440,13 @@ class _StatsPageState extends ConsumerState<StatsPage> {
     required IconData icon,
     required VoidCallback onTap,
   }) {
-    return Material(
-      color: AppColors.bg2,
-      shape: const CircleBorder(side: BorderSide(color: AppColors.border)),
-      child: InkWell(
-        onTap: onTap,
-        customBorder: const CircleBorder(),
+    return ForgePressable(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(22),
+      child: ForgeSurface(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(22),
+        padding: EdgeInsets.zero,
         child: SizedBox(
           width: 44,
           height: 44,
@@ -398,19 +465,12 @@ class _StatsPageState extends ConsumerState<StatsPage> {
                 ? AppColors.copper
                 : AppColors.ember;
 
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: AppColors.card,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.border),
-      ),
+    return ForgeSurface(
       child: Row(
         children: [
-          Icon(Icons.accessibility_new_outlined,
+          const Icon(Icons.accessibility_new_outlined,
               color: AppColors.copper, size: 22),
-          const SizedBox(width: 14),
+          const SizedBox(width: AppSpace.lg),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -423,10 +483,13 @@ class _StatsPageState extends ConsumerState<StatsPage> {
           ),
           const Spacer(),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpace.md,
+              vertical: AppSpace.sm - 2,
+            ),
             decoration: BoxDecoration(
               color: bmiColor.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(20),
+              borderRadius: BorderRadius.circular(AppRadii.pill),
               border: Border.all(color: bmiColor.withValues(alpha: 0.35)),
             ),
             child: Text(
@@ -445,17 +508,13 @@ class _StatsPageState extends ConsumerState<StatsPage> {
 
   Widget _buildStatCard(String value, String label, IconData icon) {
     return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: AppColors.card,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.border),
-        ),
+      child: ForgeSurface(
+        padding: const EdgeInsets.all(AppSpace.lg - 2),
+        borderRadius: AppRadii.mdAll,
         child: Column(
           children: [
             Icon(icon, color: AppColors.copper, size: 18),
-            const SizedBox(height: 6),
+            const SizedBox(height: AppSpace.sm),
             Text(
               value,
               style: _displayStyle.copyWith(
@@ -463,7 +522,7 @@ class _StatsPageState extends ConsumerState<StatsPage> {
                 color: AppColors.copper,
               ),
             ),
-            const SizedBox(height: 2),
+            const SizedBox(height: AppSpace.xs - 2),
             Text(label, style: _mutedStyle.copyWith(fontSize: 11)),
           ],
         ),
@@ -574,7 +633,7 @@ class _StatsPageState extends ConsumerState<StatsPage> {
                         Positioned(
                           top: 2,
                           right: 2,
-                          child: GestureDetector(
+                          child: ForgePressable(
                             onTap: () => notifier.removeProgressPhoto(photo.id),
                             child: Container(
                               padding: const EdgeInsets.all(3),

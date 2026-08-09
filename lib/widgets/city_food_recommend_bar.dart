@@ -1,10 +1,13 @@
 ﻿import 'package:flutter/material.dart';
 import '../theme/forge_theme.dart';
+import '../theme/forge_routes.dart';
+import '../theme/tokens.dart';
 import '../constants/app_constants.dart';
 import '../models/food_recommend_models.dart';
 import '../services/city_location_service.dart';
 import '../services/food_preference_service.dart';
 import '../services/food_recommend_service.dart';
+import 'forge_pressable.dart';
 
 /// 餐次快捷推荐条：城市 chip + 横滑标签 + 偏好入口
 class CityFoodRecommendBar extends StatefulWidget {
@@ -111,12 +114,9 @@ class CityFoodRecommendBarState extends State<CityFoodRecommendBar> {
   }
 
   Future<void> _openCityPicker() async {
-    final chosen = await showModalBottomSheet<SupportedCity>(
+    final chosen = await showForgeSheet<SupportedCity>(
       context: context,
-      backgroundColor: AppColors.bg,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
+      isScrollControlled: false,
       builder: (ctx) {
         final cities = [
           SupportedCity.hangzhou,
@@ -130,7 +130,7 @@ class CityFoodRecommendBarState extends State<CityFoodRecommendBar> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Padding(
-                padding: const EdgeInsets.all(16),
+                padding: AppSpace.card,
                 child: Text(
                   '选择城市',
                   style: _displayStyle.copyWith(fontSize: 17),
@@ -166,7 +166,7 @@ class CityFoodRecommendBarState extends State<CityFoodRecommendBar> {
                   await _relocate();
                 },
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: AppSpace.sm),
             ],
           ),
         );
@@ -189,22 +189,17 @@ class CityFoodRecommendBarState extends State<CityFoodRecommendBar> {
 
   Future<void> _openPreferenceSheet() async {
     var draft = _preference;
-    final saved = await showModalBottomSheet<FoodPreference>(
+    final saved = await showForgeSheet<FoodPreference>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: AppColors.bg,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
       builder: (ctx) {
         return StatefulBuilder(
           builder: (ctx, setModal) {
             return Padding(
               padding: EdgeInsets.only(
-                left: 16,
-                right: 16,
-                top: 16,
-                bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
+                left: AppSpace.lg,
+                right: AppSpace.lg,
+                top: AppSpace.lg,
+                bottom: MediaQuery.of(ctx).viewInsets.bottom + AppSpace.lg,
               ),
               child: SingleChildScrollView(
                 child: Column(
@@ -212,7 +207,7 @@ class CityFoodRecommendBarState extends State<CityFoodRecommendBar> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text('饮食偏好', style: _displayStyle.copyWith(fontSize: 17)),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: AppSpace.sm),
                     SwitchListTile(
                       contentPadding: EdgeInsets.zero,
                       title: Text('素食优先', style: _bodyStyle),
@@ -222,10 +217,10 @@ class CityFoodRecommendBarState extends State<CityFoodRecommendBar> {
                       onChanged: (v) => setModal(() => draft = draft.copyWith(vegetarian: v)),
                     ),
                     Text('忌口', style: _mutedStyle),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: AppSpace.xs + 2),
                     Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
+                      spacing: AppSpace.sm,
+                      runSpacing: AppSpace.sm,
                       children: FoodAvoidTag.values.map((tag) {
                         final on = draft.avoidTags.contains(tag);
                         return FilterChip(
@@ -255,11 +250,11 @@ class CityFoodRecommendBarState extends State<CityFoodRecommendBar> {
                         );
                       }).toList(),
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: AppSpace.md),
                     Text('主食偏好', style: _mutedStyle),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: AppSpace.xs + 2),
                     Wrap(
-                      spacing: 8,
+                      spacing: AppSpace.sm,
                       children: [
                         ('rice', '米'),
                         ('noodle', '面'),
@@ -288,7 +283,7 @@ class CityFoodRecommendBarState extends State<CityFoodRecommendBar> {
                         );
                       }).toList(),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: AppSpace.lg),
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton(
@@ -326,7 +321,7 @@ class CityFoodRecommendBarState extends State<CityFoodRecommendBar> {
   Widget build(BuildContext context) {
     if (_loading) {
       return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
+        padding: const EdgeInsets.symmetric(vertical: AppSpace.sm),
         child: LinearProgressIndicator(
           minHeight: 2,
           color: AppColors.copper,
@@ -341,13 +336,14 @@ class CityFoodRecommendBarState extends State<CityFoodRecommendBar> {
         Row(
           children: [
             Flexible(
-              child: GestureDetector(
+              child: ForgePressable(
                 onTap: _openCityPicker,
+                borderRadius: AppRadii.mdAll,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: AppSpace.md, vertical: AppSpace.xs + 2),
                   decoration: BoxDecoration(
                     color: AppColors.card,
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: AppRadii.mdAll,
                     border: Border.all(
                       color: AppColors.copper.withValues(alpha: 0.45),
                     ),
@@ -366,7 +362,7 @@ class CityFoodRecommendBarState extends State<CityFoodRecommendBar> {
                         )
                       else
                         Icon(Icons.location_on_outlined, size: 14, color: AppColors.copper),
-                      const SizedBox(width: 4),
+                      const SizedBox(width: AppSpace.xs),
                       Flexible(
                         child: Text(
                           _chipLabel,
@@ -381,21 +377,22 @@ class CityFoodRecommendBarState extends State<CityFoodRecommendBar> {
                 ),
               ),
             ),
-            const SizedBox(width: 8),
-            GestureDetector(
+            const SizedBox(width: AppSpace.sm),
+            ForgePressable(
               onTap: _openPreferenceSheet,
+              borderRadius: AppRadii.mdAll,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                padding: const EdgeInsets.symmetric(horizontal: AppSpace.md, vertical: AppSpace.xs + 2),
                 decoration: BoxDecoration(
                   color: AppColors.card,
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: AppRadii.mdAll,
                   border: Border.all(color: AppColors.border),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(Icons.tune_outlined, size: 14, color: AppColors.copper),
-                    const SizedBox(width: 4),
+                    const SizedBox(width: AppSpace.xs),
                     Text('偏好', style: _bodyStyle.copyWith(fontSize: 12)),
                   ],
                 ),
@@ -403,16 +400,16 @@ class CityFoodRecommendBarState extends State<CityFoodRecommendBar> {
             ),
           ],
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: AppSpace.sm),
         SizedBox(
           height: 36,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             itemCount: _foods.length,
-            separatorBuilder: (context, index) => const SizedBox(width: 6),
+            separatorBuilder: (context, index) => const SizedBox(width: AppSpace.xs + 2),
             itemBuilder: (context, index) {
               final food = _foods[index];
-              return GestureDetector(
+              return ForgePressable(
                 onTap: () {
                   widget.onSelect(food);
                   widget.onAddedRecord?.call(food.name);
@@ -423,11 +420,12 @@ class CityFoodRecommendBarState extends State<CityFoodRecommendBar> {
                     _refreshFoods();
                   });
                 },
+                borderRadius: AppRadii.mdAll,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: AppSpace.md, vertical: AppSpace.xs + 2),
                   decoration: BoxDecoration(
                     color: AppColors.bg2,
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: AppRadii.mdAll,
                     border: Border.all(
                       color: AppColors.copper.withValues(alpha: 0.28),
                     ),

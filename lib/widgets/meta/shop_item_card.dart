@@ -1,9 +1,10 @@
 ﻿import 'package:flutter/material.dart';
 import '../../theme/forge_theme.dart';
 import '../../theme/app_icons.dart';
+import '../../theme/tokens.dart';
 import '../../constants/app_constants.dart';
 
-/// 商店单项卡片 — 锻造工坊风格
+/// 商店单项卡片 — 锻造工坊 2.0
 class ShopItemCard extends StatelessWidget {
   final ShopItem item;
   final int ownedQuantity;
@@ -28,23 +29,16 @@ class ShopItemCard extends StatelessWidget {
     );
     final body = AppFonts.body(color: AppColors.text);
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      decoration: BoxDecoration(
-        color: AppColors.card,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: canAfford
-              ? AppColors.copper.withValues(alpha: 0.35)
-              : AppColors.border,
-        ),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpace.md),
+      child: ForgeSurface(
+        borderColor: canAfford
+            ? AppColors.copper.withValues(alpha: 0.35)
+            : AppColors.border,
         child: Row(
           children: [
             Icon(AppIcons.shop(item.id), size: 36, color: AppColors.gold),
-            const SizedBox(width: 14),
+            const SizedBox(width: AppSpace.lg),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -55,7 +49,7 @@ class ShopItemCard extends StatelessWidget {
                     style: body.copyWith(color: AppColors.text2, fontSize: 12),
                   ),
                   if (ownedQuantity > 0) ...[
-                    const SizedBox(height: 4),
+                    const SizedBox(height: AppSpace.xs),
                     Text(
                       '已拥有 ×$ownedQuantity',
                       style: body.copyWith(color: AppColors.green, fontSize: 11),
@@ -70,9 +64,12 @@ class ShopItemCard extends StatelessWidget {
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.monetization_on_outlined,
-                        color: AppColors.copper, size: 16),
-                    const SizedBox(width: 4),
+                    const Icon(
+                      Icons.monetization_on_outlined,
+                      color: AppColors.copper,
+                      size: 16,
+                    ),
+                    const SizedBox(width: AppSpace.xs),
                     Text(
                       '${item.price}',
                       style: display.copyWith(
@@ -82,20 +79,19 @@ class ShopItemCard extends StatelessWidget {
                     ),
                   ],
                 ),
-                const SizedBox(height: 6),
+                const SizedBox(height: AppSpace.sm),
                 ElevatedButton(
                   onPressed: canAfford ? onBuy : null,
                   style: ElevatedButton.styleFrom(
                     backgroundColor:
                         canAfford ? AppColors.ember : AppColors.bg3,
-                    foregroundColor: canAfford
-                        ? const Color(0xFFFFF8F5)
-                        : AppColors.text2,
+                    foregroundColor:
+                        canAfford ? AppColors.onEmber : AppColors.text2,
                     disabledBackgroundColor: AppColors.bg3,
                     disabledForegroundColor: AppColors.text2,
-                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                    padding: const EdgeInsets.symmetric(horizontal: AppSpace.lg),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: AppRadii.smAll,
                       side: BorderSide(
                         color: canAfford
                             ? AppColors.ember.withValues(alpha: 0.5)

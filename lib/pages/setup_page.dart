@@ -1,10 +1,13 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../theme/forge_theme.dart';
+import '../theme/forge_routes.dart';
+import '../theme/tokens.dart';
 import '../constants/app_constants.dart';
 import '../models/game_models.dart';
 import '../providers/game_provider.dart';
 import '../services/game_algorithm.dart';
+import '../widgets/forge_pressable.dart';
 import '../widgets/home/forge_background.dart';
 import '../main.dart';
 
@@ -55,11 +58,11 @@ class _SetupPageState extends ConsumerState<SetupPage> {
           centerTitle: true,
         ),
         body: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: AppSpace.page,
           child: Column(
             children: [
               _buildStepIndicator(),
-              const SizedBox(height: 24),
+              const SizedBox(height: AppSpace.xxl),
               Expanded(
                 child: AnimatedSwitcher(
                   duration: const Duration(milliseconds: 300),
@@ -75,12 +78,9 @@ class _SetupPageState extends ConsumerState<SetupPage> {
   }
 
   Widget _buildSectionTitle(IconData icon, String title) {
-    return Row(
-      children: [
-        Icon(icon, color: AppColors.copper, size: 20),
-        const SizedBox(width: 8),
-        Text(title, style: _displayStyle.copyWith(fontSize: 17)),
-      ],
+    return ForgeSectionHeader(
+      title: title,
+      trailing: Icon(icon, color: AppColors.copper, size: 20),
     );
   }
 
@@ -162,14 +162,12 @@ class _SetupPageState extends ConsumerState<SetupPage> {
 
     return SingleChildScrollView(
       key: const ValueKey(1),
-      child: Card(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
+      child: ForgeSurface(
+        child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _buildSectionTitle(Icons.straighten, '基础数据'),
-              const SizedBox(height: 16),
+              const SizedBox(height: AppSpace.lg),
               Row(
                 children: [
                   Expanded(
@@ -180,7 +178,7 @@ class _SetupPageState extends ConsumerState<SetupPage> {
                       onChanged: (v) => setState(() => _height = v),
                     ),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: AppSpace.md),
                   Expanded(
                     child: _buildInputField(
                       label: '体重',
@@ -191,23 +189,19 @@ class _SetupPageState extends ConsumerState<SetupPage> {
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: AppSpace.md),
               _buildInputField(
                 label: '目标体重',
                 value: _targetWeight,
                 suffix: 'kg',
                 onChanged: (v) => setState(() => _targetWeight = v),
               ),
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: AppColors.bg2,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: AppColors.copper.withValues(alpha: 0.35),
-                  ),
-                ),
+              const SizedBox(height: AppSpace.lg),
+              ForgeSurface(
+                color: AppColors.surface,
+                borderRadius: AppRadii.smAll,
+                borderColor: AppColors.copper.withValues(alpha: 0.35),
+                padding: const EdgeInsets.all(AppSpace.md),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
@@ -231,7 +225,6 @@ class _SetupPageState extends ConsumerState<SetupPage> {
               ),
             ],
           ),
-        ),
       ),
     );
   }
@@ -242,10 +235,8 @@ class _SetupPageState extends ConsumerState<SetupPage> {
       key: const ValueKey(2),
       child: Column(
         children: [
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
+          ForgeSurface(
+        child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   _buildSectionTitle(Icons.bedtime_outlined, '作息类型'),
@@ -262,14 +253,10 @@ class _SetupPageState extends ConsumerState<SetupPage> {
                     labels: ['早睡早起', '标准作息', '夜猫子'],
                   ),
                 ],
-              ),
-            ),
-          ),
+              )),
           const SizedBox(height: 12),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
+          ForgeSurface(
+        child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   _buildSectionTitle(Icons.work_outline, '办公方式'),
@@ -286,14 +273,10 @@ class _SetupPageState extends ConsumerState<SetupPage> {
                     labels: ['久坐不动', '偶尔走动', '经常外出'],
                   ),
                 ],
-              ),
-            ),
-          ),
+              )),
           const SizedBox(height: 12),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
+          ForgeSurface(
+        child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   _buildSectionTitle(Icons.schedule_outlined, '锻炼时间段'),
@@ -310,14 +293,10 @@ class _SetupPageState extends ConsumerState<SetupPage> {
                     labels: ['早晨', '下午', '晚上'],
                   ),
                 ],
-              ),
-            ),
-          ),
+              )),
           const SizedBox(height: 12),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
+          ForgeSurface(
+        child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   _buildSectionTitle(Icons.palette_outlined, '角色风格'),
@@ -335,9 +314,7 @@ class _SetupPageState extends ConsumerState<SetupPage> {
                     labels: ['可爱萌宠', '战斗勇士', '魔法师', '刺客'],
                   ),
                 ],
-              ),
-            ),
-          ),
+              )),
         ],
       ),
     );
@@ -347,10 +324,8 @@ class _SetupPageState extends ConsumerState<SetupPage> {
   Widget _buildStep3() {
     return SingleChildScrollView(
       key: const ValueKey(3),
-      child: Card(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
+      child: ForgeSurface(
+        child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _buildSectionTitle(Icons.fitness_center_outlined, '体能评估'),
@@ -383,9 +358,7 @@ class _SetupPageState extends ConsumerState<SetupPage> {
                 labels: ['1-2次', '3-4次', '5+次'],
               ),
             ],
-          ),
-        ),
-      ),
+          )),
     );
   }
 
@@ -393,10 +366,8 @@ class _SetupPageState extends ConsumerState<SetupPage> {
   Widget _buildStep4() {
     return SingleChildScrollView(
       key: const ValueKey(4),
-      child: Card(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
+      child: ForgeSurface(
+        child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _buildSectionTitle(Icons.tune, '选择难度'),
@@ -425,9 +396,7 @@ class _SetupPageState extends ConsumerState<SetupPage> {
                 value: Difficulty.hard,
               ),
             ],
-          ),
-        ),
-      ),
+          )),
     );
   }
 
@@ -438,10 +407,8 @@ class _SetupPageState extends ConsumerState<SetupPage> {
 
     return SingleChildScrollView(
       key: const ValueKey(5),
-      child: Card(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
+      child: ForgeSurface(
+        child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _buildSectionTitle(Icons.fact_check_outlined, '角色确认'),
@@ -459,9 +426,7 @@ class _SetupPageState extends ConsumerState<SetupPage> {
               _buildSummaryItem('每周频率', '${_weeklyFreq}次/周'),
               _buildSummaryItem('难度', _difficulty.name),
             ],
-          ),
-        ),
-      ),
+          )),
     );
   }
 
@@ -515,16 +480,20 @@ class _SetupPageState extends ConsumerState<SetupPage> {
             : (option as dynamic).name;
 
         return Expanded(
-          child: GestureDetector(
+          child: ForgePressable(
             onTap: () => onSelect(option),
+            borderRadius: AppRadii.smAll,
             child: Container(
-              margin: const EdgeInsets.symmetric(horizontal: 4),
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+              margin: const EdgeInsets.symmetric(horizontal: AppSpace.xs),
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpace.sm,
+                vertical: AppSpace.md,
+              ),
               decoration: BoxDecoration(
                 color: isSelected
                     ? AppColors.ember.withValues(alpha: 0.12)
-                    : AppColors.bg2,
-                borderRadius: BorderRadius.circular(12),
+                    : AppColors.surface,
+                borderRadius: AppRadii.smAll,
                 border: Border.all(
                   color: isSelected ? AppColors.ember : AppColors.border,
                   width: isSelected ? 1.5 : 1,
@@ -537,7 +506,7 @@ class _SetupPageState extends ConsumerState<SetupPage> {
                     size: 26,
                     color: isSelected ? AppColors.copper : AppColors.text2,
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: AppSpace.sm - 2),
                   Text(
                     label,
                     textAlign: TextAlign.center,
@@ -566,15 +535,16 @@ class _SetupPageState extends ConsumerState<SetupPage> {
   }) {
     final isSelected = _difficulty == value;
 
-    return GestureDetector(
+    return ForgePressable(
       onTap: () => setState(() => _difficulty = value),
+      borderRadius: AppRadii.mdAll,
       child: Container(
-        padding: const EdgeInsets.all(16),
+        padding: AppSpace.card,
         decoration: BoxDecoration(
           color: isSelected
               ? AppColors.ember.withValues(alpha: 0.12)
-              : AppColors.bg2,
-          borderRadius: BorderRadius.circular(16),
+              : AppColors.surface,
+          borderRadius: AppRadii.mdAll,
           border: Border.all(
             color: isSelected ? AppColors.ember : AppColors.border,
             width: isSelected ? 1.5 : 1,
@@ -587,7 +557,7 @@ class _SetupPageState extends ConsumerState<SetupPage> {
               height: 48,
               decoration: BoxDecoration(
                 color: iconColor.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: AppRadii.smAll,
                 border: Border.all(
                   color: iconColor.withValues(alpha: 0.4),
                 ),
@@ -595,7 +565,7 @@ class _SetupPageState extends ConsumerState<SetupPage> {
               alignment: Alignment.center,
               child: Icon(icon, color: iconColor, size: 26),
             ),
-            const SizedBox(width: 16),
+            const SizedBox(width: AppSpace.lg),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -604,7 +574,7 @@ class _SetupPageState extends ConsumerState<SetupPage> {
                     name,
                     style: _displayStyle.copyWith(fontSize: 17),
                   ),
-                  const SizedBox(height: 2),
+                  const SizedBox(height: AppSpace.xs - 2),
                   Text(desc, style: _mutedStyle.copyWith(fontSize: 12)),
                 ],
               ),
@@ -640,7 +610,7 @@ class _SetupPageState extends ConsumerState<SetupPage> {
   /// 导航按钮
   Widget _buildNavigationButtons() {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 16),
+      padding: const EdgeInsets.symmetric(vertical: AppSpace.lg),
       child: Row(
         children: [
           if (_currentStep > 1)
@@ -653,15 +623,17 @@ class _SetupPageState extends ConsumerState<SetupPage> {
                 ),
               ),
             ),
-          if (_currentStep > 1) const SizedBox(width: 12),
+          if (_currentStep > 1) const SizedBox(width: AppSpace.md),
           Expanded(
             flex: 2,
             child: ElevatedButton(
               onPressed: _nextStep,
               style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 16),
+                backgroundColor: AppColors.ember,
+                foregroundColor: AppColors.onEmber,
+                padding: const EdgeInsets.symmetric(vertical: AppSpace.lg),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: AppRadii.mdAll,
                 ),
               ),
               child: Text(
@@ -719,7 +691,7 @@ class _SetupPageState extends ConsumerState<SetupPage> {
       ref.read(gameStateProvider.notifier).createGame(user);
 
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const MainPage()),
+        forgePageRoute(builder: (_) => const MainPage()),
       );
 
       _showToast('冒险开始！击败今天的怪物吧！');

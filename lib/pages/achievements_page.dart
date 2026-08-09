@@ -2,6 +2,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../theme/forge_theme.dart';
 import '../theme/app_icons.dart';
+import '../theme/tokens.dart';
 import '../constants/app_constants.dart';
 import '../providers/achievement_provider.dart';
 import '../providers/game_provider.dart';
@@ -61,7 +62,12 @@ class _AchievementsPageState extends ConsumerState<AchievementsPage> {
         body: Column(
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+              padding: const EdgeInsets.fromLTRB(
+                AppSpace.xl,
+                AppSpace.lg,
+                AppSpace.xl,
+                AppSpace.sm,
+              ),
               child: _ProgressHeader(
                 unlocked: unlocked,
                 total: total,
@@ -71,7 +77,7 @@ class _AchievementsPageState extends ConsumerState<AchievementsPage> {
             ),
             Expanded(
               child: ListView.builder(
-                padding: const EdgeInsets.all(16),
+                padding: AppSpace.page.copyWith(bottom: AppSpace.xxl),
                 itemCount: Achievements.all.length,
                 itemBuilder: (context, index) {
                   final def = Achievements.all[index];
@@ -118,47 +124,40 @@ class _ProgressHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ratio = total > 0 ? unlocked / total : 0.0;
-    return Container(
-      decoration: BoxDecoration(
-        color: AppColors.card,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.copper.withValues(alpha: 0.35)),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            Row(
-              children: [
-                Icon(Icons.emoji_events_outlined, color: AppColors.copper, size: 20),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    '已解锁 $unlocked / $total',
-                    style: displayStyle.copyWith(
-                      color: AppColors.copper,
-                      fontSize: 16,
-                    ),
+    return ForgeSurface(
+      borderColor: AppColors.copper.withValues(alpha: 0.35),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.emoji_events_outlined, color: AppColors.copper, size: 20),
+              const SizedBox(width: AppSpace.sm),
+              Expanded(
+                child: Text(
+                  '已解锁 $unlocked / $total',
+                  style: displayStyle.copyWith(
+                    color: AppColors.copper,
+                    fontSize: 16,
                   ),
                 ),
-                Text(
-                  '${(ratio * 100).round()}%',
-                  style: mutedStyle.copyWith(fontSize: 13),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(6),
-              child: LinearProgressIndicator(
-                value: ratio,
-                minHeight: 10,
-                backgroundColor: AppColors.bg2,
-                valueColor: const AlwaysStoppedAnimation<Color>(AppColors.ember),
               ),
+              Text(
+                '${(ratio * 100).round()}%',
+                style: mutedStyle.copyWith(fontSize: 13),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpace.md),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(AppSpace.sm - 2),
+            child: LinearProgressIndicator(
+              value: ratio,
+              minHeight: 10,
+              backgroundColor: AppColors.surface,
+              valueColor: const AlwaysStoppedAnimation<Color>(AppColors.ember),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -190,21 +189,16 @@ class _AchievementTile extends StatelessWidget {
     final progress =
         target > 0 ? (current / target).clamp(0.0, 1.0) : (unlocked ? 1.0 : 0.0);
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      decoration: BoxDecoration(
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpace.md),
+      child: ForgeSurface(
         color: unlocked
             ? AppColors.copper.withValues(alpha: 0.08)
-            : AppColors.card,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: unlocked
-              ? AppColors.copper.withValues(alpha: 0.4)
-              : AppColors.border,
-        ),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
+            : AppColors.elevated,
+        borderColor: unlocked
+            ? AppColors.copper.withValues(alpha: 0.4)
+            : AppColors.border,
+        padding: const EdgeInsets.all(AppSpace.lg - 2),
         child: Row(
           children: [
             Opacity(
@@ -215,7 +209,7 @@ class _AchievementTile extends StatelessWidget {
                 color: unlocked ? AppColors.gold : AppColors.text2,
               ),
             ),
-            const SizedBox(width: 14),
+            const SizedBox(width: AppSpace.lg),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -232,29 +226,29 @@ class _AchievementTile extends StatelessWidget {
                         ),
                       ),
                       if (unlocked)
-                        Icon(Icons.check_circle_outline,
+                        const Icon(Icons.check_circle_outline,
                             color: AppColors.copper, size: 18),
                     ],
                   ),
                   Text(achievement.desc, style: mutedStyle),
                   if (!unlocked && target > 0) ...[
-                    const SizedBox(height: 6),
+                    const SizedBox(height: AppSpace.sm),
                     ClipRRect(
-                      borderRadius: BorderRadius.circular(4),
+                      borderRadius: BorderRadius.circular(AppSpace.xs),
                       child: LinearProgressIndicator(
                         value: progress,
                         minHeight: 6,
-                        backgroundColor: AppColors.bg2,
+                        backgroundColor: AppColors.surface,
                         valueColor:
                             const AlwaysStoppedAnimation<Color>(AppColors.ember),
                       ),
                     ),
-                    const SizedBox(height: 2),
+                    const SizedBox(height: AppSpace.xs - 2),
                     Text('$current / $target', style: mutedStyle.copyWith(fontSize: 10)),
                   ],
                   if (unlocked && unlockedAt.isNotEmpty)
                     Padding(
-                      padding: const EdgeInsets.only(top: 4),
+                      padding: const EdgeInsets.only(top: AppSpace.xs),
                       child: Text(
                         '解锁于 $unlockedAt',
                         style: bodyStyle.copyWith(

@@ -124,8 +124,8 @@ class _VictoryEffectState extends State<VictoryEffect>
       duration: const Duration(milliseconds: 700),
       vsync: this,
     );
-    _trophyScale = Tween<double>(begin: 0, end: 1).animate(
-      CurvedAnimation(parent: _trophyController, curve: Curves.elasticOut),
+    _trophyScale = Tween<double>(begin: 0.92, end: 1).animate(
+      CurvedAnimation(parent: _trophyController, curve: Curves.easeOutCubic),
     );
     _trophyRotation = Tween<double>(begin: -math.pi, end: 0).animate(
       CurvedAnimation(parent: _trophyController, curve: Curves.easeOut),
@@ -144,7 +144,7 @@ class _VictoryEffectState extends State<VictoryEffect>
       vsync: this,
     );
     _textOpacity = Tween<double>(begin: 0, end: 1).animate(
-      CurvedAnimation(parent: _textController, curve: Curves.easeIn),
+      CurvedAnimation(parent: _textController, curve: Curves.easeOutCubic),
     );
     _textY = Tween<double>(begin: 20, end: 0).animate(
       CurvedAnimation(parent: _textController, curve: Curves.easeOut),
@@ -155,7 +155,7 @@ class _VictoryEffectState extends State<VictoryEffect>
       vsync: this,
     );
     _cardOpacity = Tween<double>(begin: 0, end: 1).animate(
-      CurvedAnimation(parent: _cardController, curve: Curves.easeIn),
+      CurvedAnimation(parent: _cardController, curve: Curves.easeOutCubic),
     );
     _cardY = Tween<double>(begin: 20, end: 0).animate(
       CurvedAnimation(parent: _cardController, curve: Curves.easeOut),

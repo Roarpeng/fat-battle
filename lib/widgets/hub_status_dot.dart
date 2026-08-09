@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../constants/app_constants.dart';
+import 'forge_pressable.dart';
 
 enum HubStatus { disconnected, connecting, connected }
 
@@ -31,42 +32,45 @@ class HubStatusDot extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final dot = Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: _color,
-        boxShadow: status == HubStatus.connected
-            ? [
-                BoxShadow(
-                  color: AppColors.green.withValues(alpha: 0.4),
-                  blurRadius: 4,
-                  spreadRadius: 1,
-                ),
-              ]
-            : status == HubStatus.connecting
-                ? [
-                    BoxShadow(
-                      color: AppColors.copper.withValues(alpha: 0.35),
-                      blurRadius: 4,
-                      spreadRadius: 1,
-                    ),
-                  ]
-                : null,
+      width: size + 16,
+      height: size + 16,
+      alignment: Alignment.center,
+      child: Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: _color,
+          boxShadow: status == HubStatus.connected
+              ? [
+                  BoxShadow(
+                    color: AppColors.green.withValues(alpha: 0.45),
+                    blurRadius: 5,
+                    spreadRadius: 1,
+                  ),
+                ]
+              : status == HubStatus.connecting
+                  ? [
+                      BoxShadow(
+                        color: AppColors.copper.withValues(alpha: 0.4),
+                        blurRadius: 5,
+                        spreadRadius: 1,
+                      ),
+                    ]
+                  : null,
+        ),
       ),
     );
 
-    if (onTap != null || tooltip != null) {
-      return GestureDetector(
-        onTap: onTap,
-        child: Tooltip(
-          message: tooltip ?? _defaultTooltip,
-          child: dot,
-        ),
-      );
-    }
+    final tipped = Tooltip(
+      message: tooltip ?? _defaultTooltip,
+      child: dot,
+    );
 
-    return dot;
+    if (onTap != null) {
+      return ForgePressable(onTap: onTap, child: tipped);
+    }
+    return tipped;
   }
 
   String get _defaultTooltip {

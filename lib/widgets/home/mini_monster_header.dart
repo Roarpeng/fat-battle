@@ -1,13 +1,14 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../theme/forge_theme.dart';
+import '../../theme/tokens.dart';
 
 import '../../constants/app_constants.dart';
 import '../../providers/game_provider.dart';
 import '../battle/forge_monster_art.dart';
 import '../hp_bar.dart';
 
-/// 饮食 / 锤炼子页顶栏迷你怪
+/// 饮食 / 锤炼子页顶栏迷你怪 — 2.0
 class MiniMonsterHeader extends ConsumerWidget {
   const MiniMonsterHeader({super.key});
 
@@ -18,9 +19,14 @@ class MiniMonsterHeader extends ConsumerWidget {
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      padding: const EdgeInsets.fromLTRB(
+        AppSpace.lg,
+        0,
+        AppSpace.lg,
+        AppSpace.md,
+      ),
       decoration: BoxDecoration(
-        color: AppColors.bg2.withValues(alpha: 0.92),
+        color: AppColors.surface.withValues(alpha: 0.94),
         border: const Border(
           bottom: BorderSide(color: AppColors.border),
         ),
@@ -32,7 +38,7 @@ class MiniMonsterHeader extends ConsumerWidget {
             height: 44,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: AppColors.card,
+              color: AppColors.elevated,
               border: Border.all(
                 color: gs.monster.hasShield
                     ? AppColors.shield
@@ -48,7 +54,7 @@ class MiniMonsterHeader extends ConsumerWidget {
                   : gs.monster.hpPercent < 0.3,
             ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: AppSpace.md),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -61,7 +67,7 @@ class MiniMonsterHeader extends ConsumerWidget {
                     color: AppColors.text,
                   ),
                 ),
-                const SizedBox(height: 6),
+                const SizedBox(height: AppSpace.sm),
                 HpBar(
                   current: gs.monster.hp,
                   max: gs.monster.maxHp,
@@ -74,7 +80,7 @@ class MiniMonsterHeader extends ConsumerWidget {
               ],
             ),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: AppSpace.sm),
           Text(
             '${gs.monster.hp}/${gs.monster.maxHp}',
             style: AppFonts.body(

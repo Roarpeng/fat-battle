@@ -76,6 +76,7 @@ class _MainPageState extends ConsumerState<MainPage> {
     ];
 
     return Scaffold(
+      backgroundColor: Colors.transparent,
       body: pages[_currentIndex],
       bottomNavigationBar: NavigationBar(
         selectedIndex: _currentIndex,

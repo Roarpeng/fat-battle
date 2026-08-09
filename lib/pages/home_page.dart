@@ -2,11 +2,15 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../theme/forge_theme.dart';
+import '../theme/forge_routes.dart';
+import '../theme/motion.dart';
+import '../theme/tokens.dart';
 
 import '../constants/app_constants.dart';
 import '../models/game_models.dart';
 import '../providers/game_provider.dart';
 import '../services/ble_service.dart';
+import '../widgets/forge_pressable.dart';
 import '../widgets/home/forge_background.dart';
 import '../widgets/home/monster_stage_avatar.dart';
 import '../widgets/home/stage_action_button.dart';
@@ -17,7 +21,7 @@ import 'food_page.dart';
 import 'settings_page.dart';
 import 'setup_page.dart';
 
-/// 方案 A：首页即舞台
+/// 锻造工坊 2.0：首页即舞台（单构图）
 class HomePage extends ConsumerStatefulWidget {
   final void Function(int index)? onTabSwitch;
 
@@ -43,35 +47,36 @@ class _HomePageState extends ConsumerState<HomePage> {
     });
 
     if (!gameState.hasGame) {
-      // 防御性兑底：正常流程已在登录/根路由分流到角色创建页，
-      // 万一到达此处提供直达入口，避免死胡同
       return ForgeBackground(
         child: Scaffold(
           backgroundColor: Colors.transparent,
           body: Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  '还没有角色档案',
-                  style: AppFonts.display(fontSize: 22, color: AppColors.text),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  '创建角色后即可开始今天的战斗',
-                  style: AppFonts.body(fontSize: 13, color: AppColors.text2),
-                ),
-                const SizedBox(height: 20),
-                ElevatedButton.icon(
-                  onPressed: () {
-                    Navigator.of(context).pushReplacement(
-                      MaterialPageRoute(builder: (_) => const SetupPage()),
-                    );
-                  },
-                  icon: const Icon(Icons.person_add_alt_1, size: 18),
-                  label: const Text('去创建角色'),
-                ),
-              ],
+            child: Padding(
+              padding: AppSpace.page,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '还没有角色档案',
+                    style: AppFonts.display(fontSize: 22, color: AppColors.text),
+                  ),
+                  const SizedBox(height: AppSpace.sm),
+                  Text(
+                    '创建角色后即可开始今天的战斗',
+                    style: AppFonts.body(fontSize: 13, color: AppColors.text2),
+                  ),
+                  const SizedBox(height: AppSpace.xl),
+                  ElevatedButton.icon(
+                    onPressed: () {
+                      Navigator.of(context).pushReplacement(
+                        forgePageRoute(builder: (_) => const SetupPage()),
+                      );
+                    },
+                    icon: const Icon(Icons.person_add_alt_1, size: 18),
+                    label: const Text('去创建角色'),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -85,34 +90,37 @@ class _HomePageState extends ConsumerState<HomePage> {
     return ForgeBackground(
       child: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
+          padding: AppSpace.page,
           child: Column(
             children: [
               _buildTopBar(gameState),
               Expanded(
                 child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
+                    const Spacer(flex: 2),
                     Text(
                       gameState.monster.name,
                       style: AppFonts.display(
-                        fontSize: 28,
+                        fontSize: 30,
                         fontWeight: FontWeight.w600,
                         color: AppColors.text,
-                        height: 1.1,
+                        height: 1.08,
                       ),
                     ),
-                    const SizedBox(height: 6),
-                    Text(
-                      _statusLine(gameState),
-                      textAlign: TextAlign.center,
-                      style: AppFonts.body(
-                        fontSize: 14,
-                        color: AppColors.text2,
-                        height: 1.35,
+                    const SizedBox(height: AppSpace.sm),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: AppSpace.xxl),
+                      child: Text(
+                        _statusLine(gameState),
+                        textAlign: TextAlign.center,
+                        style: AppFonts.body(
+                          fontSize: 13,
+                          color: AppColors.text2,
+                          height: 1.4,
+                        ),
                       ),
                     ),
-                    const SizedBox(height: 18),
+                    const SizedBox(height: AppSpace.xl),
                     Stack(
                       alignment: Alignment.center,
                       clipBehavior: Clip.none,
@@ -122,19 +130,21 @@ class _HomePageState extends ConsumerState<HomePage> {
                           hitFlash: _hitFlash,
                           onTap: () {
                             setState(() => _hitFlash = true);
-                            Future.delayed(const Duration(milliseconds: 120),
-                                () {
+                            Future.delayed(const Duration(milliseconds: 120), () {
                               if (mounted) setState(() => _hitFlash = false);
                             });
                           },
                         ),
                         if (_floatLabel != null)
                           Positioned(
-                            top: 8,
+                            top: 0,
                             child: IgnorePointer(
                               child: AnimatedOpacity(
-                                opacity: _floatLabel == null ? 0 : 1,
-                                duration: const Duration(milliseconds: 200),
+                                opacity: 1,
+                                duration: AppMotion.duration(
+                                  context,
+                                  AppMotion.micro,
+                                ),
                                 child: Text(
                                   _floatLabel!,
                                   style: AppFonts.display(
@@ -154,18 +164,19 @@ class _HomePageState extends ConsumerState<HomePage> {
                           ),
                       ],
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: AppSpace.md),
                     Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 28),
+                      padding: const EdgeInsets.symmetric(horizontal: AppSpace.xxxl),
                       child: HpBar(
                         current: gameState.monster.hp,
                         max: gameState.monster.maxHp,
                         color: AppColors.ember,
                         shield: gameState.monster.shield,
                         shieldColor: AppColors.shield,
-                        height: 14,
+                        height: 12,
                       ),
                     ),
+                    const Spacer(flex: 3),
                   ],
                 ),
               ),
@@ -183,7 +194,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                   subtitle: '好好休养，明天满血归来',
                   color: AppColors.shield,
                 ),
-              const SizedBox(height: 10),
+              const SizedBox(height: AppSpace.sm),
               Row(
                 children: [
                   StageActionButton(
@@ -193,7 +204,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                     tone: StageActionTone.food,
                     onTap: () => _openFood(),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: AppSpace.md),
                   StageActionButton(
                     icon: Icons.fitness_center_rounded,
                     label: '锤炼',
@@ -235,7 +246,7 @@ class _HomePageState extends ConsumerState<HomePage> {
       _floatLabel = label;
       _floatColor = color;
     });
-    Future.delayed(const Duration(milliseconds: 900), () {
+    Future.delayed(AppMotion.floatLabel, () {
       if (mounted) setState(() => _floatLabel = null);
     });
   }
@@ -266,13 +277,13 @@ class _HomePageState extends ConsumerState<HomePage> {
             });
             return HubStatusDot(
               status: status,
-              size: 9,
+              size: 10,
               tooltip: tip,
               onTap: () => _showHubBottomSheet(context),
             );
           },
         ),
-        const SizedBox(width: 10),
+        const SizedBox(width: AppSpace.md),
         Text(
           '第 ${gs.day} 天',
           style: AppFonts.body(
@@ -282,18 +293,20 @@ class _HomePageState extends ConsumerState<HomePage> {
           ),
         ),
         const Spacer(),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-          decoration: BoxDecoration(
-            color: AppColors.card,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: AppColors.border),
+        ForgeSurface(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpace.md,
+            vertical: AppSpace.xs + 2,
           ),
+          borderRadius: BorderRadius.circular(AppRadii.pill),
           child: Row(
             children: [
-              Icon(Icons.monetization_on_rounded,
-                  size: 14, color: AppColors.copper),
-              const SizedBox(width: 4),
+              const Icon(
+                Icons.monetization_on_rounded,
+                size: 14,
+                color: AppColors.copper,
+              ),
+              const SizedBox(width: AppSpace.xs),
               Text(
                 '${gs.coins}',
                 style: AppFonts.body(
@@ -305,15 +318,17 @@ class _HomePageState extends ConsumerState<HomePage> {
             ],
           ),
         ),
-        const SizedBox(width: 4),
-        IconButton(
-          tooltip: '更多',
-          onPressed: () {
+        const SizedBox(width: AppSpace.xs),
+        ForgePressable(
+          onTap: () {
             Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const SettingsPage()),
+              forgePageRoute(builder: (_) => const SettingsPage()),
             );
           },
-          icon: const Icon(Icons.tune_rounded, color: AppColors.text2),
+          child: const Padding(
+            padding: EdgeInsets.all(AppSpace.sm),
+            child: Icon(Icons.tune_rounded, color: AppColors.text2, size: 22),
+          ),
         ),
       ],
     );
@@ -328,11 +343,14 @@ class _HomePageState extends ConsumerState<HomePage> {
   }) {
     return Container(
       width: double.infinity,
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      margin: const EdgeInsets.only(bottom: AppSpace.sm),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpace.lg,
+        vertical: AppSpace.md,
+      ),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: AppRadii.mdAll,
         border: Border.all(color: color.withValues(alpha: 0.4)),
       ),
       child: Row(
@@ -351,10 +369,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                 ),
                 Text(
                   subtitle,
-                  style: AppFonts.body(
-                    fontSize: 12,
-                    color: AppColors.text2,
-                  ),
+                  style: AppFonts.body(fontSize: 12, color: AppColors.text2),
                 ),
               ],
             ),
@@ -368,25 +383,23 @@ class _HomePageState extends ConsumerState<HomePage> {
 
   Future<void> _openFood() async {
     await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const FoodPage(showMonsterHeader: true)),
+      forgePageRoute(
+        builder: (_) => const FoodPage(showMonsterHeader: true),
+      ),
     );
   }
 
   Future<void> _openExercise() async {
     await Navigator.of(context).push(
-      MaterialPageRoute(
+      forgePageRoute(
         builder: (_) => const ExercisePage(showMonsterHeader: true),
       ),
     );
   }
 
   void _showHubBottomSheet(BuildContext context) {
-    showModalBottomSheet(
+    showForgeSheet(
       context: context,
-      backgroundColor: AppColors.card,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
       builder: (_) => const HubConnectionSheet(),
     );
   }
@@ -423,36 +436,27 @@ class _HubConnectionSheetState extends ConsumerState<HubConnectionSheet> {
     final bleState = ref.watch(bleConnectionStateProvider);
 
     return Padding(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.fromLTRB(
+        AppSpace.xl,
+        AppSpace.sm,
+        AppSpace.xl,
+        AppSpace.xxl,
+      ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Center(
-            child: Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: AppColors.border,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
           Text(
             '腰部 Hub',
-            style: AppFonts.display(
-              fontSize: 22,
-              fontWeight: FontWeight.w600,
-            ),
+            style: AppFonts.display(fontSize: 22, fontWeight: FontWeight.w600),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: AppSpace.lg),
           bleState.when(
             data: _buildStatusRow,
             loading: () => _buildStatusRow(const BleDeviceState()),
             error: (_, _) => _buildStatusRow(const BleDeviceState()),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: AppSpace.lg),
           Row(
             children: [
               Expanded(
@@ -462,7 +466,7 @@ class _HubConnectionSheetState extends ConsumerState<HubConnectionSheet> {
                   label: Text(_isScanning ? '扫描中...' : '扫描设备'),
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: AppSpace.md),
               Expanded(
                 child: OutlinedButton.icon(
                   onPressed: () => _disconnect(bleService),
@@ -472,23 +476,19 @@ class _HubConnectionSheetState extends ConsumerState<HubConnectionSheet> {
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          Container(
-            height: 100,
-            width: double.infinity,
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: AppColors.bg,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: AppColors.border),
-            ),
-            child: SingleChildScrollView(
-              reverse: true,
-              child: Text(
-                _logs.isEmpty ? '等待操作...' : _logs.join('\n'),
-                style: AppFonts.body(
-                  fontSize: 12,
-                  color: AppColors.text2,
+          const SizedBox(height: AppSpace.md),
+          ForgeSurface(
+            color: AppColors.bg,
+            borderRadius: AppRadii.smAll,
+            padding: AppSpace.card,
+            child: SizedBox(
+              height: 100,
+              width: double.infinity,
+              child: SingleChildScrollView(
+                reverse: true,
+                child: Text(
+                  _logs.isEmpty ? '等待操作...' : _logs.join('\n'),
+                  style: AppFonts.body(fontSize: 12, color: AppColors.text2),
                 ),
               ),
             ),
@@ -508,7 +508,7 @@ class _HubConnectionSheetState extends ConsumerState<HubConnectionSheet> {
               : (_isScanning ? HubStatus.connecting : HubStatus.disconnected),
           size: 12,
         ),
-        const SizedBox(width: 12),
+        const SizedBox(width: AppSpace.md),
         Expanded(
           child: Text(
             connected

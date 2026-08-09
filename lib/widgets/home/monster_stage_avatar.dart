@@ -1,12 +1,13 @@
 ﻿import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import '../../theme/forge_theme.dart';
+import '../../theme/motion.dart';
 
 import '../../constants/app_constants.dart';
 import '../../models/game_models.dart';
 import '../battle/forge_monster_art.dart';
+import '../forge_pressable.dart';
 
 /// 舞台中央怪物立绘：底座光环 + 护盾光圈 + 打击缩放
 class MonsterStageAvatar extends StatefulWidget {
@@ -50,19 +51,18 @@ class _MonsterStageAvatarState extends State<MonsterStageAvatar>
     final ringColor = widget.monster.hasShield
         ? AppColors.shield
         : (enraged ? AppColors.ember : AppColors.copper);
+    final reduce = AppMotion.reduceMotion(context);
 
-    return GestureDetector(
-      onTap: () {
-        HapticFeedback.selectionClick();
-        widget.onTap?.call();
-      },
+    return ForgePressable(
+      onTap: widget.onTap,
+      haptic: ForgeHaptic.selection,
       child: AnimatedBuilder(
         animation: _breath,
         builder: (context, child) {
-          final t = _breath.value;
+          final t = reduce ? 0.5 : _breath.value;
           final scale = widget.hitFlash
               ? 0.88
-              : (0.98 + t * 0.04);
+              : (reduce ? 1.0 : (0.98 + t * 0.04));
           return Transform.scale(
             scale: scale,
             child: child,

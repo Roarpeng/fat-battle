@@ -110,7 +110,7 @@ class _AttackEffectState extends State<AttackEffect>
       vsync: this,
     );
     _iconX = Tween<double>(begin: -150, end: 0).animate(
-      CurvedAnimation(parent: _iconController, curve: Curves.easeIn),
+      CurvedAnimation(parent: _iconController, curve: Curves.easeOutCubic),
     );
     _iconOpacity = TweenSequence<double>([
       TweenSequenceItem(tween: Tween(begin: 0, end: 1), weight: 40),
@@ -127,13 +127,13 @@ class _AttackEffectState extends State<AttackEffect>
       duration: const Duration(milliseconds: 500),
       vsync: this,
     );
-    _flashScale1 = Tween<double>(begin: 0, end: 4).animate(
+    _flashScale1 = Tween<double>(begin: 0.95, end: 4).animate(
       CurvedAnimation(parent: _flashController, curve: Curves.easeOut),
     );
     _flashOpacity1 = Tween<double>(begin: 1, end: 0).animate(
       CurvedAnimation(parent: _flashController, curve: Curves.easeOut),
     );
-    _flashScale2 = Tween<double>(begin: 0, end: 3).animate(
+    _flashScale2 = Tween<double>(begin: 0.95, end: 3).animate(
       CurvedAnimation(parent: _flashController, curve: Curves.easeOut),
     );
     _flashOpacity2 = Tween<double>(begin: 1, end: 0).animate(

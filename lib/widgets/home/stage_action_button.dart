@@ -1,13 +1,14 @@
 ﻿import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import '../../theme/forge_theme.dart';
-
+import '../../theme/motion.dart';
+import '../../theme/tokens.dart';
 import '../../constants/app_constants.dart';
+import '../forge_pressable.dart';
 
 enum StageActionTone { food, forge }
 
-/// 舞台拇指区大按钮（饮食 / 锤炼）
-class StageActionButton extends StatefulWidget {
+/// 舞台拇指区大按钮（饮食 / 锤炼）— 锻造工坊 2.0
+class StageActionButton extends StatelessWidget {
   final IconData icon;
   final String label;
   final String subtitle;
@@ -23,98 +24,85 @@ class StageActionButton extends StatefulWidget {
     required this.onTap,
   });
 
-  @override
-  State<StageActionButton> createState() => _StageActionButtonState();
-}
-
-class _StageActionButtonState extends State<StageActionButton> {
-  bool _pressed = false;
-
-  Color get _accent => widget.tone == StageActionTone.food
-      ? AppColors.copper
-      : AppColors.ember;
+  Color get _accent =>
+      tone == StageActionTone.food ? AppColors.copper : AppColors.ember;
 
   @override
   Widget build(BuildContext context) {
+    final isForge = tone == StageActionTone.forge;
+
     return Expanded(
-      child: GestureDetector(
-        onTapDown: (_) => setState(() => _pressed = true),
-        onTapCancel: () => setState(() => _pressed = false),
-        onTapUp: (_) {
-          setState(() => _pressed = false);
-          HapticFeedback.mediumImpact();
-          widget.onTap();
-        },
-        child: AnimatedScale(
-          scale: _pressed ? 0.96 : 1,
-          duration: const Duration(milliseconds: 90),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 160),
-            height: 108,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(20),
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: widget.tone == StageActionTone.forge
-                    ? [
-                        AppColors.ember.withValues(alpha: 0.95),
-                        const Color(0xFFB33A2C),
-                      ]
-                    : [
-                        AppColors.card,
-                        AppColors.bg3,
-                      ],
-              ),
-              border: Border.all(
-                color: widget.tone == StageActionTone.forge
-                    ? AppColors.forgeGlow.withValues(alpha: 0.5)
-                    : AppColors.copper.withValues(alpha: 0.45),
-                width: 1.2,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: _accent.withValues(alpha: 0.28),
-                  blurRadius: 18,
-                  offset: const Offset(0, 8),
-                ),
-              ],
+      child: ForgePressable(
+        onTap: onTap,
+        scale: AppMotion.thumbTapScale,
+        haptic: ForgeHaptic.medium,
+        borderRadius: AppRadii.lgAll,
+        child: Container(
+          height: 112,
+          decoration: BoxDecoration(
+            borderRadius: AppRadii.lgAll,
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: isForge
+                  ? [
+                      AppColors.ember.withValues(alpha: 0.98),
+                      const Color(0xFFC23428),
+                    ]
+                  : [
+                      AppColors.elevated,
+                      AppColors.bg3,
+                    ],
             ),
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(
-                  widget.icon,
-                  color: widget.tone == StageActionTone.forge
-                      ? const Color(0xFFFFF8F5)
-                      : AppColors.copper,
-                  size: 26,
-                ),
-                const Spacer(),
-                Text(
-                  widget.label,
-                  style: AppFonts.display(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w600,
-                    color: widget.tone == StageActionTone.forge
-                        ? const Color(0xFFFFF8F5)
-                        : AppColors.text,
-                    height: 1.1,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  widget.subtitle,
-                  style: AppFonts.body(
-                    fontSize: 12,
-                    color: widget.tone == StageActionTone.forge
-                        ? const Color(0xFFFFF8F5).withValues(alpha: 0.78)
-                        : AppColors.text2,
-                  ),
-                ),
-              ],
+            border: Border.all(
+              color: isForge
+                  ? AppColors.forgeGlow.withValues(alpha: 0.45)
+                  : AppColors.copper.withValues(alpha: 0.4),
+              width: 1.2,
             ),
+            boxShadow: [
+              BoxShadow(
+                color: _accent.withValues(alpha: isForge ? 0.32 : 0.18),
+                blurRadius: 20,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          padding: const EdgeInsets.fromLTRB(
+            AppSpace.lg,
+            AppSpace.md,
+            AppSpace.lg,
+            AppSpace.md,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                icon,
+                color: isForge ? AppColors.onEmber : AppColors.copper,
+                size: 26,
+              ),
+              const Spacer(),
+              Text(
+                label,
+                style: AppFonts.display(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w600,
+                  color: isForge ? AppColors.onEmber : AppColors.text,
+                  height: 1.1,
+                ),
+              ),
+              const SizedBox(height: AppSpace.xs),
+              Text(
+                subtitle,
+                style: AppFonts.body(
+                  fontSize: 12,
+                  color: isForge
+                      ? AppColors.onEmber.withValues(alpha: 0.78)
+                      : AppColors.text2,
+                ),
+              ),
+            ],
           ),
         ),
       ),

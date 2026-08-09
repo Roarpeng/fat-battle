@@ -1,5 +1,5 @@
-﻿import 'dart:math' as math;
-import 'package:camera/camera.dart';
+﻿import 'package:camera/camera.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../theme/forge_theme.dart';
@@ -25,6 +25,9 @@ class PoseCoachPage extends StatefulWidget {
   final ValueNotifier<bool> preparing;
   final ValueNotifier<double> prepareProgress;
   final Future<void> Function() onStop;
+
+  /// 切换前置/后置；返回新的 Controller（可为 null 表示失败）
+  final Future<CameraController?> Function()? onFlipCamera;
 
   /// 连训：当前第几式（1-based）；null 表示非连训。
   final int? planStep;
@@ -53,6 +56,15 @@ class PoseCoachPage extends StatefulWidget {
   /// 倒计时秒数（countdown 阶段）
   final ValueNotifier<int>? coachCountdown;
 
+  /// 诊断日记实时状态（关键点/对齐）
+  final ValueNotifier<String>? diaryStatus;
+
+  /// 分享诊断日记
+  final Future<void> Function()? onShareDiary;
+
+  /// 教练页首帧后预热预览方向（pause/resume）
+  final Future<void> Function()? onWarmPreview;
+
   const PoseCoachPage({
     super.key,
     required this.exerciseName,
@@ -70,6 +82,7 @@ class PoseCoachPage extends StatefulWidget {
     required this.preparing,
     required this.prepareProgress,
     required this.onStop,
+    this.onFlipCamera,
     this.planStep,
     this.planTotal,
     this.targetCount,
@@ -79,6 +92,9 @@ class PoseCoachPage extends StatefulWidget {
     this.coachPhase,
     this.coachPhaseHint,
     this.coachCountdown,
+    this.diaryStatus,
+    this.onShareDiary,
+    this.onWarmPreview,
   });
 
   @override
@@ -87,10 +103,14 @@ class PoseCoachPage extends StatefulWidget {
 
 class _PoseCoachPageState extends State<PoseCoachPage> {
   bool _stopping = false;
+  bool _flipping = false;
+  /// 切换镜头时先置 null，避免 CameraPreview 挂在已 dispose 的 Controller 上黑屏
+  CameraController? _controller;
 
   @override
   void initState() {
     super.initState();
+    _controller = widget.controller;
     // 允许跟随手机姿态旋转
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     SystemChrome.setPreferredOrientations(const [
@@ -100,6 +120,32 @@ class _PoseCoachPageState extends State<PoseCoachPage> {
       DeviceOrientation.landscapeRight,
     ]);
     widget.externalComplete?.addListener(_onExternalComplete);
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      try {
+        await widget.onWarmPreview?.call();
+      } catch (_) {}
+    });
+  }
+
+  Future<void> _handleFlipCamera() async {
+    if (_stopping || _flipping || widget.onFlipCamera == null) return;
+    // 先拆掉预览，再让 service dispose 旧相机
+    setState(() {
+      _flipping = true;
+      _controller = null;
+    });
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    try {
+      final next = await widget.onFlipCamera!();
+      if (!mounted) return;
+      if (next != null && next.value.isInitialized) {
+        setState(() => _controller = next);
+      }
+    } catch (e) {
+      debugPrint('flip camera failed: $e');
+    } finally {
+      if (mounted) setState(() => _flipping = false);
+    }
   }
 
   @override
@@ -143,42 +189,9 @@ class _PoseCoachPageState extends State<PoseCoachPage> {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              // 摄像头自适应视窗（智能匹配横竖屏比例放缩与镜像）
+              // 摄像头 contain 入镜（完整画面，不 cover 裁切）+ 同框引导/骨架
               Positioned.fill(
-                child: _buildCameraPreview(context),
-              ),
-              // 引导框 + 剪影（随方向自适应）
-              Positioned.fill(
-                child: ValueListenableBuilder<Map<String, Map<String, double>>?>(
-                  valueListenable: widget.landmarks,
-                  builder: (context, lm, _) {
-                    return PoseCoachGuideOverlay(
-                      exerciseType: widget.exerciseType,
-                      landmarks: lm,
-                      tip: widget.tip,
-                    );
-                  },
-                ),
-              ),
-              // 实时骨架
-              Positioned.fill(
-                child: ValueListenableBuilder<Map<String, Map<String, double>>?>(
-                  valueListenable: widget.landmarks,
-                  builder: (context, lm, _) {
-                    if (lm == null) return const SizedBox.shrink();
-                    return LayoutBuilder(
-                      builder: (context, constraints) {
-                        return PoseOverlay(
-                          landmarks: lm,
-                          size: Size(
-                            constraints.maxWidth,
-                            constraints.maxHeight,
-                          ),
-                        );
-                      },
-                    );
-                  },
-                ),
+                child: _buildCameraStage(context),
               ),
               // 动作信息：竖屏放顶部左侧，横屏放左下
               Positioned(
@@ -244,33 +257,138 @@ class _PoseCoachPageState extends State<PoseCoachPage> {
                   targetUnit: widget.targetUnit,
                 ),
               ),
-              // 结束按钮（仅结束整段时需要走近手机；正常连训会自动完成）
+              // 结束 + 切换镜头 + 分享日记
               Positioned(
                 top: 12,
                 right: 16,
-                child: FilledButton.icon(
-                  onPressed: _stopping ? null : _handleStop,
-                  icon: _stopping
-                      ? const SizedBox(
-                          width: 14,
-                          height: 14,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.stop_rounded, size: 18),
-                  label: Text(
-                    _stopping ? '结算中' : '结束',
-                    style: AppFonts.body(fontWeight: FontWeight.w700),
-                  ),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: AppColors.ember.withValues(alpha: 0.85),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 10,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (widget.onFlipCamera != null) ...[
+                      OutlinedButton.icon(
+                        onPressed: (_stopping || _flipping)
+                            ? null
+                            : _handleFlipCamera,
+                        icon: _flipping
+                            ? const SizedBox(
+                                width: 14,
+                                height: 14,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Icon(Icons.cameraswitch_rounded, size: 16),
+                        label: Text(
+                          _flipping
+                              ? '切换中'
+                              : (_controller?.description.lensDirection ==
+                                      CameraLensDirection.front
+                                  ? '后置'
+                                  : '前置'),
+                          style: AppFonts.body(fontWeight: FontWeight.w700),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.white,
+                          side: BorderSide(
+                            color: Colors.white.withValues(alpha: 0.55),
+                          ),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 10,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                    if (widget.onShareDiary != null) ...[
+                      OutlinedButton.icon(
+                        onPressed: _stopping
+                            ? null
+                            : () async {
+                                try {
+                                  await widget.onShareDiary!();
+                                } catch (_) {}
+                              },
+                        icon: const Icon(Icons.bug_report_outlined, size: 16),
+                        label: Text(
+                          '日记',
+                          style: AppFonts.body(fontWeight: FontWeight.w700),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.white,
+                          side: BorderSide(
+                            color: Colors.white.withValues(alpha: 0.55),
+                          ),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 10,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                    FilledButton.icon(
+                      onPressed: _stopping ? null : _handleStop,
+                      icon: _stopping
+                          ? const SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.stop_rounded, size: 18),
+                      label: Text(
+                        _stopping ? '结算中' : '结束',
+                        style: AppFonts.body(fontWeight: FontWeight.w700),
+                      ),
+                      style: FilledButton.styleFrom(
+                        backgroundColor:
+                            AppColors.ember.withValues(alpha: 0.85),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 10,
+                        ),
+                      ),
                     ),
-                  ),
+                  ],
                 ),
               ),
+              // 诊断状态条（入镜检测是否在跑）
+              if (widget.diaryStatus != null)
+                Positioned(
+                  left: 16,
+                  right: 16,
+                  bottom: isPortrait ? 88 : 72,
+                  child: ValueListenableBuilder<String>(
+                    valueListenable: widget.diaryStatus!,
+                    builder: (_, status, __) {
+                      return IgnorePointer(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.65),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: AppColors.copper.withValues(alpha: 0.45),
+                            ),
+                          ),
+                          child: Text(
+                            '诊断 · $status',
+                            style: AppFonts.body(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
               // 免触控阶段大字引导（架设 / 入镜 / 倒计时）
               if (widget.coachPhase != null)
                 Positioned.fill(
@@ -344,44 +462,78 @@ class _PoseCoachPageState extends State<PoseCoachPage> {
     );
   }
 
-  /// 构建横竖屏自适应的摄像头预览视图
-  Widget _buildCameraPreview(BuildContext context) {
-    if (!widget.controller.value.isInitialized) {
-      return const SizedBox.shrink();
+  /// 官方 CameraPreview：纹理自带 RotatedBox + SurfaceTexture 变换；
+  /// 骨架必须放在 child（最终显示空间）。jpeg_buffer 关键点经
+  /// [_bufferPixelToPreviewNorm] 映射到该空间（与 google_ml_kit 示例一致）。
+  Widget _buildCameraStage(BuildContext context) {
+    final cam = _controller;
+    if (cam == null || !cam.value.isInitialized) {
+      return ColoredBox(
+        color: Colors.black,
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const CircularProgressIndicator(color: Colors.white54),
+              const SizedBox(height: 12),
+              Text(
+                _flipping ? '正在切换摄像头…' : '摄像头准备中…',
+                style: AppFonts.body(color: Colors.white70, fontSize: 13),
+              ),
+            ],
+          ),
+        ),
+      );
     }
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final previewSize = widget.controller.value.previewSize;
-        if (previewSize == null) {
-          return Transform.scale(
-            scaleX: -1,
-            child: CameraPreview(widget.controller),
-          );
-        }
+    return ValueListenableBuilder<CameraValue>(
+      valueListenable: cam,
+      builder: (context, value, _) {
+        final orient = value.deviceOrientation;
 
-        // 计算当前视窗与传感器预览画面的 Aspect Ratio 比例
-        final screenRatio = constraints.maxWidth / constraints.maxHeight;
-        final previewRatio = previewSize.height / previewSize.width;
-
-        var scale = screenRatio / previewRatio;
-        if (scale < 1.0) {
-          scale = 1.0 / scale;
-        }
-
-        return ClipRect(
-          child: OverflowBox(
-            alignment: Alignment.center,
-            child: Transform.scale(
-              scale: scale,
-              child: Transform(
-                alignment: Alignment.center,
-                // 前置摄像头镜像处理
-                transform: Matrix4.rotationY(math.pi),
-                child: CameraPreview(widget.controller),
+        Widget stage = CameraPreview(
+          // 方向变化时重建 Texture，避免冷启动预览变换滞后
+          key: ValueKey('preview_${cam.description.name}_$orient'),
+          cam,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              ValueListenableBuilder<Map<String, Map<String, double>>?>(
+                valueListenable: widget.landmarks,
+                builder: (context, lm, _) {
+                  return PoseCoachGuideOverlay(
+                    exerciseType: widget.exerciseType,
+                    landmarks: lm,
+                    tip: widget.tip,
+                  );
+                },
               ),
-            ),
+              ValueListenableBuilder<Map<String, Map<String, double>>?>(
+                valueListenable: widget.landmarks,
+                builder: (context, lm, _) {
+                  if (lm == null) return const SizedBox.shrink();
+                  return LayoutBuilder(
+                    builder: (context, constraints) {
+                      return PoseOverlay(
+                        landmarks: lm,
+                        size: Size(
+                          constraints.maxWidth,
+                          constraints.maxHeight,
+                        ),
+                      );
+                    },
+                  );
+                },
+              ),
+            ],
           ),
+        );
+
+        // 前置镜像在 landmark 映射里做 x=1-x；勿再 Transform 整页，
+        // 否则纹理与骨架相对镜像关系不变。
+        return ColoredBox(
+          color: Colors.black,
+          child: Center(child: stage),
         );
       },
     );

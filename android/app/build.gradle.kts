@@ -56,7 +56,19 @@ android {
             } else {
                 signingConfigs.getByName("debug")
             }
+            // Flutter 插件默认开启 minify；ML Kit 在 R8 下仍会 Internal error。
+            // 先关混淆保证姿态可用，后续再收紧 keep 规则。
+            isMinifyEnabled = false
+            isShrinkResources = false
         }
+    }
+}
+
+// Flutter Gradle Plugin 会把 release.isMinifyEnabled 强制为 true，这里再关一次。
+afterEvaluate {
+    android.buildTypes.getByName("release").apply {
+        isMinifyEnabled = false
+        isShrinkResources = false
     }
 }
 
@@ -72,4 +84,13 @@ flutter {
 
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
+}
+
+// pose-detection 18.0.0-beta5 在 Android 14+（含本机 API 36）上有已知崩溃/Internal error；
+// 社区 workaround：强制降到 beta1。见 googlesamples/mlkit#982
+configurations.all {
+    resolutionStrategy {
+        force("com.google.mlkit:pose-detection:18.0.0-beta1")
+        force("com.google.mlkit:pose-detection-accurate:18.0.0-beta1")
+    }
 }

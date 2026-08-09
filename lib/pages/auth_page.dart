@@ -1,6 +1,8 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../theme/forge_theme.dart';
+import '../theme/forge_routes.dart';
+import '../theme/tokens.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../constants/app_constants.dart';
 import '../services/auth_service.dart';
@@ -52,7 +54,7 @@ class _AuthPageState extends ConsumerState<AuthPage> with SingleTickerProviderSt
   void _navigateAfterAuth() {
     final hasGame = ref.read(gameStateProvider).hasGame;
     Navigator.of(context).pushReplacement(
-      MaterialPageRoute(
+      forgePageRoute(
         builder: (_) => hasGame ? const MainPage() : const SetupPage(),
       ),
     );
@@ -182,51 +184,64 @@ class _AuthPageState extends ConsumerState<AuthPage> with SingleTickerProviderSt
         body: SafeArea(
           child: Center(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpace.xxl,
+                vertical: AppSpace.xl,
+              ),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   // 品牌 Header：铁砧之锤（锻造工坊徽记）
                   Container(
-                    width: 84,
-                    height: 84,
+                    width: 96,
+                    height: 96,
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                         colors: [
                           AppColors.bg3,
-                          AppColors.ember.withValues(alpha: 0.35),
+                          AppColors.ember.withValues(alpha: 0.4),
                         ],
                       ),
                       shape: BoxShape.circle,
                       border: Border.all(
-                        color: AppColors.copper.withValues(alpha: 0.55),
+                        color: AppColors.copper.withValues(alpha: 0.6),
                         width: 1.5,
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: AppColors.ember.withValues(alpha: 0.25),
-                          blurRadius: 24,
-                          offset: const Offset(0, 8),
+                          color: AppColors.ember.withValues(alpha: 0.28),
+                          blurRadius: 28,
+                          offset: const Offset(0, 10),
                         ),
                       ],
                     ),
                     alignment: Alignment.center,
-                    child: const Text('🔨', style: TextStyle(fontSize: 40)),
+                    child: const Text('🔨', style: TextStyle(fontSize: 44)),
                   ),
-                  const SizedBox(height: 18),
+                  const SizedBox(height: AppSpace.xl),
                   Text(
                     '塑身工坊',
                     style: AppFonts.display(
-                      fontSize: 30,
+                      fontSize: 36,
                       fontWeight: FontWeight.w700,
                       color: AppColors.text,
-                      letterSpacing: 1.0,
-                      height: 1.1,
+                      letterSpacing: 1.2,
+                      height: 1.05,
                     ),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: AppSpace.sm),
+                  Text(
+                    '锻造你的身体',
+                    style: AppFonts.display(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.copper,
+                      letterSpacing: 2.0,
+                    ),
+                  ),
+                  const SizedBox(height: AppSpace.sm),
                   Text(
                     '你的身体，是你精心雕琢的作品',
                     style: AppFonts.body(
@@ -234,25 +249,19 @@ class _AuthPageState extends ConsumerState<AuthPage> with SingleTickerProviderSt
                       color: AppColors.text2,
                     ),
                   ),
-                  const SizedBox(height: 28),
+                  const SizedBox(height: AppSpace.xxxl),
 
                   // 工坊卡容器
-                  Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: AppColors.card.withValues(alpha: 0.92),
-                      borderRadius: BorderRadius.circular(22),
-                      border: Border.all(
-                        color: AppColors.copper.withValues(alpha: 0.4),
+                  ForgeSurface(
+                    borderColor: AppColors.copper.withValues(alpha: 0.4),
+                    padding: const EdgeInsets.all(AppSpace.xl),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.35),
+                        blurRadius: 20,
+                        offset: const Offset(0, 10),
                       ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.35),
-                          blurRadius: 20,
-                          offset: const Offset(0, 10),
-                        ),
-                      ],
-                    ),
+                    ],
                     child: Form(
                       key: _formKey,
                       child: Column(
@@ -264,7 +273,7 @@ class _AuthPageState extends ConsumerState<AuthPage> with SingleTickerProviderSt
                             padding: const EdgeInsets.all(3),
                             decoration: BoxDecoration(
                               color: AppColors.bg,
-                              borderRadius: BorderRadius.circular(12),
+                              borderRadius: AppRadii.smAll,
                               border: Border.all(color: AppColors.border),
                             ),
                             child: TabBar(
@@ -275,7 +284,7 @@ class _AuthPageState extends ConsumerState<AuthPage> with SingleTickerProviderSt
                               ),
                               indicatorSize: TabBarIndicatorSize.tab,
                               dividerColor: Colors.transparent,
-                              labelColor: const Color(0xFFFFF8F5),
+                              labelColor: AppColors.onEmber,
                               unselectedLabelColor: AppColors.text2,
                               labelStyle: AppFonts.body(
                                 fontWeight: FontWeight.w700,
@@ -288,7 +297,7 @@ class _AuthPageState extends ConsumerState<AuthPage> with SingleTickerProviderSt
                               onTap: (_) => setState(() {}),
                             ),
                           ),
-                          const SizedBox(height: 20),
+                          const SizedBox(height: AppSpace.xl),
 
                           // 如果是注册页，显示用户名输入框
                           if (_tabController.index == 1) ...[
@@ -298,7 +307,7 @@ class _AuthPageState extends ConsumerState<AuthPage> with SingleTickerProviderSt
                               decoration: InputDecoration(
                                 labelText: '用户昵称',
                                 prefixIcon: Icon(Icons.person_outline, color: AppColors.copper),
-                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                                border: OutlineInputBorder(borderRadius: AppRadii.smAll),
                               ),
                               validator: (val) {
                                 if (val == null || val.trim().length < 2) {
@@ -307,7 +316,7 @@ class _AuthPageState extends ConsumerState<AuthPage> with SingleTickerProviderSt
                                 return null;
                               },
                             ),
-                            const SizedBox(height: 14),
+                            const SizedBox(height: AppSpace.lg - 2),
                           ],
 
                           // 账号/邮箱输入框
@@ -318,7 +327,7 @@ class _AuthPageState extends ConsumerState<AuthPage> with SingleTickerProviderSt
                             decoration: InputDecoration(
                               labelText: '手机号 / 邮箱',
                               prefixIcon: Icon(Icons.email_outlined, color: AppColors.copper),
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                              border: OutlineInputBorder(borderRadius: AppRadii.smAll),
                             ),
                             validator: (val) {
                               final v = val?.trim() ?? '';
@@ -333,7 +342,7 @@ class _AuthPageState extends ConsumerState<AuthPage> with SingleTickerProviderSt
                               return null;
                             },
                           ),
-                          const SizedBox(height: 14),
+                          const SizedBox(height: AppSpace.lg - 2),
 
                           // 密码输入框
                           TextFormField(
@@ -352,7 +361,7 @@ class _AuthPageState extends ConsumerState<AuthPage> with SingleTickerProviderSt
                                   setState(() => _obscurePassword = !_obscurePassword);
                                 },
                               ),
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                              border: OutlineInputBorder(borderRadius: AppRadii.smAll),
                             ),
                             validator: (val) {
                               if (val == null || val.length < 6) {
@@ -364,18 +373,18 @@ class _AuthPageState extends ConsumerState<AuthPage> with SingleTickerProviderSt
                               return null;
                             },
                           ),
-                          const SizedBox(height: 24),
+                          const SizedBox(height: AppSpace.xxl),
 
                           // 提交按钮（炉火赤红主行动）
                           SizedBox(
-                            height: 50,
+                            height: 52,
                             child: ElevatedButton(
                               onPressed: _isLoading ? null : _handleSubmit,
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: AppColors.ember,
-                                foregroundColor: const Color(0xFFFFF8F5),
+                                foregroundColor: AppColors.onEmber,
                                 shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(14),
+                                  borderRadius: AppRadii.mdAll,
                                 ),
                                 elevation: 0,
                                 shadowColor: AppColors.ember,
@@ -386,7 +395,7 @@ class _AuthPageState extends ConsumerState<AuthPage> with SingleTickerProviderSt
                                       height: 20,
                                       child: CircularProgressIndicator(
                                         strokeWidth: 2,
-                                        color: Color(0xFFFFF8F5),
+                                        color: AppColors.onEmber,
                                       ),
                                     )
                                   : Text(
@@ -398,7 +407,7 @@ class _AuthPageState extends ConsumerState<AuthPage> with SingleTickerProviderSt
                                     ),
                             ),
                           ),
-                          const SizedBox(height: 12),
+                          const SizedBox(height: AppSpace.md),
 
                           // 协议勾选（商店上架合规要求）
                           Row(
@@ -416,7 +425,7 @@ class _AuthPageState extends ConsumerState<AuthPage> with SingleTickerProviderSt
                                   visualDensity: VisualDensity.compact,
                                 ),
                               ),
-                              const SizedBox(width: 4),
+                              const SizedBox(width: AppSpace.xs),
                               Expanded(
                                 child: GestureDetector(
                                   onTap: () => setState(
@@ -432,7 +441,7 @@ class _AuthPageState extends ConsumerState<AuthPage> with SingleTickerProviderSt
                                         WidgetSpan(
                                           child: GestureDetector(
                                             onTap: () => Navigator.of(context)
-                                                .push(MaterialPageRoute(
+                                                .push(forgePageRoute(
                                                     builder: (_) =>
                                                         const PrivacyPolicyPage())),
                                             child: Text(
@@ -455,7 +464,7 @@ class _AuthPageState extends ConsumerState<AuthPage> with SingleTickerProviderSt
                       ),
                     ),
                   ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: AppSpace.xl),
 
                   // 离线游客模式按钮
                   TextButton.icon(
