@@ -65,6 +65,9 @@ class PoseCoachPage extends StatefulWidget {
   /// 教练页首帧后预热预览方向（pause/resume）
   final Future<void> Function()? onWarmPreview;
 
+  /// 暂停并保存进度后退出（可续训）；为 null 时不显示暂停按钮
+  final Future<void> Function()? onPauseSave;
+
   const PoseCoachPage({
     super.key,
     required this.exerciseName,
@@ -95,6 +98,7 @@ class PoseCoachPage extends StatefulWidget {
     this.diaryStatus,
     this.onShareDiary,
     this.onWarmPreview,
+    this.onPauseSave,
   });
 
   @override
@@ -104,6 +108,7 @@ class PoseCoachPage extends StatefulWidget {
 class _PoseCoachPageState extends State<PoseCoachPage> {
   bool _stopping = false;
   bool _flipping = false;
+  bool _pausing = false;
   /// 切换镜头时先置 null，避免 CameraPreview 挂在已 dispose 的 Controller 上黑屏
   CameraController? _controller;
 
@@ -166,10 +171,22 @@ class _PoseCoachPageState extends State<PoseCoachPage> {
   }
 
   Future<void> _handleStop() async {
-    if (_stopping) return;
+    if (_stopping || _pausing) return;
     setState(() => _stopping = true);
     await widget.onStop();
     if (mounted) Navigator.of(context).pop();
+  }
+
+  Future<void> _handlePauseSave() async {
+    if (_stopping || _pausing || widget.onPauseSave == null) return;
+    setState(() => _pausing = true);
+    try {
+      await widget.onPauseSave!();
+      if (mounted) Navigator.of(context).pop();
+    } catch (e) {
+      debugPrint('pause save failed: $e');
+      if (mounted) setState(() => _pausing = false);
+    }
   }
 
   @override
@@ -328,8 +345,40 @@ class _PoseCoachPageState extends State<PoseCoachPage> {
                       ),
                       const SizedBox(width: 8),
                     ],
+                    if (widget.onPauseSave != null) ...[
+                      OutlinedButton.icon(
+                        onPressed: (_stopping || _pausing)
+                            ? null
+                            : _handlePauseSave,
+                        icon: _pausing
+                            ? const SizedBox(
+                                width: 14,
+                                height: 14,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Icon(Icons.pause_rounded, size: 16),
+                        label: Text(
+                          _pausing ? '保存中' : '暂停',
+                          style: AppFonts.body(fontWeight: FontWeight.w700),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.white,
+                          side: BorderSide(
+                            color: Colors.white.withValues(alpha: 0.55),
+                          ),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 10,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
                     FilledButton.icon(
-                      onPressed: _stopping ? null : _handleStop,
+                      onPressed: (_stopping || _pausing) ? null : _handleStop,
                       icon: _stopping
                           ? const SizedBox(
                               width: 14,

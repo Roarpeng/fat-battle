@@ -2185,6 +2185,17 @@ class PoseDetectionService {
     _lastComboTime = DateTime.now();
   }
 
+  /// 续训：恢复已累计次数/秒数（平板按秒）。
+  void seedRepCount(int count) {
+    final n = count < 0 ? 0 : count;
+    _repCount = n;
+    if (_currentExercise == 'plank') {
+      _plankAccumulatedSeconds = n.toDouble();
+      _plankStartTime = null;
+    }
+    onRepDetected?.call(_repCount, _currentExercise);
+  }
+
   /// 释放资源
   Future<void> dispose() async {
     await stopDetection();

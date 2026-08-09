@@ -63,6 +63,20 @@ class VoiceService {
     await _tts!.speak(text);
   }
 
+  /// Coach/realtime path: start TTS without waiting for utterance to finish.
+  /// Restores [awaitSpeakCompletion] so legacy [speak] still blocks until done.
+  Future<void> speakNonBlocking(String text) async {
+    if (!_enabled || !_initialized) return;
+    final tts = _tts!;
+    await tts.awaitSpeakCompletion(false);
+    try {
+      await tts.stop();
+      await tts.speak(text);
+    } finally {
+      await tts.awaitSpeakCompletion(true);
+    }
+  }
+
   Future<void> stop() async {
     await _tts?.stop();
   }

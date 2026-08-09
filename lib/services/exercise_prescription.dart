@@ -104,10 +104,38 @@ class WorkoutPlan {
   }
 }
 
+/// 动作肌群 / 运动模式分类（用于组合编排交替）。
+enum ExerciseMuscleGroup {
+  legs,
+  push,
+  core,
+  cardio,
+}
+
 /// 根据身材、目标体重、体能、今日待消耗卡路里与渐进等级，
 /// 生成摄像头可教学的动作组合。
 class ExercisePrescription {
   ExercisePrescription._();
+
+  /// 将摄像头可识别 type 归入 legs / push / core / cardio。
+  static ExerciseMuscleGroup classifyExerciseGroup(String type) {
+    switch (type) {
+      case 'squat':
+      case 'lunge':
+        return ExerciseMuscleGroup.legs;
+      case 'pushup':
+        return ExerciseMuscleGroup.push;
+      case 'plank':
+      case 'mountainclimber':
+        return ExerciseMuscleGroup.core;
+      case 'jumping_jack':
+      case 'highknee':
+      case 'burpee':
+        return ExerciseMuscleGroup.cardio;
+      default:
+        return ExerciseMuscleGroup.cardio;
+    }
+  }
 
   /// 渐进等级 Lv1-Lv6：由连续打卡天数推导，逐步加大训练量。
   /// Lv1-2 新手（3 动作），Lv3-4 进阶（4 动作），Lv5-6 强化（5 动作）。
@@ -165,7 +193,7 @@ class ExercisePrescription {
       level: level,
     );
 
-    final picked = <int>[];
+    var picked = <int>[];
     for (final type in pool) {
       final idx = indexOfType(type);
       if (idx == null) continue;
@@ -180,6 +208,11 @@ class ExercisePrescription {
       final idx = indexOfType(fallback);
       if (idx != null && !picked.contains(idx)) picked.add(idx);
     }
+
+    // 选完后按肌群交替重排：激活 → 力量 → 核心 → 力量/有氧
+    final beforeReorder = List<int>.from(picked);
+    picked = _reorderForTrainingCombo(picked);
+    final didReorder = !_sameIndexOrder(beforeReorder, picked);
 
     // 目标消耗：优先用户今日待消耗，否则按等级给基础目标
     final burnGoal =
@@ -216,10 +249,11 @@ class ExercisePrescription {
         )
         .toList(growable: false);
 
+    final reason = _reason(user, focus, bmi, toLose, level, burnGoal);
     return WorkoutPlan(
       items: items,
       title: 'Lv.$level ${focus.label}组合 · ${items.length} 式',
-      reason: _reason(user, focus, bmi, toLose, level, burnGoal),
+      reason: didReorder ? '$reason · 已交替肌群编排' : reason,
       estimatedMinutes: minutes,
       level: level,
       targetBurnCal: burnGoal,
@@ -251,6 +285,99 @@ class ExercisePrescription {
   }
 
   // ---- internals ----
+
+  static bool _sameIndexOrder(List<int> a, List<int> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
+
+  static bool _isStrengthGroup(ExerciseMuscleGroup g) =>
+      g == ExerciseMuscleGroup.legs || g == ExerciseMuscleGroup.push;
+
+  /// 组合编排：尽量按「激活(cardio) → 力量 → 核心 → 力量/有氧」排，
+  /// 并避免相邻两式同属一组（如 squat→lunge、jumping_jack→highknee）。
+  static List<int> _reorderForTrainingCombo(List<int> picked) {
+    if (picked.length <= 1) return List<int>.from(picked);
+
+    ExerciseMuscleGroup groupOf(int idx) =>
+        classifyExerciseGroup(Exercises.all[idx].type);
+
+    int scoreCandidate(int idx, int slot, ExerciseMuscleGroup? prev) {
+      final g = groupOf(idx);
+      var score = 0;
+
+      // 相邻同组强惩罚（有别组可选时自然避开）
+      if (prev != null && g == prev) {
+        score -= 100;
+      } else if (prev != null) {
+        score += 40;
+      }
+
+      // 力量组内尽量腿/推交替
+      if (prev != null &&
+          _isStrengthGroup(prev) &&
+          _isStrengthGroup(g) &&
+          g != prev) {
+        score += 20;
+      }
+
+      // 槽位偏好：激活 → 力量 → 核心 → 力量/有氧
+      if (slot == 0) {
+        if (g == ExerciseMuscleGroup.cardio) {
+          score += 50;
+        } else if (_isStrengthGroup(g)) {
+          score += 20;
+        } else {
+          score += 10;
+        }
+      } else if (slot == 1) {
+        if (_isStrengthGroup(g)) {
+          score += 50;
+        } else if (g == ExerciseMuscleGroup.cardio) {
+          score += 15;
+        } else {
+          score += 10;
+        }
+      } else if (slot == 2) {
+        if (g == ExerciseMuscleGroup.core) {
+          score += 50;
+        } else if (_isStrengthGroup(g)) {
+          score += 25;
+        } else {
+          score += 10;
+        }
+      } else {
+        if (_isStrengthGroup(g) || g == ExerciseMuscleGroup.cardio) {
+          score += 30;
+        } else {
+          score += 15;
+        }
+      }
+
+      return score;
+    }
+
+    final remaining = List<int>.from(picked);
+    final ordered = <int>[];
+    while (remaining.isNotEmpty) {
+      final slot = ordered.length;
+      final prev = ordered.isEmpty ? null : groupOf(ordered.last);
+      var bestAt = 0;
+      var bestScore = scoreCandidate(remaining[0], slot, prev);
+      for (var i = 1; i < remaining.length; i++) {
+        final s = scoreCandidate(remaining[i], slot, prev);
+        if (s > bestScore) {
+          bestScore = s;
+          bestAt = i;
+        }
+      }
+      ordered.add(remaining.removeAt(bestAt));
+    }
+    return ordered;
+  }
 
   static WorkoutPlanItem _buildItem({
     required int exerciseIndex,

@@ -21,6 +21,8 @@ import '../services/tflite_motion_service.dart';
 import '../services/exercise_game_logic.dart';
 import '../services/exercise_prescription.dart';
 import '../services/pose_coach_diary.dart';
+import '../services/pose_coach_voice.dart';
+import '../services/training_session_store.dart';
 import '../widgets/exercise/pose_overlay.dart';
 import '../widgets/exercise/pose_coach_guide.dart';
 import '../widgets/forge_pressable.dart';
@@ -60,6 +62,13 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
 
   /// 结算后待推进下一式（等教练页 pop 完成再休息/开练）
   bool _pendingPlanAdvance = false;
+
+  final PoseCoachVoice _coachVoice = PoseCoachVoice();
+  final TrainingSessionStore _sessionStore = TrainingSessionStore();
+  TrainingSession? _resumableSession;
+  int _sessionBonusSeconds = 0;
+  String? _lastCoachPhaseForVoice;
+  String? _lastFormTipForVoice;
 
   /// 精彩瞬间截屏节流（避免连击时疯狂截图）
   DateTime _lastHighlightCapture = DateTime.fromMillisecondsSinceEpoch(0);
@@ -175,6 +184,11 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
     };
     _gameLogic.onPauseChanged = (paused) {
       _pausedN.value = paused;
+      if (paused) {
+        _coachVoice.announcePause();
+      } else {
+        _coachVoice.announceResume();
+      }
       if (mounted) setState(() {});
     };
     _gameLogic.onPrepareProgress = (progress) {
@@ -190,6 +204,40 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
         });
       }
     };
+
+    _coachPhaseN.addListener(_onCoachPhaseVoice);
+    // ignore: discarded_futures
+    _refreshResumableSession();
+    // ignore: discarded_futures
+    _coachVoice.ensureReady();
+  }
+
+  Future<void> _refreshResumableSession() async {
+    final s = await _sessionStore.loadSession();
+    if (!mounted) return;
+    setState(() => _resumableSession = s);
+  }
+
+  void _onCoachPhaseVoice() {
+    final phase = _coachPhaseN.value;
+    if (phase == _lastCoachPhaseForVoice) return;
+    _lastCoachPhaseForVoice = phase;
+    switch (phase) {
+      case 'setup':
+        _coachVoice.announceSetup();
+        break;
+      case 'align':
+        _coachVoice.announceAlign();
+        break;
+      case 'countdown':
+        break;
+      case 'active':
+        final name = _selectedExercise != null
+            ? Exercises.all[_selectedExercise!].name
+            : null;
+        _coachVoice.announceStartCounting(exerciseName: name);
+        break;
+    }
   }
 
   void _wireCameraCallbacks(dynamic detector) {
@@ -215,8 +263,10 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
           : '';
       if (type != 'plank') {
         _gameLogic.handleRepSuccess();
+        _coachVoice.announceRepMilestone(count, every: 5);
       } else if (count > 0 && count % 5 == 0) {
         _gameLogic.handleRepSuccess();
+        _coachVoice.announceRepMilestone(count, every: 10);
       }
       _maybeCompletePlanTarget(count);
     };
@@ -257,6 +307,18 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
           _landmarksN.value = converted;
         });
         _onHandsFreePose(converted);
+      };
+      // 人丢失自动暂停 → HUD「已暂停」+ 语音（此前未接线）
+      detector.onPauseChanged = (paused) {
+        if (!mounted || !_isActiveCamera(detector)) return;
+        _pausedN.value = paused;
+        _gameLogic.isPaused = paused;
+        if (paused) {
+          _coachVoice.announcePause();
+        } else {
+          _coachVoice.announceResume();
+        }
+        setState(() {});
       };
     } else if (detector is TfliteMotionService) {
       detector.onPoseUpdate = (landmarks) {
@@ -374,6 +436,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
         _alignGoodSince = null;
         _coachPhaseHintN.value = '太近了，请再退后几步';
         _prepareProgressN.value = 0;
+        _announceFormTipOnce('too_close');
         PoseCoachDiary.instance.logPoseFrame(
           phase: 'align',
           keypointCount: landmarks.length,
@@ -426,6 +489,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
           hint: score < 0.25 ? 'out_of_frame' : 'adjusting',
           sample: _diarySample(landmarks),
         );
+        _announceFormTipOnce(score < 0.25 ? 'out_of_frame' : 'adjusting');
       }
       return;
     }
@@ -474,6 +538,9 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
       final left =
           _countdownSec - (elapsed / 1000).floor();
       if (left > 0) {
+        if (_coachCountdownN.value != left) {
+          _coachVoice.announceCountdown(left);
+        }
         _coachCountdownN.value = left;
         _feedbackN.value = '$left';
         _coachPhaseHintN.value = '不要动，马上开始';
@@ -543,8 +610,142 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
   String get _cameraEngineLabel =>
       _cameraEngine == 'mlkit' ? 'ML Kit' : 'TFLite';
   
+  void _announceFormTipOnce(String tip) {
+    if (_lastFormTipForVoice == tip) return;
+    _lastFormTipForVoice = tip;
+    _coachVoice.announceFormTip(tip);
+  }
+
+  int _currentBaseTarget() {
+    if (_planSeqIndex >= 0) {
+      return _recommendedPlan?.itemAt(_planSeqIndex)?.target ?? 0;
+    }
+    return 0;
+  }
+
+  bool _currentIsTimed() {
+    if (_planSeqIndex >= 0) {
+      return _recommendedPlan?.itemAt(_planSeqIndex)?.isTimed ?? false;
+    }
+    final i = _selectedExercise;
+    if (i == null) return false;
+    return Exercises.all[i].type == 'plank';
+  }
+
+  int _currentEffectiveTarget() {
+    final base = _currentBaseTarget();
+    if (base <= 0) return 0;
+    if (_currentIsTimed()) return base + _sessionBonusSeconds;
+    return base +
+        (_sessionBonusSeconds ~/ TrainingSessionStore.secondsPerBonusRep);
+  }
+
+  WorkoutPlan _planFromSnapshot(TrainingPlanSnapshot snap) {
+    return WorkoutPlan(
+      items: snap.items
+          .map(
+            (i) => WorkoutPlanItem(
+              exerciseIndex: i.exerciseIndex,
+              target: i.target,
+              isTimed: i.isTimed,
+            ),
+          )
+          .toList(growable: false),
+      title: snap.title,
+      reason: '续训恢复',
+      estimatedMinutes: 0,
+      restSeconds: snap.restSeconds,
+    );
+  }
+
+  TrainingPlanSnapshot? _snapshotFromPlan(WorkoutPlan? plan) {
+    if (plan == null) return null;
+    return TrainingPlanSnapshot(
+      title: plan.title,
+      restSeconds: plan.restSeconds,
+      items: plan.items
+          .map(
+            (i) => TrainingPlanItemSnapshot(
+              exerciseIndex: i.exerciseIndex,
+              target: i.target,
+              isTimed: i.isTimed,
+            ),
+          )
+          .toList(growable: false),
+    );
+  }
+
+  Future<void> _pauseAndSaveSession() async {
+    if (_selectedExercise == null || _cameraStartTime == null) return;
+    final exercise = Exercises.all[_selectedExercise!];
+    final elapsed = DateTime.now().difference(_cameraStartTime!);
+    final baseTarget = _currentBaseTarget();
+    final session = TrainingSession(
+      exerciseType: exercise.type,
+      exerciseIndex: _selectedExercise!,
+      exerciseName: exercise.name,
+      planSeqIndex: _planSeqIndex,
+      plan: _snapshotFromPlan(_recommendedPlan),
+      repCount: _cameraRepCount,
+      elapsedActiveSeconds: elapsed.inSeconds,
+      pausedAt: DateTime.now(),
+      bonusSeconds: _sessionBonusSeconds,
+      target: baseTarget > 0 ? baseTarget : (_currentIsTimed() ? 30 : 15),
+      isTimed: _currentIsTimed(),
+    );
+    await _sessionStore.saveSession(session);
+    _coachVoice.announcePause();
+    _abortPlanOnStop = false;
+    await _stopCameraDetection(abortSequence: false, skipFinish: true);
+    if (mounted) {
+      setState(() {
+        _resumableSession = session;
+        _cameraStartTime = null;
+        _cameraDetecting = false;
+      });
+      _showToast('已暂停并保存进度，可随时继续');
+    }
+  }
+
+  Future<void> _resumeSavedSession() async {
+    var session = await _sessionStore.loadSession();
+    if (session == null) {
+      _showToast('没有可继续的训练');
+      return;
+    }
+    final pausedAt = session.pausedAt;
+    final gapSec = pausedAt != null
+        ? DateTime.now().difference(pausedAt).inSeconds
+        : null;
+    final beforeBonus = session.bonusSeconds;
+    session = TrainingSessionStore.applyPauseBonus(session);
+    final added = session.bonusSeconds - beforeBonus;
+    _sessionBonusSeconds = session.bonusSeconds;
+    if (session.plan != null) {
+      _recommendedPlan = _planFromSnapshot(session.plan!);
+      _planSeqIndex = session.planSeqIndex;
+    } else {
+      _planSeqIndex = -1;
+    }
+    setState(() {
+      _selectedExercise = session!.exerciseIndex;
+      _exerciseMode = 'camera';
+      _cameraRepCount = session.repCount;
+      _repCountN.value = session.repCount;
+      _resumableSession = session;
+    });
+    _coachVoice.announceResumeAfterLongBreak(
+      bonusSeconds: added > 0 ? added : session.bonusSeconds,
+      gapSeconds: gapSec,
+    );
+    await _sessionStore.saveSession(session);
+    await _startCameraDetection(seedReps: session.repCount);
+  }
+
   @override
   void dispose() {
+    _coachPhaseN.removeListener(_onCoachPhaseVoice);
+    _coachVoice.stop();
     _restTimer?.cancel();
     _setupGraceTimer?.cancel();
     _restCountdownN.dispose();
@@ -695,6 +896,58 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
             
             // 摄像头模式
             if (_exerciseMode == 'camera') ...[
+              if (_resumableSession != null) ...[
+                _sectionCard(
+                  icon: Icons.play_circle_outline,
+                  title: '未完成的训练',
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        '${_resumableSession!.exerciseName}'
+                        '${_resumableSession!.planSeqIndex >= 0 ? ' · 连训第${_resumableSession!.planSeqIndex + 1}式' : ''}'
+                        ' · 已完成 ${_resumableSession!.repCount}'
+                        '${_resumableSession!.isTimed ? '秒' : '次'}',
+                        style: _bodyStyle,
+                      ),
+                      if (_resumableSession!.bonusSeconds > 0) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          '已累计暂停补偿 ${_resumableSession!.bonusSeconds} 秒',
+                          style: _mutedStyle,
+                        ),
+                      ],
+                      const SizedBox(height: AppSpace.md),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: FilledButton.icon(
+                              onPressed: _cameraSettling || _cameraDetecting
+                                  ? null
+                                  : _resumeSavedSession,
+                              icon: const Icon(Icons.play_arrow_rounded),
+                              label: const Text('继续训练'),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          TextButton(
+                            onPressed: () async {
+                              await _sessionStore.clearSession();
+                              if (!mounted) return;
+                              setState(() {
+                                _resumableSession = null;
+                                _sessionBonusSeconds = 0;
+                              });
+                            },
+                            child: const Text('放弃'),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: AppSpace.lg),
+              ],
               _buildCameraPanel(),
               const SizedBox(height: AppSpace.lg),
             ],
@@ -2024,7 +2277,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
   }
   
   /// 开始摄像头检测 → 允许横竖自由旋转并进入全屏教练页
-  Future<void> _startCameraDetection() async {
+  Future<void> _startCameraDetection({int seedReps = 0}) async {
     if (_selectedExercise == null) {
       _showToast('请先选择运动类型');
       return;
@@ -2054,12 +2307,12 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
     final preferLandscape = PoseCoachGuideMath.prefersLandscape(exercise.type);
     setState(() {
       _cameraDetecting = true;
-      _cameraRepCount = 0;
+      _cameraRepCount = seedReps;
       _cameraFeedback = preferLandscape
           ? '可横持手机 · ${_getActionTip(exercise.type)}'
           : '可竖持手机 · ${_getActionTip(exercise.type)}';
       _cameraStartTime = DateTime.now();
-      _repCountN.value = 0;
+      _repCountN.value = seedReps;
       _feedbackN.value = _cameraFeedback;
       _countUnitN.value = _getCountUnit(exercise.type);
       _comboN.value = 0;
@@ -2071,6 +2324,8 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
       _planTargetHit = false;
       _coachExternalCompleteN.value = false;
       _restCountdownN.value = 0;
+      _lastCoachPhaseForVoice = null;
+      _lastFormTipForVoice = null;
     });
 
     _gameLogic.reset();
@@ -2094,6 +2349,11 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
     }
     try {
       await _activeCameraDetector.startDetection(exercise.type);
+      if (seedReps > 0 &&
+          _activeCameraDetector is PoseDetectionService) {
+        (_activeCameraDetector as PoseDetectionService)
+            .seedRepCount(seedReps);
+      }
     } catch (e) {
       debugPrint('startDetection failed: $e');
       setState(() {
@@ -2107,6 +2367,10 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
 
     final planItem =
         _planSeqIndex >= 0 ? _recommendedPlan?.itemAt(_planSeqIndex) : null;
+    final effectiveTarget = _currentEffectiveTarget();
+    final showTarget = effectiveTarget > 0
+        ? effectiveTarget
+        : planItem?.target;
 
     _coachPageOpen = true;
     _abortPlanOnStop = true;
@@ -2128,6 +2392,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
           preparing: _preparingN,
           prepareProgress: _prepareProgressN,
           onStop: () => _stopCameraDetection(abortSequence: _abortPlanOnStop),
+          onPauseSave: _pauseAndSaveSession,
           onFlipCamera: () async {
             final d = _activeCameraDetector;
             if (d is PoseDetectionService) {
@@ -2140,7 +2405,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
           },
           planStep: _planSeqIndex >= 0 ? _planSeqIndex + 1 : null,
           planTotal: _recommendedPlan?.items.length,
-          targetCount: planItem?.target,
+          targetCount: showTarget,
           targetUnit: planItem == null
               ? null
               : (planItem.isTimed ? '秒' : '次'),
@@ -2181,9 +2446,18 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
     if (_planTargetHit || _planSeqIndex < 0) return;
     final item = _recommendedPlan?.itemAt(_planSeqIndex);
     if (item == null) return;
-    if (count < item.target) return;
+    final target = _currentEffectiveTarget();
+    if (count < target) return;
     _planTargetHit = true;
     _abortPlanOnStop = false;
+    // ignore: discarded_futures
+    _sessionStore.clearSession();
+    _resumableSession = null;
+    _sessionBonusSeconds = 0;
+    _coachVoice.announceExerciseComplete(
+      exerciseName: item.exercise.name,
+      reps: count,
+    );
     _showToast('✅ ${item.exercise.name} 达标！');
     // 触发教练页走结束流程（pop + 结算）
     _coachExternalCompleteN.value = true;
@@ -2240,7 +2514,10 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
   }
 
   /// 停止摄像头检测
-  Future<void> _stopCameraDetection({bool abortSequence = true}) async {
+  Future<void> _stopCameraDetection({
+    bool abortSequence = true,
+    bool skipFinish = false,
+  }) async {
     if (!_cameraDetecting && _cameraStartTime == null) return;
 
     if (abortSequence && _planSeqIndex >= 0) {
@@ -2250,6 +2527,10 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
       _setupGraceTimer?.cancel();
       _restCountdownN.value = 0;
       _showToast('已退出连续训练');
+      // ignore: discarded_futures
+      _sessionStore.clearSession();
+      _resumableSession = null;
+      _sessionBonusSeconds = 0;
     }
 
     setState(() {
@@ -2269,8 +2550,14 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
     }
 
     if (!mounted) return;
-    final gameNotifier = ref.read(gameStateProvider.notifier);
-    await _finishCameraDetection(gameNotifier);
+    if (!skipFinish) {
+      final gameNotifier = ref.read(gameStateProvider.notifier);
+      await _finishCameraDetection(gameNotifier);
+    } else {
+      setState(() {
+        _cameraStartTime = null;
+      });
+    }
 
     if (mounted) {
       setState(() => _cameraSettling = false);
@@ -2334,7 +2621,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
       final planItem =
           _planSeqIndex >= 0 ? _recommendedPlan?.itemAt(_planSeqIndex) : null;
       final hitTarget = _planTargetHit ||
-          (planItem != null && repCount >= planItem.target) ||
+          (planItem != null && repCount >= _currentEffectiveTarget()) ||
           repCount > 0;
       if (hitTarget) {
         durationMinutes = 1;
@@ -2397,6 +2684,11 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
         _pendingPlanAdvance = true;
       } else {
         _planSeqIndex = -1;
+        _coachVoice.announcePlanComplete(planTitle: plan.title);
+        // ignore: discarded_futures
+        _sessionStore.clearSession();
+        _resumableSession = null;
+        _sessionBonusSeconds = 0;
         _showToast('🎉 恭喜完成今日全部训练！');
       }
     }
@@ -2408,6 +2700,10 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
     if (plan == null || _planSeqIndex < 0) return;
     final item = plan.itemAt(_planSeqIndex);
     if (item == null) return;
+    _coachVoice.announcePlanRest(
+      plan.restSeconds,
+      nextExerciseName: item.exercise.name,
+    );
     await _awaitPlanRest(plan.restSeconds);
     if (!mounted || _planSeqIndex < 0) return;
     _showToast(

@@ -48,6 +48,23 @@ class PoseOverlayPainter extends CustomPainter {
   static const double _jointRadius = 5.0;
   static const double _lineWidth = 2.0;
 
+  /// Body joints only — skips face points (nose / ears / eyes / mouth).
+  static const Set<String> _bodyJointKeys = {
+    'leftShoulder',
+    'rightShoulder',
+    'leftElbow',
+    'rightElbow',
+    'leftWrist',
+    'rightWrist',
+    'leftHip',
+    'rightHip',
+    'midHip',
+    'leftKnee',
+    'rightKnee',
+    'leftAnkle',
+    'rightAnkle',
+  };
+
   final Map<String, Map<String, double>> landmarks;
   final bool showSkeleton;
 
@@ -97,10 +114,11 @@ class PoseOverlayPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size canvasSize) {
-    // ----- joints (always drawn) -----
-    for (final MapEntry<String, Map<String, double>> entry
-        in landmarks.entries) {
-      final Map<String, double> lm = entry.value;
+    // ----- joints (body only; always drawn when present) -----
+    for (final String key in _bodyJointKeys) {
+      final Map<String, double>? lm = _lm(key);
+      if (lm == null) continue;
+
       final Offset pos = _toPixel(lm, canvasSize);
       final double z = lm['z'] ?? 0.0;
 
@@ -116,7 +134,7 @@ class PoseOverlayPainter extends CustomPainter {
     // ----- bones (optional) -----
     if (!showSkeleton) return;
 
-    // Bones defined as (startKey, endKey) pairs following the COCO skeleton.
+    // Bones defined as (startKey, endKey) pairs — torso / arms / legs only.
     const List<(String, String)> bones = [
       // Torso
       ('leftShoulder', 'rightShoulder'),
@@ -135,9 +153,6 @@ class PoseOverlayPainter extends CustomPainter {
       // Right leg
       ('rightHip', 'rightKnee'),
       ('rightKnee', 'rightAnkle'),
-      // Head
-      ('nose', 'leftEar'),
-      ('nose', 'rightEar'),
     ];
 
     final Paint bonePaint = Paint()
