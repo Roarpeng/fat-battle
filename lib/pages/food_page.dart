@@ -227,7 +227,7 @@ class _FoodPageState extends ConsumerState<FoodPage> {
               borderRadius: AppRadii.mdAll,
               side: const BorderSide(color: AppColors.border),
             ),
-            title: Text('在线识别未配置', style: _displayStyle.copyWith(fontSize: 18)),
+            title: Text('未连接食物识别服务器', style: _displayStyle.copyWith(fontSize: 18)),
             content: Text(ApiConfig.foodVisionConfigHint, style: _bodyStyle),
             actions: [
               TextButton(

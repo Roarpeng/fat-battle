@@ -1,19 +1,29 @@
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 enum VoiceStyle { pet, warrior, mage, assassin }
 
+/// TTS + 教练音频输出路由（有耳机走耳机，无耳机外放）。
 class VoiceService {
   static final VoiceService _instance = VoiceService._();
   factory VoiceService() => _instance;
   VoiceService._();
+
+  static const _audioRoute =
+      MethodChannel('fat_battle/audio_route');
 
   FlutterTts? _tts;
   VoiceStyle _style = VoiceStyle.pet;
   bool _enabled = true;
   bool _initialized = false;
 
+  /// 最近一次 [prepareCoachPlayback] 结果：`headset` / `speaker` / null
+  String? lastRoutedTo;
+
   VoiceStyle get style => _style;
+  bool get enabled => _enabled;
 
   Map<VoiceStyle, double> get _pitchMap => {
         VoiceStyle.pet: 1.4,
@@ -23,27 +33,46 @@ class VoiceService {
       };
 
   Map<VoiceStyle, double> get _rateMap => {
-        VoiceStyle.pet: 1.1,
-        VoiceStyle.warrior: 0.9,
-        VoiceStyle.mage: 1.0,
-        VoiceStyle.assassin: 1.0,
+        // 教练远场：略慢一点更清晰
+        VoiceStyle.pet: 1.0,
+        VoiceStyle.warrior: 0.85,
+        VoiceStyle.mage: 0.95,
+        VoiceStyle.assassin: 0.95,
       };
 
   Future<void> init() async {
     if (_initialized) return;
     _tts = FlutterTts();
-    _tts!.setLanguage('zh-CN');
-    _tts!.setSpeechRate(_rateMap[_style]!);
-    _tts!.setPitch(_pitchMap[_style]!);
+    await _tts!.setLanguage('zh-CN');
+    await _tts!.setSpeechRate(_rateMap[_style]!);
+    await _tts!.setPitch(_pitchMap[_style]!);
+    await _tts!.setVolume(1.0);
     _tts!.awaitSpeakCompletion(true);
-    await _tts!.getVoices.then((voices) {
-      final zhVoice = voices.where((v) => v.language.startsWith('zh')).toList();
-      if (zhVoice.isNotEmpty) {
-        final female =
-            zhVoice.where((v) => v.name.toLowerCase().contains('female')).toList();
-        _tts!.setVoice(female.isNotEmpty ? female.first : zhVoice.first);
+    try {
+      final voices = await _tts!.getVoices;
+      if (voices is List) {
+        final zhVoice = voices
+            .whereType<Map>()
+            .where((v) {
+              final lang = (v['locale'] ?? v['language'] ?? '').toString();
+              return lang.startsWith('zh');
+            })
+            .toList();
+        if (zhVoice.isNotEmpty) {
+          final female = zhVoice
+              .where((v) =>
+                  (v['name'] ?? '').toString().toLowerCase().contains('female'))
+              .toList();
+          final pick = Map<String, String>.from(
+            (female.isNotEmpty ? female.first : zhVoice.first)
+                .map((k, v) => MapEntry(k.toString(), v.toString())),
+          );
+          await _tts!.setVoice(pick);
+        }
       }
-    });
+    } catch (e) {
+      debugPrint('VoiceService voice pick failed: $e');
+    }
     _initialized = true;
   }
 
@@ -56,6 +85,41 @@ class VoiceService {
   }
 
   void setEnabled(bool enabled) => _enabled = enabled;
+
+  /// 开练前调用：检测耳机；无耳机强制外放，有耳机走耳机。
+  Future<String> prepareCoachPlayback() async {
+    await init();
+    try {
+      final raw = await _audioRoute.invokeMethod<dynamic>('prepareCoachPlayback');
+      if (raw is Map) {
+        lastRoutedTo = (raw['routedTo'] ?? 'speaker').toString();
+      } else {
+        lastRoutedTo = 'speaker';
+      }
+    } catch (e) {
+      debugPrint('prepareCoachPlayback failed: $e');
+      lastRoutedTo = 'speaker';
+    }
+    await _tts?.setVolume(1.0);
+    return lastRoutedTo ?? 'speaker';
+  }
+
+  Future<void> restorePlayback() async {
+    try {
+      await _audioRoute.invokeMethod<void>('restorePlayback');
+    } catch (e) {
+      debugPrint('restorePlayback failed: $e');
+    }
+    lastRoutedTo = null;
+  }
+
+  Future<bool> isHeadsetConnected() async {
+    try {
+      return await _audioRoute.invokeMethod<bool>('isHeadsetConnected') ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
 
   Future<void> speak(String text) async {
     if (!_enabled || !_initialized) return;
@@ -99,7 +163,7 @@ class VoiceService {
   Future<void> exerciseEncourage(int remaining) =>
       speak('太棒了~ 还有${remaining}个，脂肪怪在惨叫~ 主人加油~');
   Future<void> exerciseComplete(int damage) =>
-      speak('完美~ 主人造成了${damage}点伤害~ 好厉害~');
+      speak('完美~ 主人造成了${damage}点伤害~ 超级厉害~');
   Future<void> monsterDefeated(String name, int coins) =>
       speak('太棒了~ 主人击败了${name}！获得了${coins}金币~ 主人最厉害了~');
   Future<void> monsterFailed() =>
@@ -109,11 +173,11 @@ class VoiceService {
   Future<void> foodAdded(String name) => speak('已记录${name}~');
   Future<void> dailySummary(int calIn, int calEx, int net) {
     final rating = net <= 0 ? '优秀' : net < 300 ? '不错' : '加油';
-    return speak('今天主人摄入${calIn}卡路里，锻炼消耗${calEx}，净摄入${net}，表现${rating}~');
+    return speak('今天主人摄入${calIn}卡路里，锻炼消耗${calEx}，净摄入${net}，表现$rating~');
   }
 
   Future<void> streak(int days) =>
-      speak('连续${days}天~ 主人已经是真正的减肥战士了~ 好棒~');
+      speak('连续$days天~ 主人已经是真正的减肥战士了~ 好棒~');
   Future<void> maintenanceEnter() =>
       speak('恭喜主人~ 达到目标体重了~ 进入维护模式，继续守护成果哦~');
   Future<void> maintenanceAttack() =>

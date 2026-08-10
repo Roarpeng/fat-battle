@@ -1,11 +1,15 @@
 package com.fatbattle.fat_battle
 
+import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.ImageFormat
 import android.graphics.Matrix
 import android.graphics.Rect
 import android.graphics.YuvImage
+import android.media.AudioDeviceInfo
+import android.media.AudioManager
+import android.os.Build
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -13,13 +17,15 @@ import java.io.ByteArrayOutputStream
 
 /**
  * NV21 → JPEG。可选按 rotation 顺时针摆正，使 ML Kit 关键点与 CameraPreview 同向。
+ * 另：教练语音输出路由（有耳机走耳机，无耳机外放）。
  */
 class MainActivity : FlutterActivity() {
-    private val channelName = "fat_battle/mlkit_frame"
+    private val mlkitChannelName = "fat_battle/mlkit_frame"
+    private val audioChannelName = "fat_battle/audio_route"
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, mlkitChannelName)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "nv21ToJpeg", "nv21ToUprightJpeg" -> {
@@ -42,6 +48,100 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, audioChannelName)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "isHeadsetConnected" -> result.success(isHeadsetConnected())
+                    "prepareCoachPlayback" -> {
+                        try {
+                            result.success(prepareCoachPlayback())
+                        } catch (e: Exception) {
+                            result.error("AUDIO_ROUTE", e.message, null)
+                        }
+                    }
+                    "restorePlayback" -> {
+                        try {
+                            restorePlayback()
+                            result.success(null)
+                        } catch (e: Exception) {
+                            result.error("AUDIO_ROUTE", e.message, null)
+                        }
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+    }
+
+    private fun audioManager(): AudioManager =
+        getSystemService(Context.AUDIO_SERVICE) as AudioManager
+
+    private fun isHeadsetConnected(): Boolean {
+        val am = audioManager()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val devices = am.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+            return devices.any { device ->
+                when (device.type) {
+                    AudioDeviceInfo.TYPE_WIRED_HEADSET,
+                    AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
+                    AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
+                    AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
+                    AudioDeviceInfo.TYPE_BLE_HEADSET,
+                    AudioDeviceInfo.TYPE_USB_HEADSET,
+                    -> true
+                    else -> false
+                }
+            }
+        }
+        @Suppress("DEPRECATION")
+        return am.isWiredHeadsetOn || am.isBluetoothA2dpOn || am.isBluetoothScoOn
+    }
+
+    /**
+     * @return map: headsetConnected, routedTo ("headset"|"speaker")
+     */
+    private fun prepareCoachPlayback(): Map<String, Any> {
+        val am = audioManager()
+        val headset = isHeadsetConnected()
+        am.mode = AudioManager.MODE_NORMAL
+        if (headset) {
+            @Suppress("DEPRECATION")
+            am.isSpeakerphoneOn = false
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                // 有耳机时清掉强制扬声器，交给系统路由到耳机
+                am.clearCommunicationDevice()
+            }
+            return mapOf(
+                "headsetConnected" to true,
+                "routedTo" to "headset",
+            )
+        }
+
+        // 无耳机：强制外放，远场才听得见（避免走听筒）
+        @Suppress("DEPRECATION")
+        am.isSpeakerphoneOn = true
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val speaker = am.availableCommunicationDevices.firstOrNull {
+                it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER
+            }
+            if (speaker != null) {
+                am.setCommunicationDevice(speaker)
+            }
+        }
+        return mapOf(
+            "headsetConnected" to false,
+            "routedTo" to "speaker",
+        )
+    }
+
+    private fun restorePlayback() {
+        val am = audioManager()
+        @Suppress("DEPRECATION")
+        am.isSpeakerphoneOn = false
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            am.clearCommunicationDevice()
+        }
+        am.mode = AudioManager.MODE_NORMAL
     }
 
     private fun nv21ToJpeg(

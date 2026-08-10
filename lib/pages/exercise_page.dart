@@ -212,6 +212,15 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
     _coachVoice.ensureReady();
   }
 
+  void _syncCoachVoiceEnabled() {
+    try {
+      final enabled = ref.read(gameStateProvider).voiceEnabled;
+      _coachVoice.setEnabled(enabled);
+    } catch (_) {
+      _coachVoice.setEnabled(true);
+    }
+  }
+
   Future<void> _refreshResumableSession() async {
     final s = await _sessionStore.loadSession();
     if (!mounted) return;
@@ -263,10 +272,10 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
           : '';
       if (type != 'plank') {
         _gameLogic.handleRepSuccess();
-        _coachVoice.announceRepMilestone(count, every: 5);
-      } else if (count > 0 && count % 5 == 0) {
-        _gameLogic.handleRepSuccess();
-        _coachVoice.announceRepMilestone(count, every: 10);
+        _coachVoice.announceRep(count); // 每次都报
+      } else if (count > 0) {
+        if (count % 5 == 0) _gameLogic.handleRepSuccess();
+        _coachVoice.announceRep(count); // 平板也每次报秒/次
       }
       _maybeCompletePlanTarget(count);
     };
@@ -278,6 +287,8 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
         _cameraFeedback = feedback;
         _feedbackN.value = feedback;
       });
+      // 远场：屏幕纠错必须同时播出口令
+      _coachVoice.announceLiveCue(feedback);
     };
     detector.onMotionUpdate = (level) {
       if (mounted && _isActiveCamera(detector)) {
@@ -371,7 +382,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
         PoseCoachDiary.instance.logPhase('setup', 'align', 'grace_done');
         _coachPhaseN.value = 'align';
         _alignGoodSince = null;
-        _coachPhaseHintN.value = '请站进白色虚线框，全身入镜';
+        _coachPhaseHintN.value = '请正对手机，全身入镜，站稳准备';
         _prepareProgressN.value = 0;
       }
     });
@@ -479,8 +490,8 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
         _alignGoodSince = null;
         _prepareProgressN.value = score.clamp(0.0, 1.0);
         _coachPhaseHintN.value = score < 0.25
-            ? '请全身进入白色虚线框'
-            : '再调整站位，与剪影对齐';
+            ? '请全身进入画面'
+            : '再调整站位，站稳对准手机';
         PoseCoachDiary.instance.logPoseFrame(
           phase: 'align',
           keypointCount: landmarks.length,
@@ -520,7 +531,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
           _alignGoodSince = null;
           _countdownStartedAt = null;
           _coachCountdownN.value = 0;
-          _coachPhaseHintN.value = '出框了，请重新站进白框';
+          _coachPhaseHintN.value = '出画面了，请重新走进镜头';
           return;
         }
       } else {
@@ -552,7 +563,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
         _coachCountdownN.value = 0;
         _preparingN.value = false;
         _prepareProgressN.value = 1;
-        _coachPhaseHintN.value = '开始锻炼！跟着剪影做动作';
+        _coachPhaseHintN.value = '开始锻炼！听口令做动作';
         _feedbackN.value = '开始！';
         if (_activeCameraDetector is PoseDetectionService) {
           (_activeCameraDetector as PoseDetectionService)
@@ -745,7 +756,8 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
   @override
   void dispose() {
     _coachPhaseN.removeListener(_onCoachPhaseVoice);
-    _coachVoice.stop();
+    // ignore: discarded_futures
+    _coachVoice.endSession();
     _restTimer?.cancel();
     _setupGraceTimer?.cancel();
     _restCountdownN.dispose();
@@ -2329,6 +2341,10 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
     });
 
     _gameLogic.reset();
+    // 远场语音：同步开关 + 耳机/外放路由
+    _syncCoachVoiceEnabled();
+    // ignore: discarded_futures
+    _coachVoice.prepareSession();
     // 不再用 2 秒 prepare；改为架设→入镜→倒计时免触控门控
     await PoseCoachDiary.instance.startSession(
       engine: _cameraEngine,
@@ -2543,6 +2559,8 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
     if (_cameraBleFusion) {
       _fusionService.stopDetection();
     }
+    // ignore: discarded_futures
+    _coachVoice.voice.restorePlayback();
     final diaryPath =
         await PoseCoachDiary.instance.endSession(reason: 'stop_camera');
     if (diaryPath != null) {

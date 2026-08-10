@@ -1,22 +1,18 @@
 /// API 配置类
 ///
-/// 当前阶段：**App 直连第三方 API**，不依赖本机后端。
-/// 密钥通过 `--dart-define` 在编译时注入（不要提交到仓库）。
+/// **正式包（推荐）**：只注入 `API_BASE_URL`，食物识别/搜索走后端代理；
+/// 百度/智谱等密钥只存在服务器，不要打进 APK。
 ///
-/// 构建示例：
 /// ```bash
 /// flutter build apk --release \
-///   --dart-define=ZHIPU_API_KEY=... \
-///   --dart-define=BAIDU_API_KEY=... \
-///   --dart-define=BAIDU_SECRET_KEY=...
+///   --dart-define=API_BASE_URL=https://你的服务器:端口
 /// ```
 ///
-/// 后续若做后端分离，可再通过 dart-define 显式传入：
-/// `BAIDU_PROXY_URL` / `GLM_PROXY_BASE_URL`（默认均为空 = 不走代理）。
+/// 直连第三方密钥（`BAIDU_*` / `ZHIPU_API_KEY`）仅用于本地调试脚本，正式包不要注入。
 class ApiConfig {
   ApiConfig._();
 
-  // ===== 百度菜品识别 API（直连） =====
+  // ===== 百度菜品识别 API（仅本地调试直连；正式包走后端，勿注入） =====
   static const baiduApiKey = String.fromEnvironment('BAIDU_API_KEY');
   static const baiduSecretKey = String.fromEnvironment('BAIDU_SECRET_KEY');
 
@@ -55,10 +51,10 @@ class ApiConfig {
 
   static bool get hasMiniCPMConfig => minicpmBaseUrl.isNotEmpty;
 
-  // ===== GLM 食物识别（直连智谱） =====
+  // ===== GLM 直连（仅本地调试；正式包走后端，勿注入） =====
   static const zhipuApiKey = String.fromEnvironment('ZHIPU_API_KEY');
 
-  /// 可选代理根地址；默认空 = 直连 open.bigmodel.cn
+  /// 可选旧代理根地址；默认空
   static const glmProxyBaseUrl = String.fromEnvironment('GLM_PROXY_BASE_URL');
 
   static const glmApiUrl =
@@ -69,28 +65,27 @@ class ApiConfig {
 
   static bool get useGlmProxy => glmProxyBaseUrl.isNotEmpty;
 
-  /// GLM 可用：必须有直连 Key（代理仅作可选增强，当前阶段不依赖）
+  /// 是否配置了 App 直连智谱 Key（正式包应始终为 false）
   static bool get hasGlmConfig => zhipuApiKey.isNotEmpty;
 
-  // ===== 真实后端（账号系统 + LLM 食物识别代理） =====
-  /// 后端基础地址；默认空 = 后端未启用，走原模拟/离线模式。
+  // ===== 真实后端（账号 + 食物识别/搜索代理）——正式包唯一需要的配置 =====
+  /// 后端基础地址。正式包必须注入；空 = 未连服务器，识别不可用。
   ///
-  /// 构建示例：
   /// ```bash
-  /// flutter run --dart-define=API_BASE_URL=http://localhost:8080
+  /// flutter build apk --release --dart-define=API_BASE_URL=http://host:8080
   /// ```
   static const backendBaseUrl = String.fromEnvironment('API_BASE_URL');
 
-  /// 是否启用真实后端（配置了 API_BASE_URL）
+  /// 是否已配置后端地址
   static bool get isBackendEnabled => backendBaseUrl.isNotEmpty;
 
-  /// 拍照识别至少有一个在线源（真实后端代理 / GLM / 百度）
+  /// 在线识别是否可用：正式路径只看后端；直连密钥仅调试兜底
   static bool get hasAnyFoodVisionConfig =>
       isBackendEnabled || hasGlmConfig || hasBaiduCredentials;
 
-  /// 未配置在线识别时给用户的构建提示（不含密钥）
+  /// 未配置后端时给用户的提示（不含密钥、不提百度）
   static String get foodVisionConfigHint =>
-      '未连接到食物识别后端。正常流程是：拍照/搜索 → 发给服务器处理（密钥只在服务端）。'
-      '请使用带 --dart-define=API_BASE_URL=https://你的服务器:端口 的正式包，'
-      '或确认后端已启动且手机能访问该地址。';
+      '未连接到食物识别服务器。拍照/搜索会发给后端处理，App 只需服务器地址。'
+      '请用 scripts/build_apk.ps1 重新打包（自动注入 API_BASE_URL），'
+      '并确认手机能访问该服务器。';
 }

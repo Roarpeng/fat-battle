@@ -43,8 +43,19 @@ jobs:
         run: flutter analyze lib --no-fatal-infos --no-fatal-warnings
 
       - name: Build release APK
-        # 当前 release 使用 debug 签名（见 android/app/build.gradle.kts），CI 无需 keystore
-        run: flutter build apk --release
+        # 后端代理模式：APK 只注入 API_BASE_URL，不含百度/智谱密钥。
+        # Secret API_BASE_URL 可覆盖默认服务器；为空则失败，避免再打出「在线识别未配置」的包。
+        env:
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+        run: |
+          API_BASE_URL="${API_BASE_URL:-http://111.229.178.88:8080}"
+          API_BASE_URL="${API_BASE_URL%/}"
+          if [ -z "$API_BASE_URL" ]; then
+            echo "API_BASE_URL is required (food recognition goes through backend only)"
+            exit 1
+          fi
+          echo "Building with API_BASE_URL=$API_BASE_URL"
+          flutter build apk --release --dart-define=API_BASE_URL="$API_BASE_URL"
 
       - name: Upload APK
         if: github.event_name != 'pull_request'
