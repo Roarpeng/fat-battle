@@ -37,13 +37,20 @@ items 项: `{name, calorie(每100g), confidence, has_calorie, category, descript
 服务端按 `llm_configs` 表 enabled + priority 选择 provider（当前 zhipu），
 请求带 `X-Provider` 响应头。无可用配置 → 503。
 
-## 3. 进度同步 /progress（M4 预留）
+## 3. 进度同步 /progress
 
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| POST/GET | /progress/snapshot | 全量快照（GameState.toJson） |
-| POST/GET | /progress/events | 增量行为流水 |
-| GET | /progress/summary | 统计摘要 |
+鉴权：`Authorization: Bearer <accessToken>`。只同步 `GameState.toJson()` 文本快照，**不**上传姿态视频、训练日记或 IMU 流。
+
+| 方法 | 路径 | 请求 | 响应 |
+|------|------|------|------|
+| POST | /progress/snapshot | `{state: GameState, updatedAt?: RFC3339}`（`gameState` 为 state 别名） | `{state, updatedAt, revision}`；云端更新则 **409** 并带回当前云端快照 |
+| GET | /progress/snapshot | - | `{state, updatedAt, revision}`；无存档 **404** `{"error":"暂无云端存档"}` |
+| POST/GET | /progress/events | - | 501（流水后续迭代） |
+| GET | /progress/summary | - | 501（摘要后续迭代） |
+
+冲突策略：按 `updatedAt` **last-write-wins**（客户端时间 ≥ 云端才覆盖；相等允许重试覆盖）。每次成功写入 `revision` +1。
+
+App 登录后合并：云端空则推本地；本地空则拉云端；双边都有则比较 `updatedAt`。首次登录有本地档时不覆盖本机进度。
 
 ## 4. 管理后台 /api/admin（独立 JWT，role=admin）
 

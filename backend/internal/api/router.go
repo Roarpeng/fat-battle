@@ -68,7 +68,7 @@ func RegisterRoutes(r *gin.Engine, pool *pgxpool.Pool, jwtSecret, adminJwtSecret
 				food.POST("/feedback", feedbackHandler(pool))
 			}
 
-			// 进度同步（M4 实现快照与增量流水）
+			// 进度同步（M4：snapshot 已实现；events/summary 仍 501）
 			progress := protected.Group("/progress")
 			{
 				progress.POST("/snapshot", snapshotHandler(pool))

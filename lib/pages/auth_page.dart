@@ -6,6 +6,7 @@ import '../theme/tokens.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../constants/app_constants.dart';
 import '../services/auth_service.dart';
+import '../services/progress_sync_service.dart';
 import '../providers/game_provider.dart';
 import '../widgets/home/forge_background.dart';
 import '../main.dart';
@@ -134,6 +135,18 @@ class _AuthPageState extends ConsumerState<AuthPage> with SingleTickerProviderSt
       await prefs.setString(
         'user_account',
         user.nickname.isNotEmpty ? user.nickname : email,
+      );
+
+      // 登录后云同步：云端空则推本地；双边按 updatedAt 合并（不擦首次登录本地档）
+      final local = ref.read(gameStateProvider);
+      await ProgressSyncService.instance.syncAfterLogin(
+        localJson: local.toJson(),
+        localHasGame: local.hasGame,
+        applyRemote: (json) async {
+          await ref.read(gameStateProvider.notifier).replaceState(
+                GameState.fromJson(json),
+              );
+        },
       );
 
       if (!mounted) return;

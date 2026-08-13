@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -6,6 +7,7 @@ import '../models/game_models.dart';
 import '../constants/app_constants.dart';
 import '../services/game_algorithm.dart';
 import '../services/notification_service.dart';
+import '../services/progress_sync_service.dart';
 import '../services/voice_service.dart';
 
 /// 游戏状态Provider
@@ -77,7 +79,8 @@ class GameStateNotifier extends StateNotifier<GameState> {
 
     final saved = this.prefs!.getString('fat_battle_game');
     if (saved == null || saved.isEmpty) {
-      debugPrint('[塑身工坊] 📭 未找到存档，使用默认状态');
+      debugPrint('[塑身工坊] 📭 未找到存档，尝试云端恢复');
+      unawaited(_restoreFromCloudIfEmpty());
       return;
     }
 
@@ -104,6 +107,7 @@ class GameStateNotifier extends StateNotifier<GameState> {
     if (prefs == null) return;
 
     await prefs!.setString('fat_battle_game', jsonEncode(state.toJson()));
+    unawaited(ProgressSyncService.instance.onLocalSaved(state.toJson()));
   }
 
   /// 同步保存（立即写入内存缓存，磁盘写入由平台异步完成）
@@ -113,9 +117,27 @@ class GameStateNotifier extends StateNotifier<GameState> {
     if (prefs == null) return;
     try {
       prefs!.setString('fat_battle_game', jsonEncode(state.toJson()));
+      unawaited(ProgressSyncService.instance.onLocalSaved(state.toJson()));
     } catch (e) {
       debugPrint('[塑身工坊] ❌ 同步保存失败: $e');
     }
+  }
+
+  /// 用云端/合并后的快照替换内存状态并写入本地（不经过 onLocalSaved 防回环）
+  Future<void> replaceState(GameState snapshot) async {
+    state = snapshot;
+    if (prefs == null) return;
+    await prefs!.setString('fat_battle_game', jsonEncode(state.toJson()));
+  }
+
+  /// 本地无存档时拉云端（重装恢复；未登录 / 未配置后端为 no-op）
+  Future<void> _restoreFromCloudIfEmpty() async {
+    if (state.hasGame) return;
+    final json = await ProgressSyncService.instance.pullIfLocalEmpty();
+    if (json == null || state.hasGame) return;
+    if (!snapshotLooksLikeGame(json)) return;
+    state = GameState.fromJson(json);
+    debugPrint('[塑身工坊] ☁️ 已从云端恢复存档: 第${state.day}天');
   }
   
   /// 检查是否需要每日重置

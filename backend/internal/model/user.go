@@ -40,4 +40,5 @@ type GameSnapshot struct {
 	UserID    int64           `json:"-"`
 	StateJSON json.RawMessage `json:"state" binding:"required"`
 	UpdatedAt time.Time       `json:"updatedAt"`
+	Revision  int64           `json:"revision,omitempty"`
 }
