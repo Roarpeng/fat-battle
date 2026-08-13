@@ -141,6 +141,10 @@ class _FoodPageState extends ConsumerState<FoodPage> {
   }
 
   Future<void> _startImageRecognition() async {
+    if (!ref.read(gameStateProvider).foodVisionEnabled) {
+      _showSnack('已在设置中关闭食物视觉识别', isError: true);
+      return;
+    }
     if (!_foodService.hasAnyVisionConfig) {
       final proceed = await _confirmProceedWithoutVision();
       if (!proceed || !mounted) return;

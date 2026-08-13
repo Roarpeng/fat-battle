@@ -17,9 +17,9 @@
 | POST | /auth/register | `{email, password, nickname}` | `{user, token}`；409 邮箱已注册 |
 | POST | /auth/login | `{email, password}` | `{user, token}`；403 账号被禁用 |
 | POST | /auth/refresh | `{refreshToken}` | `{token}` |
-| POST | /auth/logout | - | `{ok:true}` |
+| POST | /auth/logout | `{refreshToken?}` + 可选 `Authorization` | `{ok:true}`；将 access/refresh 的 jti 写入 Redis 黑名单直至过期 |
 | GET | /user/me | - | `{user}` |
-| DELETE | /user | - | `{ok:true, message}`（软删 30 天） |
+| DELETE | /user | - | `{ok:true, message}`（软删 30 天；当前 access 同步拉黑） |
 
 token 结构: `{accessToken, refreshToken, expiresIn}`
 
@@ -30,7 +30,7 @@ token 结构: `{accessToken, refreshToken, expiresIn}`
 | POST | /food/recognize | `{image: base64, topNum?, thinking?}` | `{success, items}` |
 | POST | /food/search | `{query, topNum?}` | `{success, items}` |
 | POST | /food/feedback | `{imageUrl?, ocrResult?, userCal?}` | `{ok:true}` |
-| POST | /food/barcode | - | 501（后续接入） |
+| POST | /food/barcode | `{barcode}` | `{success, items}`（Open Food Facts 代理，无客户端密钥） |
 
 items 项: `{name, calorie(每100g), confidence, has_calorie, category, description}`
 

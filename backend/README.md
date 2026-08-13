@@ -26,7 +26,7 @@ curl http://localhost:8080/api/v1/healthz
 | API | http://localhost:8080 | Gin 服务（Docker 内构建） |
 | 管理后台 | http://localhost:8080/admin | Web 管理界面（Go embed 单页） |
 | PostgreSQL | localhost:5432 | 账号/进度/流水/LLM 配置 |
-| Redis | localhost:6379 | 限流/黑名单/热榜（骨架预留） |
+| Redis | localhost:6379 | 登出 token 黑名单 |
 | MinIO | localhost:9000 / 9001(控制台) | 食物照片存储（M3 使用） |
 
 ## 管理后台
@@ -44,9 +44,9 @@ curl http://localhost:8080/api/v1/healthz
 - `POST /api/v1/auth/register` — 注册（bcrypt + JWT）
 - `POST /api/v1/auth/login` — 登录（禁用账号返回 403）
 - `POST /api/v1/auth/refresh` — refresh token 续期
-- `POST /api/v1/auth/logout` — 登出
+- `POST /api/v1/auth/logout` — 登出（Redis 黑名单作废 access/refresh，直至原过期时间；Redis 不可用时仍返回 ok，仅客户端丢弃）
 - `GET /api/v1/user/me` — 用户资料（Bearer token）
-- `DELETE /api/v1/user` — 账号注销（软删 30 天）
+- `DELETE /api/v1/user` — 账号注销（软删 30 天，并拉黑当前 access）
 
 ### 食物识别代理（GLM 转发，密钥只存服务器）
 
@@ -55,7 +55,7 @@ App 不再持有第三方密钥，统一走后端（均在鉴权保护下）：
 - `POST /api/v1/food/recognize` — 图片识别：`{"image":"<base64>","topNum":5,"thinking":false}` → `{"success":true,"items":[...]}`
 - `POST /api/v1/food/search` — 文本搜索：`{"query":"米饭","topNum":3}` → 同上结构
 - `POST /api/v1/food/feedback` — 识别纠错反馈落库
-- `POST /api/v1/food/barcode` — 条码查询（待接入）
+- `POST /api/v1/food/barcode` — 条码查询（Open Food Facts 代理）
 
 LLM 配置在管理后台维护（表 `llm_configs`，支持多配置、优先级、启用/停用、一键测连通）。
 未配置任何 LLM 时识别/搜索返回 `503 {"success":false,"error":"未配置可用的 LLM 服务，请在管理后台配置"}`。
@@ -70,7 +70,7 @@ GLM 调用失败返回 502；响应带 `X-Provider: zhipu` 头。
 ## 待实现（按 docs/backend-plan.md 路线）
 
 - 行为流水 `/progress/events` 与周报 `/progress/summary`
-- 条码库接入
+- 条码库接入（当前已用 Open Food Facts 公开代理）
 
 ## App 对接
 

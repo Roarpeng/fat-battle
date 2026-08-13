@@ -11,6 +11,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../constants/app_constants.dart';
+import '../config/api_config.dart';
 import '../providers/game_provider.dart';
 import '../services/auth_service.dart';
 import '../services/voice_service.dart';
@@ -33,6 +34,61 @@ class SettingsPage extends ConsumerStatefulWidget {
 }
 
 class _SettingsPageState extends ConsumerState<SettingsPage> {
+  AuthUser? _me;
+  String? _localAccount;
+  bool? _gatewayReachable; // null = 探测中 / 未开始
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAccountAndGateway();
+  }
+
+  Future<void> _loadAccountAndGateway() async {
+    final prefs = await SharedPreferences.getInstance();
+    final local = prefs.getString('user_nickname') ??
+        prefs.getString('user_account');
+    final localEmail = prefs.getString('user_email');
+    if (mounted) {
+      setState(() {
+        _localAccount = local;
+        if (localEmail != null && localEmail.isNotEmpty) {
+          _me = AuthUser(
+            email: localEmail,
+            nickname: local ?? '',
+          );
+        }
+      });
+    }
+
+    if (AuthService().isBackendConfigured) {
+      try {
+        final me = await AuthService().fetchMe();
+        if (mounted && me != null) {
+          setState(() => _me = me);
+        }
+      } catch (_) {}
+      final ok = await AuthService().pingHealthz();
+      if (mounted) setState(() => _gatewayReachable = ok);
+    } else if (mounted) {
+      setState(() => _gatewayReachable = false);
+    }
+  }
+
+  String get _accountTitle {
+    final nick = _me?.nickname.trim() ?? '';
+    if (nick.isNotEmpty) return nick;
+    final local = _localAccount?.trim() ?? '';
+    if (local.isNotEmpty) return local;
+    return '未登录';
+  }
+
+  String get _accountSubtitle {
+    final email = _me?.email.trim() ?? '';
+    if (email.isNotEmpty) return email;
+    if (_localAccount == '离线体验勇士') return '离线试用（未绑定邮箱）';
+    return AuthService().isBackendConfigured ? '正在同步账号…' : '离线模式';
+  }
   @override
   Widget build(BuildContext context) {
     final gameState = ref.watch(gameStateProvider);
@@ -421,12 +477,88 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             ForgeSurface(
               child: Column(
                   children: [
-                    // 后端 API 网关配置 (防秘钥外泄)
+                    _buildSettingItem(
+                      icon: '👤',
+                      title: _accountTitle,
+                      subtitle: _accountSubtitle,
+                      trailing: Icon(
+                        Icons.badge_outlined,
+                        color: AppColors.copper,
+                        size: 20,
+                      ),
+                    ),
+                    const Divider(color: AppColors.border),
+
+                    // 后端 API 网关：绑定 ApiConfig + healthz
                     _buildSettingItem(
                       icon: '🌐',
                       title: 'API 网关服务',
-                      subtitle: '食物卡路里识别与大模型加密中转代理',
-                      trailing: Icon(Icons.check_circle_outline, color: AppColors.green, size: 20),
+                      subtitle: !ApiConfig.isBackendEnabled
+                          ? '未配置 API_BASE_URL，识别走本地/调试直连'
+                          : _gatewayReachable == true
+                              ? '已连接 ${ApiConfig.backendBaseUrl}'
+                              : _gatewayReachable == false
+                                  ? '已配置但 healthz 不可达'
+                                  : '正在检测 ${ApiConfig.backendBaseUrl}',
+                      trailing: Icon(
+                        !ApiConfig.isBackendEnabled
+                            ? Icons.cancel_outlined
+                            : _gatewayReachable == true
+                                ? Icons.check_circle_outline
+                                : _gatewayReachable == false
+                                    ? Icons.error_outline
+                                    : Icons.hourglass_empty,
+                        color: !ApiConfig.isBackendEnabled ||
+                                _gatewayReachable == false
+                            ? AppColors.red
+                            : _gatewayReachable == true
+                                ? AppColors.green
+                                : AppColors.text2,
+                        size: 20,
+                      ),
+                    ),
+                    const Divider(color: AppColors.border),
+
+                    _buildSettingItem(
+                      icon: '☁️',
+                      title: '云端进度同步',
+                      subtitle: '关闭后不再把游戏进度上传到服务器',
+                      trailing: Switch(
+                        value: gameState.cloudSyncEnabled,
+                        onChanged: (v) {
+                          gameNotifier.updatePrivacyFlags(cloudSyncEnabled: v);
+                          _showToast(v ? '已允许云端同步' : '已关闭云端同步');
+                        },
+                        activeColor: AppColors.green,
+                      ),
+                    ),
+                    const Divider(color: AppColors.border),
+                    _buildSettingItem(
+                      icon: '📷',
+                      title: '食物视觉识别',
+                      subtitle: '关闭后拍照识别不再上传图片',
+                      trailing: Switch(
+                        value: gameState.foodVisionEnabled,
+                        onChanged: (v) {
+                          gameNotifier.updatePrivacyFlags(foodVisionEnabled: v);
+                          _showToast(v ? '已允许食物识别' : '已关闭食物识别');
+                        },
+                        activeColor: AppColors.green,
+                      ),
+                    ),
+                    const Divider(color: AppColors.border),
+                    _buildSettingItem(
+                      icon: '🤸',
+                      title: '摄像头姿态检测',
+                      subtitle: '关闭后锻炼不再使用摄像头采集姿态',
+                      trailing: Switch(
+                        value: gameState.cameraPoseEnabled,
+                        onChanged: (v) {
+                          gameNotifier.updatePrivacyFlags(cameraPoseEnabled: v);
+                          _showToast(v ? '已允许姿态检测' : '已关闭姿态检测');
+                        },
+                        activeColor: AppColors.green,
+                      ),
                     ),
                     const Divider(color: AppColors.border),
 
@@ -506,7 +638,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                             builder: (ctx) => AlertDialog(
                               title: const Text('⚠️ 确认注销账号？'),
                               content: const Text(
-                                '按照应用市场隐私合规规范，注销账号将永久删除您的身高体重历史、锻炼纪录、饮食卡路里数据及所有游戏成就，且不可恢复！',
+                                '注销后账号立即停用，云端数据将在 30 天后彻底清除；本地身高体重、锻炼、饮食与成就会马上抹除且不可恢复。',
                               ),
                               actions: [
                                 TextButton(
@@ -528,7 +660,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                                     Navigator.of(context).pushReplacement(
                                       forgePageRoute(builder: (_) => const AuthPage()),
                                     );
-                                    _showToast('账号已安全注销，本地与云端数据已彻底擦除');
+                                    _showToast('账号已注销。云端数据将在 30 天后清除');
                                   },
                                   style: ElevatedButton.styleFrom(backgroundColor: AppColors.red),
                                   child: const Text('确认彻底注销'),

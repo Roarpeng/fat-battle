@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"fatbattle/backend/internal/middleware"
+	"fatbattle/backend/internal/tokenstore"
 )
 
 // NewRouter 构建带基础中间件的路由引擎
@@ -28,7 +29,10 @@ func NewRouter(_ *pgxpool.Pool, _ string) *gin.Engine {
 }
 
 // RegisterRoutes 注册全部 API 路由
-func RegisterRoutes(r *gin.Engine, pool *pgxpool.Pool, jwtSecret, adminJwtSecret string) {
+func RegisterRoutes(r *gin.Engine, pool *pgxpool.Pool, jwtSecret, adminJwtSecret string, dl tokenstore.Denylist) {
+	if dl == nil {
+		dl = tokenstore.Nop{}
+	}
 	api := r.Group("/api/v1")
 	{
 		// 健康检查（docker compose healthcheck 依赖）
@@ -49,15 +53,15 @@ func RegisterRoutes(r *gin.Engine, pool *pgxpool.Pool, jwtSecret, adminJwtSecret
 		{
 			auth.POST("/register", registerHandler(pool, jwtSecret))
 			auth.POST("/login", loginHandler(pool, jwtSecret))
-			auth.POST("/refresh", refreshHandler(pool, jwtSecret))
-			auth.POST("/logout", logoutHandler())
+			auth.POST("/refresh", refreshHandler(jwtSecret, dl))
+			auth.POST("/logout", logoutHandler(jwtSecret, dl))
 		}
 
 		// 鉴权保护的子模块
-		protected := api.Group("", middleware.Auth(jwtSecret))
+		protected := api.Group("", middleware.Auth(jwtSecret, dl))
 		{
 			protected.GET("/user/me", meHandler(pool))
-			protected.DELETE("/user", deleteAccountHandler(pool))
+			protected.DELETE("/user", deleteAccountHandler(pool, jwtSecret, dl))
 
 			// 食物识别代理（GLM 转发，密钥只留服务器；LLM 成本高，严格限流）
 			food := protected.Group("/food", middleware.RateLimit(30, time.Minute))

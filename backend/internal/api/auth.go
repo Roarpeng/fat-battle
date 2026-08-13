@@ -2,11 +2,12 @@ package api
 
 import (
 	"errors"
+	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -14,6 +15,7 @@ import (
 
 	"fatbattle/backend/internal/middleware"
 	"fatbattle/backend/internal/model"
+	"fatbattle/backend/internal/tokenstore"
 )
 
 // registerHandler 注册：bcrypt 存密码哈希，返回 token 对
@@ -75,7 +77,7 @@ func loginHandler(pool *pgxpool.Pool, jwtSecret string) gin.HandlerFunc {
 		var isDisabled bool
 		err := pool.QueryRow(c.Request.Context(),
 			`SELECT id, email, nickname, pass_hash, COALESCE(avatar_url, ''), created_at, is_disabled
-			 FROM users WHERE email = $1`,
+			 FROM users WHERE email = $1 AND deleted_at IS NULL`,
 			req.Email,
 		).Scan(&u.ID, &u.Email, &u.Nickname, &u.PassHash, &u.AvatarURL, &u.CreatedAt, &isDisabled)
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -102,8 +104,11 @@ func loginHandler(pool *pgxpool.Pool, jwtSecret string) gin.HandlerFunc {
 	}
 }
 
-// refreshHandler 用 refresh token 换新 access token
-func refreshHandler(_ *pgxpool.Pool, jwtSecret string) gin.HandlerFunc {
+// refreshHandler 用 refresh token 换新 access token；已拉黑的 refresh 拒绝续期
+func refreshHandler(jwtSecret string, dl tokenstore.Denylist) gin.HandlerFunc {
+	if dl == nil {
+		dl = tokenstore.Nop{}
+	}
 	return func(c *gin.Context) {
 		var body struct {
 			RefreshToken string `json:"refreshToken" binding:"required"`
@@ -112,33 +117,44 @@ func refreshHandler(_ *pgxpool.Pool, jwtSecret string) gin.HandlerFunc {
 			jsonError(c, http.StatusBadRequest, "缺少 refreshToken")
 			return
 		}
-		token, err := jwt.Parse(body.RefreshToken, func(t *jwt.Token) (interface{}, error) {
-			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
-				return nil, jwt.ErrSignatureInvalid
-			}
-			return []byte(jwtSecret), nil
-		})
-		if err != nil || !token.Valid {
+		meta, err := middleware.ParseTokenMeta(jwtSecret, body.RefreshToken)
+		if err != nil {
 			jsonError(c, http.StatusUnauthorized, "refresh token 无效")
 			return
 		}
-		claims, ok := token.Claims.(jwt.MapClaims)
-		if !ok {
-			jsonError(c, http.StatusUnauthorized, "refresh token 无效")
+		denied, err := dl.Denied(c.Request.Context(), meta.ID)
+		if err != nil {
+			log.Printf("[auth] 黑名单查询失败: %v", err)
+		} else if denied {
+			jsonError(c, http.StatusUnauthorized, "refresh token 已登出")
 			return
 		}
-		userID, ok := claims["sub"].(float64)
-		if !ok {
-			jsonError(c, http.StatusUnauthorized, "refresh token 无效")
-			return
-		}
-		c.JSON(http.StatusOK, gin.H{"token": issueTokens(jwtSecret, int64(userID))})
+		// 旋转：旧 refresh 立即作废
+		_ = denyToken(c, dl, meta)
+		c.JSON(http.StatusOK, gin.H{"token": issueTokens(jwtSecret, meta.UserID)})
 	}
 }
 
-// logoutHandler 登出（MVP：客户端丢弃 token；正式版接 Redis 黑名单）
-func logoutHandler() gin.HandlerFunc {
+// logoutHandler 将 access（Authorization）与 body.refreshToken 写入 Redis 黑名单
+func logoutHandler(jwtSecret string, dl tokenstore.Denylist) gin.HandlerFunc {
+	if dl == nil {
+		dl = tokenstore.Nop{}
+	}
 	return func(c *gin.Context) {
+		if raw := c.GetHeader("Authorization"); strings.HasPrefix(raw, "Bearer ") {
+			if meta, err := middleware.ParseTokenMeta(jwtSecret, strings.TrimPrefix(raw, "Bearer ")); err == nil {
+				_ = denyToken(c, dl, meta)
+			}
+		}
+		var body struct {
+			RefreshToken string `json:"refreshToken"`
+		}
+		_ = c.ShouldBindJSON(&body)
+		if body.RefreshToken != "" {
+			if meta, err := middleware.ParseTokenMeta(jwtSecret, body.RefreshToken); err == nil {
+				_ = denyToken(c, dl, meta)
+			}
+		}
 		c.JSON(http.StatusOK, gin.H{"ok": true})
 	}
 }
@@ -153,7 +169,7 @@ func meHandler(pool *pgxpool.Pool) gin.HandlerFunc {
 		userID := c.GetInt64("userID")
 		var u model.User
 		err := pool.QueryRow(c.Request.Context(),
-			`SELECT id, email, nickname, COALESCE(avatar_url, ''), created_at FROM users WHERE id = $1`,
+			`SELECT id, email, nickname, COALESCE(avatar_url, ''), created_at FROM users WHERE id = $1 AND deleted_at IS NULL`,
 			userID,
 		).Scan(&u.ID, &u.Email, &u.Nickname, &u.AvatarURL, &u.CreatedAt)
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -169,7 +185,10 @@ func meHandler(pool *pgxpool.Pool) gin.HandlerFunc {
 }
 
 // deleteAccountHandler 账号注销（软删：标记 deleted_at，30 天后物理清理）
-func deleteAccountHandler(pool *pgxpool.Pool) gin.HandlerFunc {
+func deleteAccountHandler(pool *pgxpool.Pool, jwtSecret string, dl tokenstore.Denylist) gin.HandlerFunc {
+	if dl == nil {
+		dl = tokenstore.Nop{}
+	}
 	return func(c *gin.Context) {
 		if pool == nil {
 			jsonError(c, http.StatusServiceUnavailable, "数据库未就绪")
@@ -182,6 +201,11 @@ func deleteAccountHandler(pool *pgxpool.Pool) gin.HandlerFunc {
 			jsonError(c, http.StatusInternalServerError, "注销失败")
 			return
 		}
+		if raw := c.GetHeader("Authorization"); strings.HasPrefix(raw, "Bearer ") {
+			if meta, err := middleware.ParseTokenMeta(jwtSecret, strings.TrimPrefix(raw, "Bearer ")); err == nil {
+				_ = denyToken(c, dl, meta)
+			}
+		}
 		c.JSON(http.StatusOK, gin.H{
 			"ok":      true,
 			"message": "账号已注销，数据将在 30 天后清除",
@@ -189,15 +213,22 @@ func deleteAccountHandler(pool *pgxpool.Pool) gin.HandlerFunc {
 	}
 }
 
-// issueTokens 签发 access(2h) + refresh(30d)
+func denyToken(c *gin.Context, dl tokenstore.Denylist, meta *middleware.TokenMeta) error {
+	if meta == nil {
+		return nil
+	}
+	ttl := time.Until(meta.Exp)
+	if err := dl.Deny(c.Request.Context(), meta.ID, ttl); err != nil {
+		log.Printf("[auth] 写入登出黑名单失败: %v", err)
+		return err
+	}
+	return nil
+}
+
+// issueTokens 签发 access(2h) + refresh(30d)，均含 jti 以便登出拉黑
 func issueTokens(secret string, userID int64) model.TokenPair {
 	access, _ := middleware.SignToken(secret, userID)
-	now := time.Now()
-	refresh, _ := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"sub": userID,
-		"exp": now.Add(30 * 24 * time.Hour).Unix(),
-		"iat": now.Unix(),
-	}).SignedString([]byte(secret))
+	refresh, _ := middleware.SignRefreshToken(secret, userID)
 	return model.TokenPair{
 		AccessToken:  access,
 		RefreshToken: refresh,

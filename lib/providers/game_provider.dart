@@ -536,6 +536,20 @@ class GameStateNotifier extends StateNotifier<GameState> {
     state = state.copyWith(reminderFrequency: frequency);
     await _saveGame();
   }
+
+  /// 更新 PIPL 本地同意开关（云同步 / 食物视觉 / 摄像头姿态）
+  Future<void> updatePrivacyFlags({
+    bool? cloudSyncEnabled,
+    bool? foodVisionEnabled,
+    bool? cameraPoseEnabled,
+  }) async {
+    state = state.copyWith(
+      cloudSyncEnabled: cloudSyncEnabled,
+      foodVisionEnabled: foodVisionEnabled,
+      cameraPoseEnabled: cameraPoseEnabled,
+    );
+    await _saveGame();
+  }
   
   /// 检查成就
   Future<void> _checkAchievements() async {
@@ -718,6 +732,11 @@ class GameState {
   // 身体变化相册
   final List<ProgressPhoto> progressPhotos;
 
+  // PIPL 式本地同意开关（默认开启，关闭后对应功能不再上传/采集）
+  final bool cloudSyncEnabled;
+  final bool foodVisionEnabled;
+  final bool cameraPoseEnabled;
+
   const GameState({
     this.user = const User(),
     this.monster = const Monster(),
@@ -752,6 +771,9 @@ class GameState {
     this.waterCups = 0,
     this.waterGoal = 8,
     this.progressPhotos = const [],
+    this.cloudSyncEnabled = true,
+    this.foodVisionEnabled = true,
+    this.cameraPoseEnabled = true,
   });
   
   GameState copyWith({
@@ -788,6 +810,9 @@ class GameState {
     int? waterCups,
     int? waterGoal,
     List<ProgressPhoto>? progressPhotos,
+    bool? cloudSyncEnabled,
+    bool? foodVisionEnabled,
+    bool? cameraPoseEnabled,
   }) {
     return GameState(
       user: user ?? this.user,
@@ -823,6 +848,9 @@ class GameState {
       waterCups: waterCups ?? this.waterCups,
       waterGoal: waterGoal ?? this.waterGoal,
       progressPhotos: progressPhotos ?? this.progressPhotos,
+      cloudSyncEnabled: cloudSyncEnabled ?? this.cloudSyncEnabled,
+      foodVisionEnabled: foodVisionEnabled ?? this.foodVisionEnabled,
+      cameraPoseEnabled: cameraPoseEnabled ?? this.cameraPoseEnabled,
     );
   }
   
@@ -895,6 +923,9 @@ class GameState {
       'waterCups': waterCups,
       'waterGoal': waterGoal,
       'progressPhotos': progressPhotos.map((p) => p.toJson()).toList(),
+      'cloudSyncEnabled': cloudSyncEnabled,
+      'foodVisionEnabled': foodVisionEnabled,
+      'cameraPoseEnabled': cameraPoseEnabled,
     };
   }
   
@@ -979,6 +1010,9 @@ class GameState {
       progressPhotos: (json['progressPhotos'] as List?)
           ?.map((p) => ProgressPhoto.fromJson(p as Map<String, dynamic>))
           .toList() ?? [],
+      cloudSyncEnabled: json['cloudSyncEnabled'] ?? true,
+      foodVisionEnabled: json['foodVisionEnabled'] ?? true,
+      cameraPoseEnabled: json['cameraPoseEnabled'] ?? true,
     );
   }
   

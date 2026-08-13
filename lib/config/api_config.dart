@@ -39,11 +39,22 @@ class ApiConfig {
   static bool get hasBooheeCredentials =>
       booheeAppId.isNotEmpty && booheeAppKey.isNotEmpty;
 
-  // ===== FatSecret API =====
+  // ===== FatSecret API（仅本地调试直连；正式包走后端，勿注入） =====
   static const fatsecretTokenUrl =
       'https://oauth.fatsecret.com/connect/token';
   static const fatsecretBaseUrl =
       'https://platform.fatsecret.com/rest/server.api';
+  static const fatsecretClientId =
+      String.fromEnvironment('FATSECRET_CLIENT_ID');
+  static const fatsecretClientSecret =
+      String.fromEnvironment('FATSECRET_CLIENT_SECRET');
+
+  static bool get hasFatSecretCredentials =>
+      fatsecretClientId.isNotEmpty && fatsecretClientSecret.isNotEmpty;
+
+  /// 当前后端地址是否为 HTTPS（隐私文案据此，避免默认 HTTP 构建谎称全程 HTTPS）
+  static bool get isHttps =>
+      backendBaseUrl.toLowerCase().startsWith('https://');
 
   // ===== MiniCPM-V（可选；默认关闭，避免误连本机后端） =====
   static const minicpmBaseUrl = String.fromEnvironment('MINICPM_BASE_URL');

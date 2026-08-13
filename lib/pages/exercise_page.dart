@@ -2290,6 +2290,10 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
   
   /// 开始摄像头检测 → 允许横竖自由旋转并进入全屏教练页
   Future<void> _startCameraDetection({int seedReps = 0}) async {
+    if (!ref.read(gameStateProvider).cameraPoseEnabled) {
+      _showToast('已在设置中关闭摄像头姿态检测');
+      return;
+    }
     if (_selectedExercise == null) {
       _showToast('请先选择运动类型');
       return;
