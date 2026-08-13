@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../../constants/app_constants.dart';
+import '../../theme/motion.dart';
 
 /// 伤害飘字类型
 enum DamageType {
@@ -53,7 +54,7 @@ class DamageNumber extends StatefulWidget {
     required this.type,
     required this.onComplete,
     this.offsetX = 0,
-    this.duration = const Duration(milliseconds: 1100),
+    this.duration = AppMotion.chipFly,
   });
 
   @override
@@ -76,17 +77,19 @@ class _DamageNumberState extends State<DamageNumber>
   @override
   void initState() {
     super.initState();
-    _randomX = (_rng.nextDouble() - 0.5) * 40;
-    _randomRotation = (_rng.nextDouble() - 0.5) * 0.3;
+    _randomX = (_rng.nextDouble() - 0.5) * 72;
+    _randomRotation = (_rng.nextDouble() - 0.5) * 0.85;
 
     _controller = AnimationController(
       duration: widget.duration,
       vsync: this,
     );
 
-    _yAnimation = Tween<double>(begin: 0, end: -90).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic),
-    );
+    // 刨花弧线：先被凿飞再失速下落
+    _yAnimation = TweenSequence<double>([
+      TweenSequenceItem(tween: Tween(begin: 0, end: -78), weight: 55),
+      TweenSequenceItem(tween: Tween(begin: -78, end: -36), weight: 45),
+    ]).animate(CurvedAnimation(parent: _controller, curve: AppMotion.chipOut));
     _opacityAnimation = TweenSequence<double>([
       TweenSequenceItem(tween: Tween(begin: 0, end: 1), weight: 15),
       TweenSequenceItem(tween: Tween(begin: 1, end: 1), weight: 55),
@@ -110,10 +113,20 @@ class _DamageNumberState extends State<DamageNumber>
           weight: 20),
     ]).animate(_controller);
     _xDiffAnimation = Tween<double>(begin: 0, end: _randomX).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeOut),
+      CurvedAnimation(parent: _controller, curve: AppMotion.chipOut),
     );
 
-    _controller.forward().then((_) => widget.onComplete());
+    _controller.forward().then((_) {
+      if (mounted) widget.onComplete();
+    });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (AppMotion.reduceMotion(context) && _controller.value < 1) {
+      _controller.value = 1;
+    }
   }
 
   double get _targetScale {
@@ -205,8 +218,16 @@ class _DamageNumberState extends State<DamageNumber>
                   padding:
                       const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                   decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.4),
-                    borderRadius: BorderRadius.circular(8),
+                    color: AppColors.card.withValues(alpha: 0.72),
+                    borderRadius: const BorderRadius.only(
+                      topLeft: Radius.circular(3),
+                      topRight: Radius.circular(10),
+                      bottomLeft: Radius.circular(9),
+                      bottomRight: Radius.circular(4),
+                    ),
+                    border: Border.all(
+                      color: AppColors.copper.withValues(alpha: 0.35),
+                    ),
                   ),
                   child: Text(
                     _displayText,

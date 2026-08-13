@@ -30,6 +30,7 @@
         android:label="塑身工坊"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:usesCleartextTraffic="true"
         android:networkSecurityConfig="@xml/network_security_config">
         <activity
@@ -49,11 +50,217 @@
               android:name="io.flutter.embedding.android.NormalTheme"
               android:resource="@style/NormalTheme"
               />
+        </activity>
+        <!-- 雕刻进度桌面图标：同一 Activity，维纳斯/大卫 × 0–7 只启用一个。部分启动器会缓存图标。 -->
+        <!-- 0/1 两线共用人体粘土/石块，不是战斗魔物。 -->
+        <activity-alias
+            android:name=".SculptVenus0"
+            android:enabled="true"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_sculpt_0"
+            android:roundIcon="@mipmap/ic_launcher_sculpt_0_round"
+            android:label="塑身工坊"
+            android:targetActivity=".MainActivity">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
-        </activity>
+        </activity-alias>
+        <activity-alias
+            android:name=".SculptVenus1"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_sculpt_1"
+            android:roundIcon="@mipmap/ic_launcher_sculpt_1_round"
+            android:label="塑身工坊"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".SculptVenus2"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_sculpt_venus_2"
+            android:roundIcon="@mipmap/ic_launcher_sculpt_venus_2_round"
+            android:label="塑身工坊"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".SculptVenus3"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_sculpt_venus_3"
+            android:roundIcon="@mipmap/ic_launcher_sculpt_venus_3_round"
+            android:label="塑身工坊"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".SculptVenus4"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_sculpt_venus_4"
+            android:roundIcon="@mipmap/ic_launcher_sculpt_venus_4_round"
+            android:label="塑身工坊"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".SculptVenus5"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_sculpt_venus_5"
+            android:roundIcon="@mipmap/ic_launcher_sculpt_venus_5_round"
+            android:label="塑身工坊"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".SculptVenus6"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_sculpt_venus_6"
+            android:roundIcon="@mipmap/ic_launcher_sculpt_venus_6_round"
+            android:label="塑身工坊"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".SculptVenus7"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_sculpt_venus_7"
+            android:roundIcon="@mipmap/ic_launcher_sculpt_venus_7_round"
+            android:label="塑身工坊"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".SculptDavid0"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_sculpt_0"
+            android:roundIcon="@mipmap/ic_launcher_sculpt_0_round"
+            android:label="塑身工坊"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".SculptDavid1"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_sculpt_1"
+            android:roundIcon="@mipmap/ic_launcher_sculpt_1_round"
+            android:label="塑身工坊"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".SculptDavid2"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_sculpt_david_2"
+            android:roundIcon="@mipmap/ic_launcher_sculpt_david_2_round"
+            android:label="塑身工坊"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".SculptDavid3"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_sculpt_david_3"
+            android:roundIcon="@mipmap/ic_launcher_sculpt_david_3_round"
+            android:label="塑身工坊"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".SculptDavid4"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_sculpt_david_4"
+            android:roundIcon="@mipmap/ic_launcher_sculpt_david_4_round"
+            android:label="塑身工坊"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".SculptDavid5"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_sculpt_david_5"
+            android:roundIcon="@mipmap/ic_launcher_sculpt_david_5_round"
+            android:label="塑身工坊"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".SculptDavid6"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_sculpt_david_6"
+            android:roundIcon="@mipmap/ic_launcher_sculpt_david_6_round"
+            android:label="塑身工坊"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".SculptDavid7"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_sculpt_david_7"
+            android:roundIcon="@mipmap/ic_launcher_sculpt_david_7_round"
+            android:label="塑身工坊"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

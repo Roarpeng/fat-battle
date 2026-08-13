@@ -1,162 +1,252 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""生成《塑身工坊》App 图标 —— 好的身材，精雕细琢
+"""安装《塑身工坊》启动器图标 —— 古典人体雕塑（维纳斯 / 大卫），不是战斗魔物。
 
-设计语言（锻造工坊主题）：
-- 暖炭黑圆底 + 顶部炉火辉光（径向渐变）
-- 中央铜金 S 曲线剪影：女性身体曲线 = 待雕琢的作品
-- 炉火赤红"雕琢火花"沿曲线飞溅：精雕细琢的过程感
-- 铜金描边 + 底部微光投影
+源图：
+- assets/branding/sculpt/venus/{0-clay … 7-rebound}.png
+- assets/branding/sculpt/david/{0-clay … 7-rebound}.png
+  0/1 两线共用粘土与石块。
 
-输出：Android 全部 mipmap 尺寸 ic_launcher.png / ic_launcher_round.png
+桌面默认 ic_launcher = 人体粘土（stage 0），不用 app_icon_full 魔物图。
 """
-import math
+from __future__ import annotations
+
+import glob
 import os
-from PIL import Image, ImageDraw
 
-# ============ 主题色（与 AppColors 一致） ============
-BG = (20, 17, 14)          # #14110E 炭黑
-BG_TOP = (42, 30, 22)      # 炉火暖棕
-EMBER = (232, 93, 76)      # #E85D4C 炉火赤红
-COPPER = (196, 165, 116)   # #C4A574 铜金
-GOLD = (222, 194, 145)     # 铜金高光
-GLOW = (255, 138, 91)      # #FF8A5B 锻造辉光
-CREAM = (255, 248, 245)    # 近白
+from PIL import Image, ImageDraw, ImageFilter
 
-SIZES = {
+ROOT = os.path.normpath(
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
+)
+BRANDING = os.path.join(ROOT, "assets", "branding")
+RES = os.path.join(ROOT, "android", "app", "src", "main", "res")
+IMAGES = os.path.join(ROOT, "images")
+SCULPT_DIR = os.path.join(BRANDING, "sculpt")
+
+STAGE_STEMS = (
+    "0-clay",
+    "1-block",
+    "2-rough",
+    "3-emerge",
+    "4-master",
+    "5-polish",
+    "6-dust",
+    "7-rebound",
+)
+
+# 与工坊炭黑底接近，避免白角透出 squircle 蒙版
+CHARCOAL = (28, 25, 22, 255)
+
+LEGACY_SIZES = {
     "mdpi": 48,
     "hdpi": 72,
     "xhdpi": 96,
     "xxhdpi": 144,
     "xxxhdpi": 192,
 }
-OUT_DIR = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)),
-    "..", "android", "app", "src", "main", "res",
-)
+
+ADAPTIVE_FG = {
+    "mdpi": 108,
+    "hdpi": 162,
+    "xhdpi": 216,
+    "xxhdpi": 324,
+    "xxxhdpi": 432,
+}
 
 
-def lerp_color(c1, c2, t):
-    return tuple(int(a + (b - a) * t) for a, b in zip(c1, c2))
+def _ensure_rgba(img: Image.Image) -> Image.Image:
+    return img.convert("RGBA") if img.mode != "RGBA" else img
 
 
-def radial_bg(size, cx, cy, r_outer, r_inner, c_center, c_edge):
-    """径向渐变圆形背景"""
-    img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+def fill_corners_charcoal(img: Image.Image) -> Image.Image:
+    """把圆形图标四周近白/近透明像素填成炭黑，避免启动器白角。"""
+    img = _ensure_rgba(img)
+    w, h = img.size
     px = img.load()
-    cx_s, cy_s = cx * size, cy * size
-    for y in range(size):
-        for x in range(size):
-            d = math.hypot(x - cx_s, y - cy_s) / size
-            t = max(0.0, min(1.0, (d - r_inner) / max(1e-6, r_outer - r_inner)))
-            px[x, y] = lerp_color(c_center, c_edge, t ** 1.35)
+    cx, cy = w / 2.0, h / 2.0
+    r = min(w, h) * 0.49
+    for y in range(h):
+        for x in range(w):
+            r0, g0, b0, a0 = px[x, y]
+            d = ((x - cx) ** 2 + (y - cy) ** 2) ** 0.5
+            outside = d > r
+            near_white = r0 > 232 and g0 > 232 and b0 > 232
+            if outside or (near_white and a0 > 200):
+                px[x, y] = CHARCOAL
+            elif a0 < 16:
+                px[x, y] = CHARCOAL
     return img
 
 
-def draw_s_curve(draw, size, t_start, t_end, width, color_fn, samples=220):
-    """参数化 S 曲线剪影：x = A*sin(pi*t) 偏移，y 从顶到底"""
-    A = 0.115 * size          # 水平振幅
-    y0, y1 = 0.24 * size, 0.76 * size
-    pts = []
-    for i in range(samples + 1):
-        t = t_start + (t_end - t_start) * i / samples
-        y = y0 + (y1 - y0) * t
-        x = size / 2 + A * math.sin(math.pi * t)
-        pts.append((x, y, t))
-    # 逐段画线（渐变描边）
-    seg = 6
-    for i in range(0, len(pts) - seg, seg):
-        p1, p2 = pts[i], pts[i + seg]
-        draw.line(
-            [p1[:2], p2[:2]],
-            fill=color_fn((p1[2] + p2[2]) / 2),
-            width=width,
-            joint="curve",
-        )
-    return pts
+def square_on_charcoal(img: Image.Image, size: int) -> Image.Image:
+    src = fill_corners_charcoal(img)
+    src = src.resize((size, size), Image.Resampling.LANCZOS)
+    out = Image.new("RGBA", (size, size), CHARCOAL)
+    out.alpha_composite(src)
+    return out
 
 
-def make_icon(size, rounded=True):
-    """生成一个尺寸的图标"""
-    img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    # 1) 圆形底：炭黑 + 顶部炉火辉光
-    base = radial_bg(size, 0.5, 0.42, 0.5, 0.0, BG_TOP, BG)
+def circle_mask(size: int) -> Image.Image:
     mask = Image.new("L", (size, size), 0)
-    md = ImageDraw.Draw(mask)
-    if rounded:
-        r = size * 0.225
-        md.rounded_rectangle([0, 0, size - 1, size - 1], radius=r, fill=255)
-    else:
-        md.ellipse([0, 0, size - 1, size - 1], fill=255)
-    img.paste(base, (0, 0), mask)
+    ImageDraw.Draw(mask).ellipse((0, 0, size - 1, size - 1), fill=255)
+    return mask.filter(ImageFilter.GaussianBlur(radius=max(0.4, size * 0.004)))
 
-    draw = ImageDraw.Draw(img)
 
-    # 2) 曲线高光描边（先画宽的暗描边，再叠亮色，产生雕刻感）
-    def dark_color(t):
-        return lerp_color((60, 42, 30), (38, 26, 20), t)
+def make_round(img: Image.Image, size: int) -> Image.Image:
+    square = square_on_charcoal(img, size)
+    out = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    out.paste(square, (0, 0), circle_mask(size))
+    return out
 
-    def bright_color(t):
-        # 从铜金渐变到高亮金，中间泛赤红（炉火映照）
-        if t < 0.45:
-            return lerp_color(COPPER, GOLD, t / 0.45)
-        return lerp_color(GOLD, EMBER, (t - 0.45) / 0.55)
 
-    w = max(3, int(size * 0.075))
-    # 暗底边 → 立体感
-    draw_s_curve(draw, size, 0.0, 1.0, w + max(2, int(size * 0.02)), lambda t: dark_color(t))
-    # 主曲线（铜金→金→赤红渐变，自上而下）
-    draw_s_curve(draw, size, 0.0, 1.0, w, bright_color)
+def _is_backdrop(rgb: tuple[int, int, int]) -> bool:
+    r0, g0, b0 = rgb
+    if r0 > 228 and g0 > 228 and b0 > 228:
+        return True
+    luma = 0.2126 * r0 + 0.7152 * g0 + 0.0722 * b0
+    chroma = max(r0, g0, b0) - min(r0, g0, b0)
+    return luma < 22 and chroma < 18
 
-    # 3) 雕琢火花（炉火赤红圆点，沿曲线中段飞溅）
-    rng_seed = 7
-    spark_pts = [(0.52, 0.34), (0.62, 0.40), (0.40, 0.52), (0.58, 0.60), (0.47, 0.66), (0.64, 0.28)]
-    for i, (sx, sy) in enumerate(spark_pts):
-        x, y = sx * size, sy * size
-        r = size * (0.016 + 0.004 * ((i + rng_seed) % 3))
-        color = GLOW if i % 2 == 0 else EMBER
-        draw.ellipse([x - r, y - r, x + r, y + r], fill=color)
 
-    # 4) 曲线两端的小锤点（锻造触点）：顶部一点铜金
-    r = max(2, size * 0.028)
-    draw.ellipse([size / 2 - r, 0.235 * size - r, size / 2 + r, 0.235 * size + r], fill=GOLD)
-
-    # 5) 底部微光投影（曲线下端泛赤红）
-    glow = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    gd = ImageDraw.Draw(glow)
-    gx, gy = 0.5 * size, 0.8 * size
-    gr = 0.22 * size
-    for yy in range(int(gy - gr), int(gy + gr)):
-        for xx in range(int(gx - gr), int(gx + gr)):
-            d = math.hypot(xx - gx, yy - gy) / gr
-            if d < 1.0:
-                a = int(70 * (1 - d) ** 2)
-                if a > 0:
-                    gd.point((xx, yy), fill=(255, 138, 91, a))
-    img = Image.alpha_composite(img, glow)
-    img = Image.alpha_composite(img, glow)
-
+def knock_out_bg(img: Image.Image) -> Image.Image:
+    """从四角洪水填充抠掉黑/白底板。"""
+    img = _ensure_rgba(img)
+    w, h = img.size
+    px = img.load()
+    seen = bytearray(w * h)
+    stack = [(0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1)]
+    while stack:
+        x, y = stack.pop()
+        if x < 0 or y < 0 or x >= w or y >= h:
+            continue
+        i = y * w + x
+        if seen[i]:
+            continue
+        seen[i] = 1
+        r0, g0, b0, a0 = px[x, y]
+        if a0 < 8 or _is_backdrop((r0, g0, b0)):
+            px[x, y] = (r0, g0, b0, 0)
+            stack.extend(((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)))
     return img
 
 
-def main():
-    root = os.path.normpath(OUT_DIR)
-    for dpi, px in SIZES.items():
-        out = os.path.join(root, f"mipmap-{dpi}")
-        os.makedirs(out, exist_ok=True)
-        icon = make_icon(px, rounded=True)
-        icon.save(os.path.join(out, "ic_launcher.png"))
-        round_icon = make_icon(px, rounded=False)
-        round_icon.save(os.path.join(out, "ic_launcher_round.png"))
-        print(f"[ok] {dpi} {px}px")
-    # 预览大图（供人工检查）
-    preview = make_icon(1024, rounded=True)
-    preview_path = os.path.normpath(os.path.join(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-        "images", "icon_preview.png",
-    ))
-    preview.save(preview_path)
-    print("preview:", preview_path)
+def pad_foreground(img: Image.Image, size: int, margin: float = 0.20) -> Image.Image:
+    src = knock_out_bg(img)
+    inner = max(8, int(size * (1.0 - margin * 2)))
+    fitted = src.copy()
+    fitted.thumbnail((inner, inner), Image.Resampling.LANCZOS)
+    canvas = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    ox = (size - fitted.width) // 2
+    oy = (size - fitted.height) // 2
+    canvas.alpha_composite(fitted, (ox, oy))
+    return canvas
+
+
+def write_text(path: str, text: str) -> None:
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(text)
+
+
+def write_adaptive_xml(name: str, fg: str) -> None:
+    xml = f"""<?xml version="1.0" encoding="utf-8"?>
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/ic_launcher_background"/>
+    <foreground android:drawable="@mipmap/{fg}"/>
+</adaptive-icon>
+"""
+    anydpi = os.path.join(RES, "mipmap-anydpi-v26")
+    write_text(os.path.join(anydpi, f"{name}.xml"), xml)
+    write_text(os.path.join(anydpi, f"{name}_round.xml"), xml)
+
+
+def write_background_color() -> None:
+    write_text(
+        os.path.join(RES, "values", "ic_launcher_background.xml"),
+        """<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ic_launcher_background">#1C1916</color>
+</resources>
+""",
+    )
+
+
+def install_one(src_path: str, stem: str) -> None:
+    if not os.path.isfile(src_path):
+        raise SystemExit(f"missing {src_path}")
+    full = _ensure_rgba(Image.open(src_path))
+    fg_name = f"{stem}_foreground"
+    for dpi, px in LEGACY_SIZES.items():
+        out_dir = os.path.join(RES, f"mipmap-{dpi}")
+        os.makedirs(out_dir, exist_ok=True)
+        square_on_charcoal(full, px).save(os.path.join(out_dir, f"{stem}.png"))
+        make_round(full, px).save(os.path.join(out_dir, f"{stem}_round.png"))
+        pad_foreground(full, ADAPTIVE_FG[dpi]).save(
+            os.path.join(out_dir, f"{fg_name}.png")
+        )
+    write_adaptive_xml(name=stem, fg=fg_name)
+    print(f"[ok] {stem} <- {os.path.relpath(src_path, ROOT)}")
+
+
+def remove_legacy_monster_stages() -> None:
+    """去掉旧的 5 阶段魔物 launcher 残留（sculpt_2/3/4）。"""
+    patterns = [
+        os.path.join(RES, "mipmap-*", "ic_launcher_sculpt_2*"),
+        os.path.join(RES, "mipmap-*", "ic_launcher_sculpt_3*"),
+        os.path.join(RES, "mipmap-*", "ic_launcher_sculpt_4*"),
+        os.path.join(RES, "mipmap-anydpi-v26", "ic_launcher_sculpt_2*"),
+        os.path.join(RES, "mipmap-anydpi-v26", "ic_launcher_sculpt_3*"),
+        os.path.join(RES, "mipmap-anydpi-v26", "ic_launcher_sculpt_4*"),
+    ]
+    for pat in patterns:
+        for path in glob.glob(pat):
+            # 保留 venus_2 / david_2 等新名
+            base = os.path.basename(path)
+            if base.startswith("ic_launcher_sculpt_venus_") or base.startswith(
+                "ic_launcher_sculpt_david_"
+            ):
+                continue
+            if base.startswith("ic_launcher_sculpt_2") or base.startswith(
+                "ic_launcher_sculpt_3"
+            ) or base.startswith("ic_launcher_sculpt_4"):
+                os.remove(path)
+                print(f"[rm] {path}")
+
+
+def install_sculpt_stages() -> None:
+    write_background_color()
+    # 0/1 共用人体粘土/石块
+    for i in (0, 1):
+        src = os.path.join(SCULPT_DIR, "venus", f"{STAGE_STEMS[i]}.png")
+        install_one(src, f"ic_launcher_sculpt_{i}")
+
+    for line in ("venus", "david"):
+        for i in range(2, 8):
+            src = os.path.join(SCULPT_DIR, line, f"{STAGE_STEMS[i]}.png")
+            install_one(src, f"ic_launcher_sculpt_{line}_{i}")
+
+    # 默认启动器 = 人体粘土，不用魔物全图
+    clay = os.path.join(SCULPT_DIR, "venus", f"{STAGE_STEMS[0]}.png")
+    full = _ensure_rgba(Image.open(clay))
+    for dpi, px in LEGACY_SIZES.items():
+        out_dir = os.path.join(RES, f"mipmap-{dpi}")
+        square_on_charcoal(full, px).save(os.path.join(out_dir, "ic_launcher.png"))
+        make_round(full, px).save(os.path.join(out_dir, "ic_launcher_round.png"))
+        pad_foreground(full, ADAPTIVE_FG[dpi]).save(
+            os.path.join(out_dir, "ic_launcher_foreground.png")
+        )
+    write_adaptive_xml(name="ic_launcher", fg="ic_launcher_foreground")
+    preview = square_on_charcoal(full, 512)
+    preview.save(os.path.join(BRANDING, "app_icon_512.png"))
+    os.makedirs(IMAGES, exist_ok=True)
+    square_on_charcoal(full, 1024).save(os.path.join(IMAGES, "icon_preview.png"))
+    remove_legacy_monster_stages()
+
+
+def main() -> None:
+    install_sculpt_stages()
+    print("preview:", os.path.join(IMAGES, "icon_preview.png"))
 
 
 if __name__ == "__main__":

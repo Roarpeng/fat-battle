@@ -23,6 +23,7 @@ const Map<ActivityLevel, double> activityFactors = {
 const Map<Gender, int> safeMinCaloriesByGender = {
   Gender.male: 1500,
   Gender.female: 1200,
+  Gender.other: 1500,
 };
 
 /// 每日赤字上限（kcal）。困难模式允许到 750，默认减脂 500。

@@ -9,6 +9,7 @@ import '../services/auth_service.dart';
 import '../services/progress_sync_service.dart';
 import '../providers/game_provider.dart';
 import '../widgets/home/forge_background.dart';
+import '../widgets/sculpt_icon.dart';
 import '../main.dart';
 import 'setup_page.dart';
 import 'privacy_page.dart';
@@ -248,7 +249,7 @@ class _AuthPageState extends ConsumerState<AuthPage> with SingleTickerProviderSt
                       ],
                     ),
                     alignment: Alignment.center,
-                    child: const Text('🔨', style: TextStyle(fontSize: 44)),
+                    child: const SculptIcon(sculptProgress: 0, size: 56),
                   ),
                   const SizedBox(height: AppSpace.xl),
                   Text(

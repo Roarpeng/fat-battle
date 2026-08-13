@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../constants/app_constants.dart';
+import '../theme/motion.dart';
 
 /// 拥有扣血残影条（Ghost Damage Bar）与护盾微光的血条组件
 class HpBar extends StatefulWidget {
@@ -80,8 +81,8 @@ class _HpBarState extends State<HpBar> with SingleTickerProviderStateMixin {
         children: [
           // 1. 滞后扣血残影条 (Ghost Damage Bar)
           AnimatedContainer(
-            duration: const Duration(milliseconds: 600),
-            curve: Curves.easeOutCubic,
+            duration: AppMotion.duration(context, const Duration(milliseconds: 640)),
+            curve: AppMotion.metalCool,
             width: double.infinity,
             height: widget.height,
             child: FractionallySizedBox(
@@ -98,8 +99,8 @@ class _HpBarState extends State<HpBar> with SingleTickerProviderStateMixin {
 
           // 2. 主 HP 血条
           AnimatedContainer(
-            duration: const Duration(milliseconds: 250),
-            curve: Curves.easeOut,
+            duration: AppMotion.duration(context, AppMotion.hpFill),
+            curve: AppMotion.metalCool,
             width: double.infinity,
             height: widget.height,
             child: FractionallySizedBox(
@@ -126,7 +127,8 @@ class _HpBarState extends State<HpBar> with SingleTickerProviderStateMixin {
           // 3. 护盾叠加层
           if (widget.shield > 0)
             AnimatedContainer(
-              duration: const Duration(milliseconds: 300),
+              duration: AppMotion.duration(context, const Duration(milliseconds: 360)),
+              curve: AppMotion.metalCool,
               width: double.infinity,
               height: widget.height,
               child: FractionallySizedBox(
@@ -192,7 +194,8 @@ class ProgressBar extends StatelessWidget {
       child: Stack(
         children: [
           AnimatedContainer(
-            duration: const Duration(milliseconds: 500),
+            duration: AppMotion.duration(context, AppMotion.hpFill),
+            curve: AppMotion.metalCool,
             child: FractionallySizedBox(
               alignment: Alignment.centerLeft,
               widthFactor: percent.clamp(0, 1),

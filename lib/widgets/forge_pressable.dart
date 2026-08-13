@@ -58,11 +58,17 @@ class _ForgePressableState extends State<ForgePressable> {
     final scale = AppMotion.pressScale(context, scale: widget.scale);
     final duration = AppMotion.duration(context, widget.duration);
 
+    final dip = AppMotion.pressDip(context);
     Widget child = AnimatedScale(
       scale: _pressed ? scale : 1,
       duration: duration,
       curve: AppMotion.easeOut,
-      child: widget.child,
+      child: AnimatedContainer(
+        duration: duration,
+        curve: AppMotion.easeOut,
+        transform: Matrix4.translationValues(0, _pressed ? dip : 0, 0),
+        child: widget.child,
+      ),
     );
 
     if (widget.borderRadius != null) {

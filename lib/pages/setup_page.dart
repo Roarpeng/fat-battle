@@ -8,6 +8,7 @@ import '../models/game_models.dart';
 import '../providers/game_provider.dart';
 import '../services/game_algorithm.dart';
 import '../core/core_types.dart' show Gender;
+import '../theme/sculpt_progress.dart';
 import '../widgets/forge_pressable.dart';
 import '../widgets/home/forge_background.dart';
 import '../widgets/medical_disclaimer.dart';
@@ -30,6 +31,7 @@ class _SetupPageState extends ConsumerState<SetupPage> {
   double _targetWeight = 65;
   int _age = 30;
   Gender _gender = Gender.female;
+  SculptLine _sculptLine = SculptLine.venus;
   double? _waistCm;
   SleepType _sleepType = SleepType.normal;
   WorkType _workType = WorkType.sedentary;
@@ -190,10 +192,26 @@ class _SetupPageState extends ConsumerState<SetupPage> {
               _buildOptionGrid(
                 options: Gender.values,
                 selected: _gender,
-                onSelect: (v) => setState(() => _gender = v),
-                icons: const [Icons.male, Icons.female],
-                labels: const ['男', '女'],
+                onSelect: (v) => setState(() {
+                  _gender = v;
+                  if (v == Gender.male) _sculptLine = SculptLine.david;
+                  if (v == Gender.female) _sculptLine = SculptLine.venus;
+                }),
+                icons: const [Icons.male, Icons.female, Icons.transgender],
+                labels: const ['男', '女', '其他'],
               ),
+              if (_gender == Gender.other) ...[
+                const SizedBox(height: AppSpace.md),
+                Text('雕塑线', style: _mutedStyle),
+                const SizedBox(height: AppSpace.sm),
+                _buildOptionGrid(
+                  options: SculptLine.values,
+                  selected: _sculptLine,
+                  onSelect: (v) => setState(() => _sculptLine = v),
+                  icons: const [Icons.female, Icons.male],
+                  labels: const ['维纳斯', '大卫'],
+                ),
+              ],
               const SizedBox(height: AppSpace.md),
               Row(
                 children: [
@@ -468,7 +486,16 @@ class _SetupPageState extends ConsumerState<SetupPage> {
               _buildSummaryItem('体重', '${_weight.toInt()} kg'),
               _buildSummaryItem('目标体重', '${_targetWeight.toInt()} kg'),
               _buildSummaryItem('年龄', '$_age 岁'),
-              _buildSummaryItem('性别', _gender == Gender.male ? '男' : '女'),
+              _buildSummaryItem(
+                '性别',
+                _gender == Gender.male
+                    ? '男'
+                    : _gender == Gender.other
+                        ? '其他'
+                        : '女',
+              ),
+              if (_gender == Gender.other)
+                _buildSummaryItem('雕塑线', _sculptLine.label),
               if (_waistCm != null && _waistCm! > 0)
                 _buildSummaryItem('腰围', '${_waistCm!.toStringAsFixed(0)} cm'),
               _buildSummaryItem('BMI', '${bmi.toStringAsFixed(1)} ($bodyType)'),
@@ -743,6 +770,7 @@ class _SetupPageState extends ConsumerState<SetupPage> {
         targetWeight: _targetWeight,
         age: _age,
         gender: _gender,
+        sculptLine: sculptLineFor(gender: _gender, chosen: _sculptLine),
         waistCm: _waistCm,
         sleepType: _sleepType,
         workType: _workType,

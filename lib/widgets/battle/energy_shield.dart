@@ -1,26 +1,14 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import '../../constants/app_constants.dart';
+import '../../theme/motion.dart';
 
-/// 能量护盾特效
-///
-/// 设计参�?Web �?EnergyShield.tsx�?/// - 护盾存在时，怪物周围环形光圈
-/// - 青色渐变 + 旋转动画
-/// - 护盾值越高，光圈越亮
-///  - 护盾破碎时爆炸特效（通过 [ShieldBreakBurst] 实现�
+/// 哑光粘土壳护盾：龟裂纹理，破碎时裂开掉屑，而不是科幻六边形。
 class EnergyShield extends StatefulWidget {
-  /// 护盾值（0..maxShield），决定光圈亮度
   final int value;
-
-  ///  最大护盾�
   final int maxShield;
-
-  ///  光圈直径（默�?280�
   final double size;
-
-  /// 是否正在破碎（触发爆炸特效）
   final bool isBreaking;
-
-  /// 破碎动画完成回调
   final VoidCallback? onBreakComplete;
 
   const EnergyShield({
@@ -38,65 +26,46 @@ class EnergyShield extends StatefulWidget {
 
 class _EnergyShieldState extends State<EnergyShield>
     with TickerProviderStateMixin {
-  // 8 个粒子的旋转
-  late final AnimationController _rotateController;
-
-  // 内圈脉动
   late final AnimationController _pulseController;
   late final Animation<double> _pulseAnimation;
-
-  // 外圈脉动
-  late final AnimationController _outerPulseController;
-  late final Animation<double> _outerPulseAnimation;
-
-  // 破碎爆炸
   late final AnimationController _breakController;
-  late final Animation<double> _breakScale;
-  late final Animation<double> _breakOpacity;
-
-  static const Color _shieldColor = Color(0xFF4ECDC4);
-  static const Color _shieldDeep = Color(0xFF218C7B);
+  late final Animation<double> _breakT;
 
   @override
   void initState() {
     super.initState();
 
-    _rotateController = AnimationController(
-      duration: const Duration(seconds: 20),
-      vsync: this,
-    )..repeat();
-
     _pulseController = AnimationController(
-      duration: const Duration(seconds: 3),
+      duration: const Duration(milliseconds: 3200),
       vsync: this,
-    )..repeat(reverse: true);
-    _pulseAnimation = Tween<double>(begin: 0.2, end: 0.4).animate(
-      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
-
-    _outerPulseController = AnimationController(
-      duration: const Duration(seconds: 4),
-      vsync: this,
-    )..repeat(reverse: true);
-    _outerPulseAnimation = Tween<double>(begin: 0.1, end: 0.25).animate(
-      CurvedAnimation(parent: _outerPulseController, curve: Curves.easeInOut),
+    _pulseAnimation = Tween<double>(begin: 0.15, end: 0.32).animate(
+      CurvedAnimation(parent: _pulseController, curve: AppMotion.clayBreathe),
     );
 
     _breakController = AnimationController(
       duration: const Duration(milliseconds: 700),
       vsync: this,
     );
-    _breakScale = Tween<double>(begin: 1, end: 2).animate(
-      CurvedAnimation(parent: _breakController, curve: Curves.easeOut),
-    );
-    _breakOpacity = Tween<double>(begin: 1, end: 0).animate(
-      CurvedAnimation(parent: _breakController, curve: Curves.easeOut),
+    _breakT = CurvedAnimation(
+      parent: _breakController,
+      curve: AppMotion.chipOut,
     );
 
     if (widget.isBreaking) {
-      _breakController.forward().then((_) {
-        widget.onBreakComplete?.call();
-      });
+      _breakController.forward().then((_) => widget.onBreakComplete?.call());
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final reduce = AppMotion.reduceMotion(context);
+    if (reduce) {
+      _pulseController.stop();
+      _pulseController.value = 0.5;
+    } else if (!_pulseController.isAnimating) {
+      _pulseController.repeat(reverse: true);
     }
   }
 
@@ -104,22 +73,24 @@ class _EnergyShieldState extends State<EnergyShield>
   void didUpdateWidget(covariant EnergyShield oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (!oldWidget.isBreaking && widget.isBreaking) {
-      _breakController.forward(from: 0).then((_) {
+      if (AppMotion.reduceMotion(context)) {
+        _breakController.value = 1;
         widget.onBreakComplete?.call();
-      });
+      } else {
+        _breakController.forward(from: 0).then((_) {
+          widget.onBreakComplete?.call();
+        });
+      }
     }
   }
 
   @override
   void dispose() {
-    _rotateController.dispose();
     _pulseController.dispose();
-    _outerPulseController.dispose();
     _breakController.dispose();
     super.dispose();
   }
 
-  /// 护盾密度�?..1）：决定光圈亮度与粒子数
   double get _density {
     if (widget.maxShield <= 0) return 0;
     return (widget.value / widget.maxShield).clamp(0.0, 1.0);
@@ -131,229 +102,111 @@ class _EnergyShieldState extends State<EnergyShield>
       return const SizedBox.shrink();
     }
 
+    final clay = Theme.of(context).colorScheme.secondary;
+    final crust = Color.lerp(AppColors.card, clay, 0.55)!;
+
     return SizedBox(
       width: widget.size,
       height: widget.size,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          // 外圈虚线（脉动）
-          _buildOuterDashedRing(),
-          // 内圈实线（脉�?+ 发光�?          _buildInnerSolidRing(),
-          //  8 个旋转粒�
-          if (!widget.isBreaking) _buildRotatingDots(),
-          // 破碎爆炸效果
-          if (widget.isBreaking) _buildBreakBurst(),
-        ],
+      child: AnimatedBuilder(
+        animation: Listenable.merge([_pulseAnimation, _breakController]),
+        builder: (context, _) {
+          return CustomPaint(
+            size: Size.square(widget.size),
+            painter: _ClayCrustPainter(
+              color: crust,
+              crack: clay,
+              density: _density,
+              pulse: _pulseAnimation.value,
+              breakT: widget.isBreaking ? _breakT.value : 0,
+            ),
+          );
+        },
       ),
-    );
-  }
-
-  /// 内圈实线圆环
-  Widget _buildInnerSolidRing() {
-    return AnimatedBuilder(
-      animation: _pulseAnimation,
-      builder: (context, _) {
-        return Opacity(
-          opacity: 0.3 + _density * 0.4,
-          child: Transform.scale(
-            scale: 1.0 + _pulseAnimation.value * 0.05,
-            child: Container(
-              width: widget.size * 0.88,
-              height: widget.size * 0.88,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: _shieldColor,
-                  width: 3,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: _shieldColor.withValues(alpha: 0.2 + _density * 0.3),
-                    blurRadius: 30,
-                  ),
-                  BoxShadow(
-                    color: _shieldColor.withValues(alpha: 0.1 + _density * 0.2),
-                    blurRadius: 30,
-                    spreadRadius: 8,
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  /// 外圈虚线圆环
-  Widget _buildOuterDashedRing() {
-    return AnimatedBuilder(
-      animation: _outerPulseAnimation,
-      builder: (context, _) {
-        return Opacity(
-          opacity: 0.2 + _density * 0.3,
-          child: Transform.scale(
-            scale: 1.05 + _outerPulseAnimation.value * 0.05,
-            child: CustomPaint(
-              size: Size(widget.size, widget.size),
-              painter: _DashedRingPainter(
-                color: _shieldDeep,
-                strokeWidth: 2,
-                dashCount: 32,
-                opacity: 0.6 + _density * 0.3,
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  ///  8 个旋转粒�
-  Widget _buildRotatingDots() {
-    return AnimatedBuilder(
-      animation: _rotateController,
-      builder: (context, _) {
-        return Transform.rotate(
-          angle: _rotateController.value * 2 * math.pi,
-          child: SizedBox(
-            width: widget.size,
-            height: widget.size,
-            child: Stack(
-              children: List.generate(8, _buildDot),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildDot(int index) {
-    final angle = (index * 45) * (math.pi / 180);
-    final radius = widget.size * 0.44;
-    final dx = math.cos(angle) * radius;
-    final dy = math.sin(angle) * radius;
-    return Transform.translate(
-      offset: Offset(dx, dy),
-      child: Container(
-        width: 10,
-        height: 10,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: _shieldColor,
-          boxShadow: [
-            BoxShadow(
-              color: _shieldColor,
-              blurRadius: 8,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  /// 护盾破碎爆炸效果
-  Widget _buildBreakBurst() {
-    return AnimatedBuilder(
-      animation: _breakController,
-      builder: (context, _) {
-        return Stack(
-          alignment: Alignment.center,
-          children: [
-            Opacity(
-              opacity: _breakOpacity.value,
-              child: Transform.scale(
-                scale: _breakScale.value,
-                child: Container(
-                  width: widget.size * 0.88,
-                  height: widget.size * 0.88,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: _shieldColor,
-                      width: 4,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            //  8 个发散碎�
-            ...List.generate(8, (i) {
-              final angle = (i * 45) * (math.pi / 180);
-              final distance = widget.size * 0.5 * _breakScale.value;
-              return Transform.translate(
-                offset: Offset(
-                  math.cos(angle) * distance,
-                  math.sin(angle) * distance,
-                ),
-                child: Opacity(
-                  opacity: _breakOpacity.value,
-                  child: Container(
-                    width: 8,
-                    height: 8,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: _shieldColor,
-                      boxShadow: [
-                        BoxShadow(
-                          color: _shieldColor,
-                          blurRadius: 10,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              );
-            }),
-          ],
-        );
-      },
     );
   }
 }
 
-///  虚线圆环绘制�
-class _DashedRingPainter extends CustomPainter {
+class _ClayCrustPainter extends CustomPainter {
   final Color color;
-  final double strokeWidth;
-  final int dashCount;
-  final double opacity;
+  final Color crack;
+  final double density;
+  final double pulse;
+  final double breakT;
 
-  _DashedRingPainter({
+  _ClayCrustPainter({
     required this.color,
-    required this.strokeWidth,
-    required this.dashCount,
-    required this.opacity,
+    required this.crack,
+    required this.density,
+    required this.pulse,
+    required this.breakT,
   });
 
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = size.width * 0.44;
+    final opacity = (0.28 + density * 0.45) * (1 - breakT * 0.85);
+
+    final ring = Paint()
       ..color = color.withValues(alpha: opacity)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = strokeWidth;
+      ..strokeWidth = 7 + pulse * 2
+      ..strokeCap = StrokeCap.round;
 
-    final radius = size.width / 2 - strokeWidth;
-    final center = Offset(size.width / 2, size.height / 2);
+    canvas.drawCircle(center, radius * (1 + pulse * 0.03), ring);
 
-    //  �?Path 绘制虚线�
-    final path = Path();
-    final circumference = 2 * math.pi * radius;
-    final dashLength = circumference / (dashCount * 2);
-    for (var i = 0; i < dashCount; i++) {
-      final startAngle = (i * 2) * dashLength / radius;
-      final endAngle = startAngle + dashLength / radius;
-      path.addArc(
-        Rect.fromCircle(center: center, radius: radius),
-        startAngle,
-        endAngle - startAngle,
-      );
+    final inner = Paint()
+      ..color = color.withValues(alpha: opacity * 0.35)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3;
+    canvas.drawCircle(center, radius * 0.86, inner);
+
+    final crackPaint = Paint()
+      ..color = crack.withValues(alpha: 0.45 + density * 0.25 + breakT * 0.3)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.4 + breakT * 1.6
+      ..strokeCap = StrokeCap.round;
+
+    for (var i = 0; i < 7; i++) {
+      final a0 = (i / 7) * math.pi * 2 + 0.2;
+      final a1 = a0 + 0.55;
+      final r0 = radius * (0.82 + (i % 2) * 0.08);
+      final r1 = radius * (1.02 + breakT * 0.12);
+      final p0 = center + Offset(math.cos(a0) * r0, math.sin(a0) * r0);
+      final p1 = center + Offset(math.cos(a1) * r1, math.sin(a1) * r1);
+      final mid = Offset.lerp(p0, p1, 0.5)! +
+          Offset(math.cos(a0 + 0.8) * 6, math.sin(a0 + 0.8) * 6);
+      final path = Path()
+        ..moveTo(p0.dx, p0.dy)
+        ..quadraticBezierTo(mid.dx, mid.dy, p1.dx, p1.dy);
+      canvas.drawPath(path, crackPaint);
     }
-    canvas.drawPath(path, paint);
+
+    if (breakT > 0) {
+      for (var i = 0; i < 8; i++) {
+        final angle = (i / 8) * math.pi * 2;
+        final dist = radius * (0.2 + breakT * 0.85);
+        final c = center + Offset(math.cos(angle) * dist, math.sin(angle) * dist);
+        canvas.save();
+        canvas.translate(c.dx, c.dy);
+        canvas.rotate(angle + breakT);
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromCenter(center: Offset.zero, width: 10, height: 6),
+            const Radius.circular(1.5),
+          ),
+          Paint()..color = color.withValues(alpha: 1 - breakT),
+        );
+        canvas.restore();
+      }
+    }
   }
 
   @override
-  bool shouldRepaint(covariant _DashedRingPainter oldDelegate) =>
-      oldDelegate.color != color || oldDelegate.opacity != opacity;
+  bool shouldRepaint(covariant _ClayCrustPainter oldDelegate) =>
+      oldDelegate.density != density ||
+      oldDelegate.pulse != pulse ||
+      oldDelegate.breakT != breakT ||
+      oldDelegate.color != color;
 }

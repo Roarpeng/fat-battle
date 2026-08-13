@@ -101,3 +101,5 @@ flutter:
     - assets/data/
     - assets/models/
     - assets/branding/app_icon_512.png
+    - assets/branding/sculpt/venus/
+    - assets/branding/sculpt/david/

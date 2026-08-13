@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../constants/app_constants.dart';
+import '../../theme/motion.dart';
 
 /// 战斗�?HP 条（带护盾条 + 受伤闪烁 + 阶段切换动画�?///
 ///  设计参�?Web �?HpBar.tsx�?/// - HP 主体（红色渐变，从右向左减少�?/// - 护盾条覆盖在 HP 条上方（青色，带发光动画�?/// - 受伤时水平抖�?+ 低血量闪�?/// - 数字显示 "当前HP / 最大HP" + 护盾�
@@ -166,36 +167,42 @@ class _BattleHpBarState extends State<BattleHpBar>
 
   /// HP 主体（红色渐�?+ 低血量闪烁）
   Widget _buildHpBar() {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final width = constraints.maxWidth * _hpPercent;
-        return AnimatedBuilder(
-          animation: _pulseAnimation,
-          builder: (context, child) {
-            // 低血量时调整亮度
-            final brightness = _isLowHp ? (0.7 + _pulseAnimation.value * 0.6) : 1.0;
-            return Container(
-              width: width,
-              height: widget.height,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.centerLeft,
-                  end: Alignment.centerRight,
-                  colors: [
-                    Color.lerp(widget.color, Colors.white, 0.3 * brightness)!,
-                    widget.color,
-                  ],
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: widget.color.withValues(alpha: 
-                      _isLowHp ? 0.5 * _pulseAnimation.value : 0.35,
+    return TweenAnimationBuilder<double>(
+      tween: Tween(end: _hpPercent),
+      duration: AppMotion.duration(context, AppMotion.hpFill),
+      curve: AppMotion.metalCool,
+      builder: (context, percent, _) {
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final width = constraints.maxWidth * percent;
+            return AnimatedBuilder(
+              animation: _pulseAnimation,
+              builder: (context, child) {
+                final brightness =
+                    _isLowHp ? (0.7 + _pulseAnimation.value * 0.6) : 1.0;
+                return Container(
+                  width: width,
+                  height: widget.height,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.centerLeft,
+                      end: Alignment.centerRight,
+                      colors: [
+                        Color.lerp(widget.color, Colors.white, 0.3 * brightness)!,
+                        widget.color,
+                      ],
                     ),
-                    blurRadius: _isLowHp ? 14 : 8,
+                    boxShadow: [
+                      BoxShadow(
+                        color: widget.color.withValues(
+                          alpha: _isLowHp ? 0.5 * _pulseAnimation.value : 0.35,
+                        ),
+                        blurRadius: _isLowHp ? 14 : 8,
+                      ),
+                    ],
                   ),
-                ],
-              ),
-              child: Container(),
+                );
+              },
             );
           },
         );

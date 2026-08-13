@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../constants/app_constants.dart';
+import '../theme/sculpt_progress.dart';
 
 /// 性别枚举
 ///
@@ -38,6 +39,7 @@ class UserState {
   final double bmi;
   final int age;
   final Gender gender;
+  final SculptLine sculptLine;
 
   // 体能与难度
   final Difficulty difficulty;
@@ -72,6 +74,7 @@ class UserState {
     this.bmi = 0,
     this.age = 25,
     this.gender = Gender.male,
+    this.sculptLine = SculptLine.david,
     this.difficulty = Difficulty.normal,
     this.fitnessLevel = FitnessLevel.medium,
     this.pushupCount = 10,
@@ -99,6 +102,7 @@ class UserState {
     double? bmi,
     int? age,
     Gender? gender,
+    SculptLine? sculptLine,
     Difficulty? difficulty,
     FitnessLevel? fitnessLevel,
     int? pushupCount,
@@ -125,6 +129,7 @@ class UserState {
       bmi: bmi ?? this.bmi,
       age: age ?? this.age,
       gender: gender ?? this.gender,
+      sculptLine: sculptLine ?? this.sculptLine,
       difficulty: difficulty ?? this.difficulty,
       fitnessLevel: fitnessLevel ?? this.fitnessLevel,
       pushupCount: pushupCount ?? this.pushupCount,
@@ -164,6 +169,7 @@ class UserNotifier extends StateNotifier<UserState> {
     double? targetWeight,
     int? age,
     Gender? gender,
+    SculptLine? sculptLine,
     Difficulty? difficulty,
     FitnessLevel? fitnessLevel,
     int? pushupCount,
@@ -182,6 +188,7 @@ class UserNotifier extends StateNotifier<UserState> {
       targetWeight: targetWeight,
       age: age,
       gender: gender,
+      sculptLine: sculptLine,
       difficulty: difficulty,
       fitnessLevel: fitnessLevel,
       pushupCount: pushupCount,

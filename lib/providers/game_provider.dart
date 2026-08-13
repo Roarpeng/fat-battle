@@ -11,6 +11,8 @@ import '../services/notification_service.dart';
 import '../services/progress_sync_service.dart';
 import '../services/voice_service.dart';
 import '../services/coach_feel.dart';
+import '../services/sculpt_icon_channel.dart';
+import '../theme/sculpt_progress.dart';
 
 /// 游戏状态Provider
 ///
@@ -95,6 +97,7 @@ class GameStateNotifier extends StateNotifier<GameState> {
       final loaded = GameState.fromJson(json);
       state = loaded;
       debugPrint('[塑身工坊] ✅ 存档加载成功: 第${loaded.day}天, ${loaded.kills}杀, ${loaded.streak}连, 🪙${loaded.coins}');
+      _syncSculptLauncher();
       _checkDailyReset();
     } catch (e, stack) {
       debugPrint('[塑身工坊] ❌ 存档解析失败: $e');
@@ -109,6 +112,7 @@ class GameStateNotifier extends StateNotifier<GameState> {
     if (prefs == null) return;
 
     await prefs!.setString('fat_battle_game', jsonEncode(state.toJson()));
+    await _writeSculptPrefs();
     unawaited(ProgressSyncService.instance.onLocalSaved(state.toJson()));
   }
 
@@ -119,6 +123,7 @@ class GameStateNotifier extends StateNotifier<GameState> {
     if (prefs == null) return;
     try {
       prefs!.setString('fat_battle_game', jsonEncode(state.toJson()));
+      _writeSculptPrefsSync();
       unawaited(ProgressSyncService.instance.onLocalSaved(state.toJson()));
     } catch (e) {
       debugPrint('[塑身工坊] ❌ 同步保存失败: $e');
@@ -130,6 +135,8 @@ class GameStateNotifier extends StateNotifier<GameState> {
     state = snapshot;
     if (prefs == null) return;
     await prefs!.setString('fat_battle_game', jsonEncode(state.toJson()));
+    await _writeSculptPrefs();
+    _syncSculptLauncher();
   }
 
   /// 本地无存档时拉云端（重装恢复；未登录 / 未配置后端为 no-op）
@@ -140,6 +147,7 @@ class GameStateNotifier extends StateNotifier<GameState> {
     if (!snapshotLooksLikeGame(json)) return;
     state = GameState.fromJson(json);
     debugPrint('[塑身工坊] ☁️ 已从云端恢复存档: 第${state.day}天');
+    _syncSculptLauncher();
   }
   
   /// 检查是否需要每日重置
@@ -211,6 +219,7 @@ class GameStateNotifier extends StateNotifier<GameState> {
 
       // 生成新怪物
       _spawnMonster();
+      _refreshSculptMaintenance();
       // 立即同步保存（不依赖 await，确保写入完成）
       _saveGameSync();
     }
@@ -250,9 +259,23 @@ class GameStateNotifier extends StateNotifier<GameState> {
     );
     
     final monster = GameAlgorithm.generateMonster(0, user.difficulty, fitnessLevel);
-    
+    final today = DateTime.now().toDateString();
+    final line = sculptLineFor(gender: user.gender, chosen: user.sculptLine);
+    final onboard = sculptOnboardingFromBody(
+      heightCm: user.height,
+      weightKg: user.weight,
+      targetWeightKg: user.targetWeight,
+      weeklyFreq: user.weeklyFreq,
+      pushupCount: user.pushupCount,
+      runDuration: user.runDuration,
+      workType: user.workType,
+      bmi: bmi,
+    );
+    final startStage = onboard.maintenance ? 5 : onboard.floor;
+    final startProgress = onboard.floor / 4.0;
+
     state = GameState(
-      user: newUser,
+      user: newUser.copyWith(sculptLine: line),
       monster: monster,
       playerMaxHp: playerMaxHp,
       playerHp: playerMaxHp,
@@ -261,26 +284,138 @@ class GameStateNotifier extends StateNotifier<GameState> {
       todayCalExercise: 0,
       todayDamage: 0,
       day: 1,
-      lastDate: DateTime.now().toDateString(),
+      lastDate: today,
       meals: {},
       exercises: [],
       achievements: [],
       weightRecords: [WeightRecord(
-        date: DateTime.now().toDateString(),
+        date: today,
         weight: user.weight,
       )],
       waistRecords: user.waistCm != null
           ? [
               WaistRecord(
-                date: DateTime.now().toDateString(),
+                date: today,
                 waistCm: user.waistCm!,
               ),
             ]
           : [],
       weekData: [],
+      sculptProgress: startProgress,
+      sculptSettledCount: 0,
+      sculptQualitySum: 0,
+      sculptStage: startStage,
+      sculptFloor: onboard.floor,
+      sculptMaintenance: onboard.maintenance,
+      sculptLastSettledDate: onboard.maintenance ? today : '',
+      sculptOvereatSinceSettle: 0,
     );
     
     await _saveGame();
+    _syncSculptLauncher();
+  }
+
+  Future<void> _writeSculptPrefs() async {
+    if (prefs == null) return;
+    await prefs!.setDouble('sculpt_progress', state.sculptProgress);
+    await prefs!.setInt('sculpt_settled_count', state.sculptSettledCount);
+    await prefs!.setInt('sculpt_stage', state.sculptStage);
+    await prefs!.setString('sculpt_line', state.user.sculptLine.name);
+  }
+
+  void _writeSculptPrefsSync() {
+    if (prefs == null) return;
+    prefs!.setDouble('sculpt_progress', state.sculptProgress);
+    prefs!.setInt('sculpt_settled_count', state.sculptSettledCount);
+    prefs!.setInt('sculpt_stage', state.sculptStage);
+    prefs!.setString('sculpt_line', state.user.sculptLine.name);
+  }
+
+  void _syncSculptLauncher() {
+    unawaited(
+      SculptIconChannel.setSculptIcon(
+        stage: state.sculptStage,
+        line: state.user.sculptLine,
+      ),
+    );
+  }
+
+  void _refreshSculptMaintenance({bool persist = false}) {
+    if (!state.sculptMaintenance) return;
+    final today = DateTime.now().toDateString();
+    final days = sculptDaysSince(
+      lastSettledDate: state.sculptLastSettledDate.isEmpty
+          ? today
+          : state.sculptLastSettledDate,
+      today: today,
+    );
+    final next = evaluateSculptMaintenanceStage(
+      daysSinceSettlement: days,
+      overeatSinceSettle: state.sculptOvereatSinceSettle,
+      weightTrendingUp: sculptWeightTrendingUp(
+        state.weightRecords.map((w) => (weight: w.weight)).toList(),
+      ),
+    );
+    if (next == state.sculptStage) return;
+    state = state.copyWith(
+      sculptStage: next < 4 ? 4 : next,
+      sculptProgress: 1.0,
+    );
+    if (persist) _saveGameSync();
+    _syncSculptLauncher();
+  }
+
+  /// 教练课结算推进雕刻进度；只升不降。维护期回到保养，不掉回粘土。
+  Future<void> recordSculptSettlement({
+    String? grade,
+    int? qualityScore,
+  }) async {
+    final score = qualityScore ?? qualityScoreForGrade(grade);
+    final count = state.sculptSettledCount + 1;
+    final sum = state.sculptQualitySum + score;
+    final avg = sum / count;
+    final today = DateTime.now().toDateString();
+
+    if (state.sculptMaintenance || state.sculptFloor >= 4) {
+      state = state.copyWith(
+        sculptSettledCount: count,
+        sculptQualitySum: sum,
+        sculptProgress: 1.0,
+        sculptStage: 5,
+        sculptMaintenance: true,
+        sculptLastSettledDate: today,
+        sculptOvereatSinceSettle: 0,
+      );
+      await _saveGame();
+      _syncSculptLauncher();
+      return;
+    }
+
+    final computed = sculptProgressFromSettlements(
+      settledCount: count,
+      averageQuality: avg,
+      floor: state.sculptFloor,
+    );
+    final progress =
+        computed < state.sculptProgress ? state.sculptProgress : computed;
+    var stage = sculptStageFromProgress(progress);
+    if (stage < state.sculptFloor) stage = state.sculptFloor;
+    var maintenance = false;
+    if (stage >= 4) {
+      maintenance = true;
+      stage = 5;
+    }
+    state = state.copyWith(
+      sculptSettledCount: count,
+      sculptQualitySum: sum,
+      sculptProgress: maintenance ? 1.0 : progress,
+      sculptStage: stage,
+      sculptMaintenance: maintenance,
+      sculptLastSettledDate: today,
+      sculptOvereatSinceSettle: 0,
+    );
+    await _saveGame();
+    _syncSculptLauncher();
   }
   
   /// 添加食物记录
@@ -545,6 +680,9 @@ class GameStateNotifier extends StateNotifier<GameState> {
     );
     
     await _checkAchievements();
+    if (state.sculptMaintenance) {
+      _refreshSculptMaintenance();
+    }
     await _saveGame();
   }
 
@@ -685,7 +823,20 @@ class GameStateNotifier extends StateNotifier<GameState> {
       pendingAttack: attack,
       clearPendingAttack: attack == null,
     );
+    if (attack != null && !attack.isOvereat) {
+      await recordSculptSettlement(grade: attack.grade);
+      return;
+    }
+    if (attack != null && attack.isOvereat) {
+      state = state.copyWith(
+        sculptOvereatSinceSettle: state.sculptOvereatSinceSettle + 1,
+      );
+      if (state.sculptMaintenance) {
+        _refreshSculptMaintenance();
+      }
+    }
     await _saveGame();
+    if (state.sculptMaintenance) _syncSculptLauncher();
   }
 
   /// 回城播放 VFX 后扣血。伤害已由教练结算算好。
@@ -878,7 +1029,12 @@ class GameStateNotifier extends StateNotifier<GameState> {
     state = GameState();
     if (prefs != null) {
       await prefs!.remove('fat_battle_game');
+      await prefs!.remove('sculpt_progress');
+      await prefs!.remove('sculpt_settled_count');
+      await prefs!.remove('sculpt_stage');
+      await prefs!.remove('sculpt_line');
     }
+    _syncSculptLauncher();
   }
 }
 
@@ -937,6 +1093,30 @@ class GameState {
   /// 课后手感训练量档位，-2～+2。
   final int coachFeelNudge;
 
+  /// 雕刻进度 0..1（只升不降，重置/新建角色除外）。对应阶段 0–4。
+  final double sculptProgress;
+
+  /// 已结算的教练课次数。
+  final int sculptSettledCount;
+
+  /// 结算质量分累计（用于 30+ 成品门槛）。
+  final int sculptQualitySum;
+
+  /// 展示/启动器阶段 0–7。
+  final int sculptStage;
+
+  /// 建档起点 0–4，雕刻期不掉到此之下。
+  final int sculptFloor;
+
+  /// 已达杰作，只在 4/5/6/7 间维护。
+  final bool sculptMaintenance;
+
+  /// 最近一次有效结算日期 `yyyy-MM-dd`。
+  final String sculptLastSettledDate;
+
+  /// 自上次结算以来的暴食次数（≥2 触发回潮）。
+  final int sculptOvereatSinceSettle;
+
   const GameState({
     this.user = const User(),
     this.monster = const Monster(),
@@ -978,6 +1158,14 @@ class GameState {
     this.extremeDeficitStreak = 0,
     this.pendingAttack,
     this.coachFeelNudge = 0,
+    this.sculptProgress = 0,
+    this.sculptSettledCount = 0,
+    this.sculptQualitySum = 0,
+    this.sculptStage = 0,
+    this.sculptFloor = 0,
+    this.sculptMaintenance = false,
+    this.sculptLastSettledDate = '',
+    this.sculptOvereatSinceSettle = 0,
   });
   
   GameState copyWith({
@@ -1022,6 +1210,14 @@ class GameState {
     PendingAttack? pendingAttack,
     bool clearPendingAttack = false,
     int? coachFeelNudge,
+    double? sculptProgress,
+    int? sculptSettledCount,
+    int? sculptQualitySum,
+    int? sculptStage,
+    int? sculptFloor,
+    bool? sculptMaintenance,
+    String? sculptLastSettledDate,
+    int? sculptOvereatSinceSettle,
   }) {
     return GameState(
       user: user ?? this.user,
@@ -1066,6 +1262,16 @@ class GameState {
       pendingAttack:
           clearPendingAttack ? null : (pendingAttack ?? this.pendingAttack),
       coachFeelNudge: coachFeelNudge ?? this.coachFeelNudge,
+      sculptProgress: sculptProgress ?? this.sculptProgress,
+      sculptSettledCount: sculptSettledCount ?? this.sculptSettledCount,
+      sculptQualitySum: sculptQualitySum ?? this.sculptQualitySum,
+      sculptStage: sculptStage ?? this.sculptStage,
+      sculptFloor: sculptFloor ?? this.sculptFloor,
+      sculptMaintenance: sculptMaintenance ?? this.sculptMaintenance,
+      sculptLastSettledDate:
+          sculptLastSettledDate ?? this.sculptLastSettledDate,
+      sculptOvereatSinceSettle:
+          sculptOvereatSinceSettle ?? this.sculptOvereatSinceSettle,
     );
   }
   
@@ -1147,6 +1353,14 @@ class GameState {
       'extremeDeficitStreak': extremeDeficitStreak,
       'pendingAttack': pendingAttack?.toJson(),
       'coachFeelNudge': coachFeelNudge,
+      'sculptProgress': sculptProgress,
+      'sculptSettledCount': sculptSettledCount,
+      'sculptQualitySum': sculptQualitySum,
+      'sculptStage': sculptStage,
+      'sculptFloor': sculptFloor,
+      'sculptMaintenance': sculptMaintenance,
+      'sculptLastSettledDate': sculptLastSettledDate,
+      'sculptOvereatSinceSettle': sculptOvereatSinceSettle,
     };
   }
   
@@ -1248,6 +1462,16 @@ class GameState {
       coachFeelNudge: (json['coachFeelNudge'] ?? 0) is int
           ? (json['coachFeelNudge'] ?? 0) as int
           : 0,
+      sculptProgress: (json['sculptProgress'] as num?)?.toDouble().clamp(0.0, 1.0) ?? 0,
+      sculptSettledCount: (json['sculptSettledCount'] as num?)?.toInt() ?? 0,
+      sculptQualitySum: (json['sculptQualitySum'] as num?)?.toInt() ?? 0,
+      sculptStage: _sculptStageFromJson(json),
+      sculptFloor: (json['sculptFloor'] as num?)?.toInt().clamp(0, 4) ?? 0,
+      sculptMaintenance: json['sculptMaintenance'] as bool? ??
+          _sculptStageFromJson(json) >= 4,
+      sculptLastSettledDate: json['sculptLastSettledDate'] as String? ?? '',
+      sculptOvereatSinceSettle:
+          (json['sculptOvereatSinceSettle'] as num?)?.toInt() ?? 0,
     );
   }
   
@@ -1257,6 +1481,13 @@ class GameState {
 
   bool get inExtremeDeficitCrisis =>
       core.isExtremeDeficitCrisis(extremeDeficitStreak);
+}
+
+int _sculptStageFromJson(Map<String, dynamic> json) {
+  final raw = (json['sculptStage'] as num?)?.toInt();
+  if (raw != null) return raw.clamp(0, 7);
+  final progress = (json['sculptProgress'] as num?)?.toDouble() ?? 0;
+  return sculptStageFromProgress(progress);
 }
 
 core.ExerciseCategory? _parseAffinity(dynamic raw) {
