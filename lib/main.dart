@@ -29,7 +29,12 @@ class BodyStudioApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final gameState = ref.watch(gameStateProvider);
+    final visualTheme = ref.watch(
+      gameStateProvider.select((s) => s.visualTheme),
+    );
+    final hasGame = ref.watch(
+      gameStateProvider.select((s) => s.hasGame),
+    );
     final prefs = ref.watch(sharedPreferencesProvider);
     final isLoggedIn = prefs?.getBool('is_logged_in') ?? false;
 
@@ -40,10 +45,10 @@ class BodyStudioApp extends ConsumerWidget {
     return MaterialApp(
       title: '塑身工坊',
       debugShowCheckedModeBanner: false,
-      theme: buildForgeTheme(),
+      theme: buildAppTheme(visualTheme),
       home: !isLoggedIn
           ? const AuthPage()
-          : gameState.hasGame
+          : hasGame
               ? const MainPage()
               : const SetupPage(),
     );

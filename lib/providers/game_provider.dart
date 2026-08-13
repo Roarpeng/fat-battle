@@ -11,6 +11,7 @@ import '../services/notification_service.dart';
 import '../services/progress_sync_service.dart';
 import '../services/voice_service.dart';
 import '../services/coach_feel.dart';
+import '../theme/app_visual_theme.dart';
 
 /// 游戏状态Provider
 ///
@@ -80,7 +81,13 @@ class GameStateNotifier extends StateNotifier<GameState> {
     }
 
     final saved = this.prefs!.getString('fat_battle_game');
+    final storedTheme = AppVisualTheme.fromId(
+      prefs!.getString(kAppVisualThemePrefKey),
+    );
     if (saved == null || saved.isEmpty) {
+      if (storedTheme != AppVisualTheme.forge) {
+        state = state.copyWith(visualTheme: storedTheme);
+      }
       debugPrint('[塑身工坊] 📭 未找到存档，尝试云端恢复');
       unawaited(_restoreFromCloudIfEmpty());
       return;
@@ -92,7 +99,11 @@ class GameStateNotifier extends StateNotifier<GameState> {
         debugPrint('[塑身工坊] 📭 存档为空 JSON，使用默认状态');
         return;
       }
-      final loaded = GameState.fromJson(json);
+      var loaded = GameState.fromJson(json);
+      if (json['visualTheme'] == null &&
+          prefs!.getString(kAppVisualThemePrefKey) != null) {
+        loaded = loaded.copyWith(visualTheme: storedTheme);
+      }
       state = loaded;
       debugPrint('[塑身工坊] ✅ 存档加载成功: 第${loaded.day}天, ${loaded.kills}杀, ${loaded.streak}连, 🪙${loaded.coins}');
       _checkDailyReset();
@@ -109,6 +120,7 @@ class GameStateNotifier extends StateNotifier<GameState> {
     if (prefs == null) return;
 
     await prefs!.setString('fat_battle_game', jsonEncode(state.toJson()));
+    await prefs!.setString(kAppVisualThemePrefKey, state.visualTheme.name);
     unawaited(ProgressSyncService.instance.onLocalSaved(state.toJson()));
   }
 
@@ -119,6 +131,7 @@ class GameStateNotifier extends StateNotifier<GameState> {
     if (prefs == null) return;
     try {
       prefs!.setString('fat_battle_game', jsonEncode(state.toJson()));
+      prefs!.setString(kAppVisualThemePrefKey, state.visualTheme.name);
       unawaited(ProgressSyncService.instance.onLocalSaved(state.toJson()));
     } catch (e) {
       debugPrint('[塑身工坊] ❌ 同步保存失败: $e');
@@ -130,6 +143,7 @@ class GameStateNotifier extends StateNotifier<GameState> {
     state = snapshot;
     if (prefs == null) return;
     await prefs!.setString('fat_battle_game', jsonEncode(state.toJson()));
+    await prefs!.setString(kAppVisualThemePrefKey, state.visualTheme.name);
   }
 
   /// 本地无存档时拉云端（重装恢复；未登录 / 未配置后端为 no-op）
@@ -138,7 +152,11 @@ class GameStateNotifier extends StateNotifier<GameState> {
     final json = await ProgressSyncService.instance.pullIfLocalEmpty();
     if (json == null || state.hasGame) return;
     if (!snapshotLooksLikeGame(json)) return;
+    final keepTheme = state.visualTheme;
     state = GameState.fromJson(json);
+    if (json['visualTheme'] == null) {
+      state = state.copyWith(visualTheme: keepTheme);
+    }
     debugPrint('[塑身工坊] ☁️ 已从云端恢复存档: 第${state.day}天');
   }
   
@@ -278,6 +296,7 @@ class GameStateNotifier extends StateNotifier<GameState> {
             ]
           : [],
       weekData: [],
+      visualTheme: state.visualTheme,
     );
     
     await _saveGame();
@@ -614,6 +633,12 @@ class GameStateNotifier extends StateNotifier<GameState> {
     await _saveGame();
   }
 
+  /// 切换工坊视觉风格（立即写入存档，重启后仍在）。
+  Future<void> updateVisualTheme(AppVisualTheme theme) async {
+    state = state.copyWith(visualTheme: theme);
+    await _saveGame();
+  }
+
   /// 更新 PIPL 本地同意开关（云同步 / 食物视觉 / 摄像头姿态）
   Future<void> updatePrivacyFlags({
     bool? cloudSyncEnabled,
@@ -875,9 +900,11 @@ class GameStateNotifier extends StateNotifier<GameState> {
 
   /// 重置游戏
   Future<void> resetGame() async {
-    state = GameState();
+    final theme = state.visualTheme;
+    state = GameState(visualTheme: theme);
     if (prefs != null) {
       await prefs!.remove('fat_battle_game');
+      await prefs!.setString(kAppVisualThemePrefKey, theme.name);
     }
   }
 }
@@ -937,6 +964,9 @@ class GameState {
   /// 课后手感训练量档位，-2～+2。
   final int coachFeelNudge;
 
+  /// 工坊视觉风格（熔炉 / 铅笔手账 / 墨稿）。
+  final AppVisualTheme visualTheme;
+
   const GameState({
     this.user = const User(),
     this.monster = const Monster(),
@@ -978,6 +1008,7 @@ class GameState {
     this.extremeDeficitStreak = 0,
     this.pendingAttack,
     this.coachFeelNudge = 0,
+    this.visualTheme = AppVisualTheme.forge,
   });
   
   GameState copyWith({
@@ -1022,6 +1053,7 @@ class GameState {
     PendingAttack? pendingAttack,
     bool clearPendingAttack = false,
     int? coachFeelNudge,
+    AppVisualTheme? visualTheme,
   }) {
     return GameState(
       user: user ?? this.user,
@@ -1066,6 +1098,7 @@ class GameState {
       pendingAttack:
           clearPendingAttack ? null : (pendingAttack ?? this.pendingAttack),
       coachFeelNudge: coachFeelNudge ?? this.coachFeelNudge,
+      visualTheme: visualTheme ?? this.visualTheme,
     );
   }
   
@@ -1147,6 +1180,7 @@ class GameState {
       'extremeDeficitStreak': extremeDeficitStreak,
       'pendingAttack': pendingAttack?.toJson(),
       'coachFeelNudge': coachFeelNudge,
+      'visualTheme': visualTheme.name,
     };
   }
   
@@ -1248,6 +1282,7 @@ class GameState {
       coachFeelNudge: (json['coachFeelNudge'] ?? 0) is int
           ? (json['coachFeelNudge'] ?? 0) as int
           : 0,
+      visualTheme: AppVisualTheme.fromId(json['visualTheme'] as String?),
     );
   }
   

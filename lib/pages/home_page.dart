@@ -39,6 +39,8 @@ class _HomePageState extends ConsumerState<HomePage> {
   String? _floatLabel;
   Color _floatColor = AppColors.ember;
 
+  ForgePalette get _c => ForgeColors.of(context);
+
   @override
   Widget build(BuildContext context) {
     final gameState = ref.watch(gameStateProvider);
@@ -61,12 +63,12 @@ class _HomePageState extends ConsumerState<HomePage> {
                 children: [
                   Text(
                     '还没有角色档案',
-                    style: AppFonts.display(fontSize: 22, color: AppColors.text),
+                    style: AppFonts.displayOf(context, fontSize: 22),
                   ),
                   const SizedBox(height: AppSpace.sm),
                   Text(
                     '创建角色后即可开始今天的战斗',
-                    style: AppFonts.body(fontSize: 13, color: AppColors.text2),
+                    style: AppFonts.bodyOf(context, fontSize: 13, color: _c.text2),
                   ),
                   const SizedBox(height: AppSpace.xl),
                   ElevatedButton.icon(
@@ -107,7 +109,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                     textAlign: TextAlign.center,
                     style: AppFonts.body(
                       fontSize: 12,
-                      color: AppColors.copper,
+                      color: _c.copper,
                     ),
                   ),
                 ),
@@ -117,10 +119,10 @@ class _HomePageState extends ConsumerState<HomePage> {
                     const Spacer(flex: 2),
                     Text(
                       gameState.monster.name,
-                      style: AppFonts.display(
+                      style: AppFonts.displayOf(
+                        context,
                         fontSize: 30,
                         fontWeight: FontWeight.w600,
-                        color: AppColors.text,
                         height: 1.08,
                       ),
                     ),
@@ -130,9 +132,10 @@ class _HomePageState extends ConsumerState<HomePage> {
                       child: Text(
                         _statusLine(gameState),
                         textAlign: TextAlign.center,
-                        style: AppFonts.body(
+                        style: AppFonts.bodyOf(
+                          context,
                           fontSize: 13,
-                          color: AppColors.text2,
+                          color: _c.text2,
                           height: 1.4,
                         ),
                       ),
@@ -187,9 +190,9 @@ class _HomePageState extends ConsumerState<HomePage> {
                       child: HpBar(
                         current: gameState.monster.hp,
                         max: gameState.monster.maxHp,
-                        color: AppColors.ember,
+                        color: _c.ember,
                         shield: gameState.monster.shield,
-                        shieldColor: AppColors.shield,
+                        shieldColor: _c.shield,
                         height: 12,
                       ),
                     ),
@@ -201,7 +204,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                 _banner(
                   title: '今日雕琢完成',
                   subtitle: '炉火温着，明日再战',
-                  color: AppColors.green,
+                  color: _c.green,
                   actionLabel: '再来一次',
                   onAction: () => notifier.startNewChallenge(),
                 ),
@@ -209,7 +212,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                 _banner(
                   title: '今日精力耗尽',
                   subtitle: '好好休养，明天满血归来',
-                  color: AppColors.shield,
+                  color: _c.shield,
                 ),
               const SizedBox(height: AppSpace.sm),
               Row(
@@ -247,17 +250,17 @@ class _HomePageState extends ConsumerState<HomePage> {
       final tag = prev.pendingAttack?.isCounter == true
           ? ' 克制'
           : (prev.pendingAttack?.isResisted == true ? ' 抵抗' : '');
-      _showFloat('-$dHp$tag', AppColors.ember);
+      _showFloat('-$dHp$tag', _c.ember);
       setState(() => _hitFlash = true);
       Future.delayed(const Duration(milliseconds: 160), () {
         if (mounted) setState(() => _hitFlash = false);
       });
     } else if (dShield > 0) {
       HapticFeedback.lightImpact();
-      _showFloat('+$dShield 盾', AppColors.shield);
+      _showFloat('+$dShield 盾', _c.shield);
     } else if (dShield < 0 && dHp <= 0) {
       HapticFeedback.mediumImpact();
-      _showFloat('${dShield.abs()} 破盾', AppColors.copper);
+      _showFloat('${dShield.abs()} 破盾', _c.copper);
     }
   }
 
@@ -329,7 +332,7 @@ class _HomePageState extends ConsumerState<HomePage> {
           '第 ${gs.day} 天',
           style: AppFonts.body(
             fontSize: 13,
-            color: AppColors.text2,
+            color: _c.text2,
             fontWeight: FontWeight.w600,
           ),
         ),
@@ -342,10 +345,10 @@ class _HomePageState extends ConsumerState<HomePage> {
           borderRadius: BorderRadius.circular(AppRadii.pill),
           child: Row(
             children: [
-              const Icon(
+              Icon(
                 Icons.monetization_on_rounded,
                 size: 14,
-                color: AppColors.copper,
+                color: _c.copper,
               ),
               const SizedBox(width: AppSpace.xs),
               Text(
@@ -353,7 +356,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                 style: AppFonts.body(
                   fontSize: 13,
                   fontWeight: FontWeight.w700,
-                  color: AppColors.copper,
+                  color: _c.copper,
                 ),
               ),
             ],
@@ -366,9 +369,9 @@ class _HomePageState extends ConsumerState<HomePage> {
               forgePageRoute(builder: (_) => const CoachPage()),
             );
           },
-          child: const Padding(
-            padding: EdgeInsets.all(AppSpace.sm),
-            child: Icon(Icons.chat_bubble_outline_rounded, color: AppColors.copper, size: 22),
+          child: Padding(
+            padding: const EdgeInsets.all(AppSpace.sm),
+            child: Icon(Icons.chat_bubble_outline_rounded, color: _c.copper, size: 22),
           ),
         ),
         ForgePressable(
@@ -377,9 +380,9 @@ class _HomePageState extends ConsumerState<HomePage> {
               forgePageRoute(builder: (_) => const SettingsPage()),
             );
           },
-          child: const Padding(
-            padding: EdgeInsets.all(AppSpace.sm),
-            child: Icon(Icons.tune_rounded, color: AppColors.text2, size: 22),
+          child: Padding(
+            padding: const EdgeInsets.all(AppSpace.sm),
+            child: Icon(Icons.tune_rounded, color: _c.text2, size: 22),
           ),
         ),
       ],
@@ -421,7 +424,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                 ),
                 Text(
                   subtitle,
-                  style: AppFonts.body(fontSize: 12, color: AppColors.text2),
+                  style: AppFonts.bodyOf(context, fontSize: 12, color: _c.text2),
                 ),
               ],
             ),
@@ -541,7 +544,7 @@ class _HubConnectionSheetState extends ConsumerState<HubConnectionSheet> {
           ),
           const SizedBox(height: AppSpace.md),
           ForgeSurface(
-            color: AppColors.bg,
+            color: ForgeColors.of(context).bg,
             borderRadius: AppRadii.smAll,
             padding: AppSpace.card,
             child: SizedBox(
@@ -551,7 +554,11 @@ class _HubConnectionSheetState extends ConsumerState<HubConnectionSheet> {
                 reverse: true,
                 child: Text(
                   _logs.isEmpty ? '等待操作...' : _logs.join('\n'),
-                  style: AppFonts.body(fontSize: 12, color: AppColors.text2),
+                  style: AppFonts.bodyOf(
+                    context,
+                    fontSize: 12,
+                    color: ForgeColors.of(context).text2,
+                  ),
                 ),
               ),
             ),
