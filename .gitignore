@@ -58,8 +58,12 @@ assets/models/*.tflite
 # TRAE temporary files
 .trae-html-share-packages/
 
-# Environment variables
+# Environment variables / secrets (never commit)
 .env
+.env.*
+!.env.example
+!**/.env.example
+backend/.env
 web/.env
 
 # Screenshots

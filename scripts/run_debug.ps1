@@ -19,8 +19,10 @@ Set-Location -Path "$PSScriptRoot\.."
 Write-Host "`n[1/2] 已连接设备:" -ForegroundColor Yellow
 flutter devices
 
-# 运行应用
+# 运行应用（第三方密钥从环境变量注入，禁止把密钥写进仓库）
 Write-Host "`n[2/2] 启动 debug 模式..." -ForegroundColor Yellow
-flutter run --debug `
-    --dart-define=BAIDU_API_KEY=tmZ8dTmfodEts6Ufb6q2QURb `
-    --dart-define=BAIDU_SECRET_KEY=UlGJoVVmIRJYIt9aOAXml8nnJhQxJpAl
+$defines = @()
+if ($env:API_BASE_URL) { $defines += "--dart-define=API_BASE_URL=$($env:API_BASE_URL)" }
+if ($env:BAIDU_API_KEY) { $defines += "--dart-define=BAIDU_API_KEY=$($env:BAIDU_API_KEY)" }
+if ($env:BAIDU_SECRET_KEY) { $defines += "--dart-define=BAIDU_SECRET_KEY=$($env:BAIDU_SECRET_KEY)" }
+flutter run --debug @defines

@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import '../models/game_models.dart';
 import '../constants/app_constants.dart';
 import '../core/barrel.dart' as core;
+import 'coach_lesson.dart';
 
 /// 游戏核心算法
 ///
@@ -30,17 +31,52 @@ class GameAlgorithm {
     return 'red';
   }
   
-  /// 计算目标卡路里
-  static int calcTargetCal(double weightKg, Difficulty difficulty) {
-    final base = weightKg * 24;
-    switch (difficulty) {
-      case Difficulty.easy:
-        return (base + 200).toInt();
-      case Difficulty.hard:
-        return (base - 400).toInt();
-      default:
-        return base.toInt();
-    }
+  /// 计算目标卡路里：BMR/TDEE − 受控赤字，且永不低于热量下限。
+  static int calcTargetCal(
+    double weightKg,
+    Difficulty difficulty, {
+    double heightCm = 170,
+    int age = 30,
+    core.Gender gender = core.Gender.female,
+    WorkType workType = WorkType.sedentary,
+  }) {
+    return calcTargetCaloriesResult(
+      weightKg: weightKg,
+      heightCm: heightCm,
+      age: age,
+      gender: gender,
+      workType: workType,
+      difficulty: difficulty,
+    ).targetCalories;
+  }
+
+  /// 完整目标卡路里结果（含下限与实际赤字）。
+  static core.TargetCaloriesResult calcTargetCaloriesResult({
+    required double weightKg,
+    required double heightCm,
+    required int age,
+    required core.Gender gender,
+    required WorkType workType,
+    required Difficulty difficulty,
+  }) {
+    final activity = switch (workType) {
+      WorkType.sedentary => core.ActivityLevel.sedentary,
+      WorkType.sometimes => core.ActivityLevel.light,
+      WorkType.active => core.ActivityLevel.moderate,
+    };
+    final goal = switch (difficulty) {
+      Difficulty.easy => core.CaloriesGoal.mildLoss,
+      Difficulty.normal => core.CaloriesGoal.loss,
+      Difficulty.hard => core.CaloriesGoal.extremeLoss,
+    };
+    return core.calculateTargetCalories(
+      gender,
+      weightKg,
+      heightCm,
+      age,
+      activity,
+      goal,
+    );
   }
   
   /// 计算怪物血量
@@ -118,6 +154,7 @@ class GameAlgorithm {
   
   /// 锻炼对怪物的影响：模式/赛季加成后，委托 [core.applyDamageToMonster]（护盾穿透）
   /// [season] 可选赛季配置，提供伤害加成
+  /// 打中当日热量预算带时额外加伤；极端赤字危机时 [safetyMultiplier] < 1。
   static ExerciseImpactResult exerciseImpactOnMonster(
     int calBurned,
     String mode,
@@ -126,6 +163,9 @@ class GameAlgorithm {
     int monsterShield, {
     SeasonConfig? season,
     double shieldReductionRate = 0.15,
+    int? todayCalIn,
+    int? targetCal,
+    double safetyMultiplier = 1.0,
   }) {
     // 基础伤害：消耗卡路里的80%
     double baseDamage = calBurned * 0.8;
@@ -143,6 +183,14 @@ class GameAlgorithm {
     // 赛季加成：锻炼伤害额外加成
     if (season != null && season.exerciseDamageBonus > 0) {
       baseDamage *= (1 + season.exerciseDamageBonus);
+    }
+
+    if (todayCalIn != null && targetCal != null) {
+      baseDamage *= core.calorieBandHitBonus(todayCalIn, targetCal);
+    }
+
+    if (safetyMultiplier > 0 && safetyMultiplier != 1.0) {
+      baseDamage *= safetyMultiplier;
     }
     
     final damage = math.max(0, baseDamage.round());
@@ -196,7 +244,12 @@ class GameAlgorithm {
   
   /// 计算击败奖励
   /// [season] 可选赛季配置，提供奖励翻倍加成
-  static int calcKillReward(bool isBoss, {SeasonConfig? season}) {
+  /// [safetyMultiplier] 极端赤字危机时 < 1
+  static int calcKillReward(
+    bool isBoss, {
+    SeasonConfig? season,
+    double safetyMultiplier = 1.0,
+  }) {
     int baseReward = isBoss ? 200 : 100;
     
     // 赛季加成：击败奖励乘数
@@ -205,8 +258,12 @@ class GameAlgorithm {
       // 额外赛季金币奖励
       baseReward += season.coinBonus;
     }
+
+    if (safetyMultiplier > 0 && safetyMultiplier != 1.0) {
+      baseReward = (baseReward * safetyMultiplier).round();
+    }
     
-    return baseReward;
+    return math.max(0, baseReward);
   }
   
   /// 生成新怪物
@@ -230,6 +287,7 @@ class GameAlgorithm {
       level: level,
       isBoss: config.isBoss,
       healBonus: config.healBonus,
+      affinity: affinityForMonsterIndex(index),
     );
   }
   

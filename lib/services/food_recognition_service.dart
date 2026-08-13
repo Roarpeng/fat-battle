@@ -1,8 +1,8 @@
 import 'dart:convert';
-import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
+import '../config/api_config.dart';
 import '../constants/app_constants.dart';
 import '../models/game_models.dart';
 
@@ -31,14 +31,19 @@ class RecognizedFood {
     this.amountGram,
   });
 
-  FoodItem toFoodItem(MealType meal, {FoodSize size = FoodSize.medium}) {
+  FoodItem toFoodItem(MealType meal, {FoodSize size = FoodSize.medium, int? grams}) {
+    final g = grams ?? amountGram?.round();
+    final total = g != null
+        ? (calories * g / 100).round()
+        : (calories * size.multiplier).toInt();
     return FoodItem(
       name: name,
       baseCal: calories,
       size: size,
-      totalCal: (calories * size.multiplier).toInt(),
+      totalCal: total,
       meal: meal,
       photoUrl: thumbUrl,
+      grams: g,
     );
   }
 }
@@ -48,23 +53,17 @@ class FoodRecognitionService {
   factory FoodRecognitionService() => _instance;
   FoodRecognitionService._internal();
 
-  // 薄荷健康 API 配置
-  static const String _booheeBaseUrl = 'https://api.boohee.com';
-  static const String _booheeAppId = 'nwkbeuvbdb';
-  static const String _booheeAppKey = '4rwwjrns5jyhbyptcdswsb5fyhavqa9b';
+  // 薄荷 / FatSecret 仅在调试注入 dart-define 时直连；正式包密钥只留服务器
   String? _booheeAccessToken;
   DateTime? _booheeTokenExpire;
-
-  // FatSecret API 配置
-  static const String _fatsecretBaseUrl = 'https://platform.fatsecret.com/rest/server.api';
-  static const String _fatsecretTokenUrl = 'https://oauth.fatsecret.com/connect/token';
-  static const String _fatsecretClientId = '7f138fe9fc194ed9a41e71ac2390abac';
-  static const String _fatsecretClientSecret = '6424bd4ca42444e7b495557c569b6deb';
   String? _fatsecretToken;
   DateTime? _fatsecretTokenExpire;
 
-  // Open Food Facts
+  // Open Food Facts（公开 API，无密钥）
   static const String _offBaseUrl = 'https://world.openfoodfacts.org/api/v2';
+
+  bool get _hasBoohee => ApiConfig.hasBooheeCredentials;
+  bool get _hasFatSecret => ApiConfig.hasFatSecretCredentials;
 
   String _generateSign(Map<String, dynamic> params) {
     final sortedKeys = params.keys.toList()..sort();
@@ -72,12 +71,16 @@ class FoodRecognitionService {
     for (final key in sortedKeys) {
       buffer.write('$key${params[key]}');
     }
-    final toSign = '$_booheeAppKey${buffer.toString()}$_booheeAppKey';
+    final toSign =
+        '${ApiConfig.booheeAppKey}${buffer.toString()}${ApiConfig.booheeAppKey}';
     final bytes = utf8.encode(toSign);
     return md5.convert(bytes).toString();
   }
 
   Future<String> _getBooheeToken() async {
+    if (!_hasBoohee) {
+      throw Exception('未配置薄荷健康凭据（正式包请走后端代理）');
+    }
     if (_booheeAccessToken != null &&
         _booheeTokenExpire != null &&
         DateTime.now().isBefore(_booheeTokenExpire!.subtract(const Duration(minutes: 5)))) {
@@ -86,7 +89,7 @@ class FoodRecognitionService {
 
     final timestamp = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     final params = {
-      'app_id': _booheeAppId,
+      'app_id': ApiConfig.booheeAppId,
       'timestamp': timestamp.toString(),
     };
     final sign = _generateSign(params);
@@ -94,7 +97,7 @@ class FoodRecognitionService {
 
     try {
       final response = await http.post(
-        Uri.parse('$_booheeBaseUrl/api/v2/access_tokens'),
+        Uri.parse('${ApiConfig.booheeBaseUrl}/api/v2/access_tokens'),
         headers: {'Content-Type': 'application/x-www-form-urlencoded'},
         body: params,
       );
@@ -119,7 +122,8 @@ class FoodRecognitionService {
   Future<Map<String, dynamic>?> _booheeGet(String path, Map<String, dynamic> params) async {
     try {
       final token = await _getBooheeToken();
-      final uri = Uri.parse('$_booheeBaseUrl$path').replace(queryParameters: params);
+      final uri = Uri.parse('${ApiConfig.booheeBaseUrl}$path')
+          .replace(queryParameters: params);
       final response = await http.get(
         uri,
         headers: {'AccessToken': token},
@@ -137,7 +141,7 @@ class FoodRecognitionService {
     try {
       final token = await _getBooheeToken();
       final response = await http.post(
-        Uri.parse('$_booheeBaseUrl$path'),
+        Uri.parse('${ApiConfig.booheeBaseUrl}$path'),
         headers: {
           'AccessToken': token,
           'Content-Type': 'application/json',
@@ -154,6 +158,9 @@ class FoodRecognitionService {
   }
 
   Future<String> _getFatSecretToken() async {
+    if (!_hasFatSecret) {
+      throw Exception('未配置 FatSecret 凭据（正式包请走后端代理）');
+    }
     if (_fatsecretToken != null &&
         _fatsecretTokenExpire != null &&
         DateTime.now().isBefore(_fatsecretTokenExpire!.subtract(const Duration(minutes: 1)))) {
@@ -161,10 +168,12 @@ class FoodRecognitionService {
     }
     try {
       final credentials = base64.encode(
-        utf8.encode('$_fatsecretClientId:$_fatsecretClientSecret'),
+        utf8.encode(
+          '${ApiConfig.fatsecretClientId}:${ApiConfig.fatsecretClientSecret}',
+        ),
       );
       final response = await http.post(
-        Uri.parse(_fatsecretTokenUrl),
+        Uri.parse(ApiConfig.fatsecretTokenUrl),
         headers: {
           'Authorization': 'Basic $credentials',
           'Content-Type': 'application/x-www-form-urlencoded',
@@ -187,57 +196,61 @@ class FoodRecognitionService {
   Future<List<RecognizedFood>> searchByText(String query) async {
     if (query.trim().isEmpty) return [];
 
-    // 1. 薄荷健康搜索
-    try {
-      final result = await _booheeGet('/api/v1/foods/search', {'q': query, 'page': '1'});
-      if (result != null && result['foods'] != null && result['foods'].isNotEmpty) {
-        final List<RecognizedFood> foods = [];
-        for (final f in result['foods'].take(10)) {
-          final cal = int.tryParse(f['calory']?.toString() ?? '0') ?? 0;
-          foods.add(RecognizedFood(
-            name: f['name'] ?? '',
-            calories: cal,
-            source: '薄荷健康',
-            code: f['code'],
-            thumbUrl: f['thumb_image_url'],
-          ));
-        }
-        if (foods.isNotEmpty) return foods;
-      }
-    } catch (_) {}
-
-    // 2. FatSecret 搜索
-    try {
-      final token = await _getFatSecretToken();
-      final uri = Uri.parse(_fatsecretBaseUrl).replace(queryParameters: {
-        'method': 'foods.search',
-        'search_expression': query,
-        'format': 'json',
-        'max_results': '10',
-      });
-      final response = await http.get(
-        uri,
-        headers: {'Authorization': 'Bearer $token'},
-      );
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        final foodsResult = data['foods']?['food'];
-        if (foodsResult != null && foodsResult is List) {
+    // 1. 薄荷健康搜索（仅调试 dart-define；正式包无密钥）
+    if (_hasBoohee) {
+      try {
+        final result = await _booheeGet('/api/v1/foods/search', {'q': query, 'page': '1'});
+        if (result != null && result['foods'] != null && result['foods'].isNotEmpty) {
           final List<RecognizedFood> foods = [];
-          for (final f in foodsResult.take(10)) {
-            final desc = f['food_description'] ?? '';
-            final calMatch = RegExp(r'(\d+)\s*kcal').firstMatch(desc);
-            final cal = calMatch != null ? int.tryParse(calMatch.group(1) ?? '0') ?? 0 : 0;
+          for (final f in result['foods'].take(10)) {
+            final cal = int.tryParse(f['calory']?.toString() ?? '0') ?? 0;
             foods.add(RecognizedFood(
-              name: f['food_name'] ?? '',
+              name: f['name'] ?? '',
               calories: cal,
-              source: 'FatSecret',
+              source: '薄荷健康',
+              code: f['code'],
+              thumbUrl: f['thumb_image_url'],
             ));
           }
           if (foods.isNotEmpty) return foods;
         }
-      }
-    } catch (_) {}
+      } catch (_) {}
+    }
+
+    // 2. FatSecret 搜索（仅调试 dart-define；正式包无密钥）
+    if (_hasFatSecret) {
+      try {
+        final token = await _getFatSecretToken();
+        final uri = Uri.parse(ApiConfig.fatsecretBaseUrl).replace(queryParameters: {
+          'method': 'foods.search',
+          'search_expression': query,
+          'format': 'json',
+          'max_results': '10',
+        });
+        final response = await http.get(
+          uri,
+          headers: {'Authorization': 'Bearer $token'},
+        );
+        if (response.statusCode == 200) {
+          final data = jsonDecode(response.body);
+          final foodsResult = data['foods']?['food'];
+          if (foodsResult != null && foodsResult is List) {
+            final List<RecognizedFood> foods = [];
+            for (final f in foodsResult.take(10)) {
+              final desc = f['food_description'] ?? '';
+              final calMatch = RegExp(r'(\d+)\s*kcal').firstMatch(desc);
+              final cal = calMatch != null ? int.tryParse(calMatch.group(1) ?? '0') ?? 0 : 0;
+              foods.add(RecognizedFood(
+                name: f['food_name'] ?? '',
+                calories: cal,
+                source: 'FatSecret',
+              ));
+            }
+            if (foods.isNotEmpty) return foods;
+          }
+        }
+      } catch (_) {}
+    }
 
     // 3. 本地兜底
     return _searchLocal(query);
@@ -316,32 +329,35 @@ class FoodRecognitionService {
       }
     } catch (_) {}
 
-    // 2. 薄荷健康条码查询
-    try {
-      final result = await _booheeGet('/api/v1/foods/barcode', {'barcode': cleanBarcode});
-      if (result != null && result['success'] == 1 && result['foods'] != null && result['foods'].isNotEmpty) {
-        final List<RecognizedFood> foods = [];
-        for (final f in result['foods']) {
-          foods.add(RecognizedFood(
-            name: f['name'] ?? '',
-            calories: (f['calory'] ?? 0).toInt(),
-            source: '薄荷健康',
-            code: f['code'],
-            thumbUrl: f['thumb_image_url'],
-          ));
+    // 2. 薄荷健康条码查询（仅调试 dart-define）
+    if (_hasBoohee) {
+      try {
+        final result = await _booheeGet('/api/v1/foods/barcode', {'barcode': cleanBarcode});
+        if (result != null && result['success'] == 1 && result['foods'] != null && result['foods'].isNotEmpty) {
+          final List<RecognizedFood> foods = [];
+          for (final f in result['foods']) {
+            foods.add(RecognizedFood(
+              name: f['name'] ?? '',
+              calories: (f['calory'] ?? 0).toInt(),
+              source: '薄荷健康',
+              code: f['code'],
+              thumbUrl: f['thumb_image_url'],
+            ));
+          }
+          if (foods.isNotEmpty) return foods;
         }
-        if (foods.isNotEmpty) return foods;
-      }
-    } catch (_) {}
+      } catch (_) {}
+    }
 
-    // 3. FatSecret 条码查询
-    try {
-      final token = await _getFatSecretToken();
-      final uri = Uri.parse(_fatsecretBaseUrl).replace(queryParameters: {
-        'method': 'food.find_id_for_barcode',
-        'barcode': cleanBarcode,
-        'format': 'json',
-      });
+    // 3. FatSecret 条码查询（仅调试 dart-define）
+    if (_hasFatSecret) {
+      try {
+        final token = await _getFatSecretToken();
+        final uri = Uri.parse(ApiConfig.fatsecretBaseUrl).replace(queryParameters: {
+          'method': 'food.find_id_for_barcode',
+          'barcode': cleanBarcode,
+          'format': 'json',
+        });
       final response = await http.get(
         uri,
         headers: {'Authorization': 'Bearer $token'},
@@ -350,7 +366,7 @@ class FoodRecognitionService {
         final data = jsonDecode(response.body);
         final foodId = data['food_id']?.toString();
         if (foodId != null && foodId.isNotEmpty && foodId != '0') {
-          final detailUri = Uri.parse(_fatsecretBaseUrl).replace(queryParameters: {
+          final detailUri = Uri.parse(ApiConfig.fatsecretBaseUrl).replace(queryParameters: {
             'method': 'food.get',
             'food_id': foodId,
             'format': 'json',
@@ -383,6 +399,7 @@ class FoodRecognitionService {
         }
       }
     } catch (_) {}
+    }
 
     // 4. 本地常见条码库兜底
     final localMatch = _localBarcodeDb[cleanBarcode];

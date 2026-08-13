@@ -17,9 +17,9 @@
 | POST | /auth/register | `{email, password, nickname}` | `{user, token}`；409 邮箱已注册 |
 | POST | /auth/login | `{email, password}` | `{user, token}`；403 账号被禁用 |
 | POST | /auth/refresh | `{refreshToken}` | `{token}` |
-| POST | /auth/logout | - | `{ok:true}` |
+| POST | /auth/logout | `{refreshToken?}` + 可选 `Authorization` | `{ok:true}`；将 access/refresh 的 jti 写入 Redis 黑名单直至过期 |
 | GET | /user/me | - | `{user}` |
-| DELETE | /user | - | `{ok:true, message}`（软删 30 天） |
+| DELETE | /user | - | `{ok:true, message}`（软删 30 天；当前 access 同步拉黑） |
 
 token 结构: `{accessToken, refreshToken, expiresIn}`
 
@@ -30,12 +30,22 @@ token 结构: `{accessToken, refreshToken, expiresIn}`
 | POST | /food/recognize | `{image: base64, topNum?, thinking?}` | `{success, items}` |
 | POST | /food/search | `{query, topNum?}` | `{success, items}` |
 | POST | /food/feedback | `{imageUrl?, ocrResult?, userCal?}` | `{ok:true}` |
-| POST | /food/barcode | - | 501（后续接入） |
+| POST | /food/barcode | `{barcode}` | `{success, items}`（Open Food Facts 代理，无客户端密钥） |
 
 items 项: `{name, calorie(每100g), confidence, has_calorie, category, description}`
 
 服务端按 `llm_configs` 表 enabled + priority 选择 provider（当前 zhipu），
 请求带 `X-Provider` 响应头。无可用配置 → 503。
+
+## 2.1 营养教练 /coach（密钥只存服务器）
+
+| 方法 | 路径 | 请求 | 响应 |
+|------|------|------|------|
+| POST | /coach/turn | `{message, history?, context}` | `{success, reply, filtered, proposedLogs}` |
+
+`context` 由 App 从本地 GameState 组装（饮食账、剩余预算、怪物 HP/护盾、今日锤炼、5 步档案）。
+教练**不能**改卡路里目标/下限，**不能**静默写饮食账；`proposedLogs` 需用户改克数后确认才记入。
+限流与 `/food` 相同（30 次/分钟）。系统提示 + 输出过滤器禁止低于安全下限、催吐、惩罚性禁食、「跳过正餐打怪」。
 
 ## 3. 进度同步 /progress
 

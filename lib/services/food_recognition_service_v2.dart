@@ -1,8 +1,11 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:http/http.dart' as http;
 
+import 'auth_service.dart';
 import 'baidu_food_service.dart';
 import 'food_fallback_service.dart';
 import 'food_recognition_service.dart';
@@ -40,10 +43,9 @@ class FoodQueryResult {
 /// 食物识别服务 V2 —— 升级版
 ///
 /// 与旧版 [FoodRecognitionService] 的差异：
-/// - 新增 [recognize] 方法：基于 [FoodFallbackService] 的三级降级链
-///   （百度→薄荷→FatSecret→本地兜底）；
+/// - 新增 [recognize] 方法：基于 [FoodFallbackService] 的降级链（后端 GLM → 本地）；
 /// - [recognizeByImage] 保持向后兼容，内部走 V2 降级链；
-/// - [searchByText] / [lookupByBarcode] 增强降级链，加入 GLM 文本搜索。
+/// - [searchByText] / [lookupByBarcode] 优先走后端代理，APK 不携带第三方密钥。
 ///
 /// 旧版服务 [FoodRecognitionService] 保留可用，不做删除。
 class FoodRecognitionServiceV2 {
@@ -108,9 +110,9 @@ class FoodRecognitionServiceV2 {
     final attempted = <String>[];
     final failures = <String>[];
 
-    // GLM 文本搜索优先
+    // 后端 / GLM 文本搜索优先（正式包密钥只留服务器）
     if (_glm.isConfigured) {
-      attempted.add('GLM-4V');
+      attempted.add(ApiConfig.isBackendEnabled ? '后端搜索' : 'GLM');
       try {
         final glmResults = await _glm.searchFoodByText(query, topNum: 5);
         if (glmResults.isNotEmpty) {
@@ -119,7 +121,7 @@ class FoodRecognitionServiceV2 {
                 .map((g) => RecognizedFood(
                       name: g.name,
                       calories: g.calorie.toInt(),
-                      source: 'GLM-4V',
+                      source: ApiConfig.isBackendEnabled ? '后端' : 'GLM',
                       description: g.description,
                     ))
                 .toList(),
@@ -127,17 +129,17 @@ class FoodRecognitionServiceV2 {
             failures: failures,
           );
         }
-        failures.add('GLM 未找到匹配');
+        failures.add('在线搜索未找到匹配');
       } catch (e) {
-        failures.add('GLM: $e');
-        debugPrint('GLM 搜索失败，降级到 legacy: $e');
+        failures.add('在线搜索: $e');
+        debugPrint('在线搜索失败，降级到本地: $e');
       }
     } else {
-      failures.add('GLM 未配置');
+      failures.add('未连接食物搜索服务');
     }
 
-    // legacy 兜底（薄荷健康 / FatSecret / 本地）
-    attempted.add('薄荷/FatSecret/本地');
+    // 本地兜底（无密钥）；调试 dart-define 时旧版才会直连第三方
+    attempted.add('本地食材库');
     try {
       final legacyResults = await _legacy.searchByText(query);
       if (legacyResults.isNotEmpty) {
@@ -162,12 +164,9 @@ class FoodRecognitionServiceV2 {
   /// 条形码查询食物（增强版降级链）
   ///
   /// 降级顺序：
-  /// 1. Open Food Facts（API可用，国际商品覆盖好）
-  /// 2. 薄荷健康条码查询
-  /// 3. FatSecret 条码查询
-  /// 4. 本地常见条码库
-  /// 5. GLM 文本搜索（智能推断）
-  /// 6. 文本搜索兜底
+  /// 1. 后端条码代理（Open Food Facts，无客户端密钥）
+  /// 2. 客户端 Open Food Facts + 本地条码库
+  /// 3. GLM 文本搜索（智能推断）
   Future<List<RecognizedFood>> lookupByBarcode(String barcode) async {
     return (await lookupByBarcodeDetailed(barcode)).items;
   }
@@ -185,8 +184,29 @@ class FoodRecognitionServiceV2 {
     final attempted = <String>[];
     final failures = <String>[];
 
-    // 先走 legacy 的完整降级链
-    attempted.add('OpenFoodFacts/薄荷/FatSecret/本地条码库');
+    if (ApiConfig.isBackendEnabled) {
+      attempted.add('后端条码代理');
+      try {
+        final resp = await AuthService().authedPost(
+          '/api/v1/food/barcode',
+          body: {'barcode': clean},
+        );
+        final items = _recognizedFromBackend(resp, code: clean);
+        if (items != null && items.isNotEmpty) {
+          return FoodQueryResult(
+            items: items,
+            attemptedSources: attempted,
+            failures: failures,
+          );
+        }
+        failures.add('后端条码库未收录 $clean');
+      } catch (e) {
+        failures.add('后端条码: $e');
+      }
+    }
+
+    // 公开条码库 + 本地兜底（不携带第三方密钥）
+    attempted.add('OpenFoodFacts/本地条码库');
     try {
       final legacyResults = await _legacy.lookupByBarcode(clean);
       if (legacyResults.isNotEmpty) {
@@ -203,7 +223,7 @@ class FoodRecognitionServiceV2 {
 
     // GLM 文本搜索兜底（智能推断条码对应的食物）
     if (_glm.isConfigured) {
-      attempted.add('GLM-4V(推断)');
+      attempted.add(ApiConfig.isBackendEnabled ? '后端(推断)' : 'GLM(推断)');
       try {
         final glmResults = await _glm.searchFoodByText(
           '条形码 $clean 对应的食物是什么',
@@ -215,7 +235,7 @@ class FoodRecognitionServiceV2 {
                 .map((g) => RecognizedFood(
                       name: g.name,
                       calories: g.calorie.toInt(),
-                      source: 'GLM-4V(条码推断)',
+                      source: ApiConfig.isBackendEnabled ? '后端(条码推断)' : 'GLM(条码推断)',
                       code: clean,
                       description: g.description,
                     ))
@@ -224,12 +244,12 @@ class FoodRecognitionServiceV2 {
             failures: failures,
           );
         }
-        failures.add('GLM 未能推断该条码');
+        failures.add('未能推断该条码');
       } catch (e) {
-        failures.add('GLM: $e');
+        failures.add('在线推断: $e');
       }
     } else {
-      failures.add('GLM 未配置');
+      failures.add('未连接食物搜索服务');
     }
 
     return FoodQueryResult(
@@ -237,6 +257,33 @@ class FoodRecognitionServiceV2 {
       attemptedSources: attempted,
       failures: failures,
     );
+  }
+
+  List<RecognizedFood>? _recognizedFromBackend(
+    http.Response resp, {
+    String? code,
+  }) {
+    if (resp.statusCode != 200) return null;
+    final data = jsonDecode(resp.body);
+    if (data is! Map) return null;
+    final map = Map<String, dynamic>.from(data);
+    if (map['success'] != true) return null;
+    final rawItems = map['items'];
+    if (rawItems is! List || rawItems.isEmpty) return [];
+    return rawItems.map((raw) {
+      final m = raw is Map ? Map<String, dynamic>.from(raw) : <String, dynamic>{};
+      final calRaw = m['calorie'];
+      final cal = calRaw is num
+          ? calRaw.toInt()
+          : int.tryParse(calRaw?.toString() ?? '0') ?? 0;
+      return RecognizedFood(
+        name: m['name']?.toString() ?? '',
+        calories: cal,
+        source: '后端',
+        code: code ?? m['code']?.toString(),
+        description: m['description']?.toString(),
+      );
+    }).where((f) => f.name.isNotEmpty).toList();
   }
 }
 

@@ -7,6 +7,7 @@ import '../theme/motion.dart';
 import '../theme/tokens.dart';
 
 import '../constants/app_constants.dart';
+import '../core/barrel.dart' as core;
 import '../models/game_models.dart';
 import '../providers/game_provider.dart';
 import '../services/ble_service.dart';
@@ -16,8 +17,10 @@ import '../widgets/home/monster_stage_avatar.dart';
 import '../widgets/home/stage_action_button.dart';
 import '../widgets/hp_bar.dart';
 import '../widgets/hub_status_dot.dart';
+import '../widgets/medical_disclaimer.dart';
 import 'exercise_page.dart';
 import 'food_page.dart';
+import 'coach_page.dart';
 import 'settings_page.dart';
 import 'setup_page.dart';
 
@@ -94,6 +97,20 @@ class _HomePageState extends ConsumerState<HomePage> {
           child: Column(
             children: [
               _buildTopBar(gameState),
+              if (gameState.inExtremeDeficitCrisis)
+                const SafetyCrisisBanner(),
+              if (_trendLine(gameState) != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: AppSpace.sm),
+                  child: Text(
+                    _trendLine(gameState)!,
+                    textAlign: TextAlign.center,
+                    style: AppFonts.body(
+                      fontSize: 12,
+                      color: AppColors.copper,
+                    ),
+                  ),
+                ),
               Expanded(
                 child: Column(
                   children: [
@@ -227,7 +244,10 @@ class _HomePageState extends ConsumerState<HomePage> {
     final dShield = next.monster.shield - prev.monster.shield;
     if (dHp > 0) {
       HapticFeedback.heavyImpact();
-      _showFloat('-$dHp', AppColors.ember);
+      final tag = prev.pendingAttack?.isCounter == true
+          ? ' 克制'
+          : (prev.pendingAttack?.isResisted == true ? ' 抵抗' : '');
+      _showFloat('-$dHp$tag', AppColors.ember);
       setState(() => _hitFlash = true);
       Future.delayed(const Duration(milliseconds: 160), () {
         if (mounted) setState(() => _hitFlash = false);
@@ -254,11 +274,32 @@ class _HomePageState extends ConsumerState<HomePage> {
   String _statusLine(GameState gs) {
     if (gs.status == GameStatus.won) return '今日任务完成，炉火歇着';
     if (gs.status == GameStatus.lost) return '精力见底，先去休整';
-    if (gs.monster.hasShield) return '它裹着护甲——吃少一点，或去锤炼破盾';
+    if (gs.monster.hasShield) return '它裹着护甲——贴近预算带，或去锤炼破盾';
     if (gs.remainingCal >= 0) {
       return '再消耗约 ${(gs.monster.hp * 0.8).toInt()} kcal 就能攻克它';
     }
-    return '已超出 ${-gs.remainingCal} kcal，动一动就能削盾';
+    return calorieBudgetStatusCopy(gs.remainingCal);
+  }
+
+  String? _trendLine(GameState gs) {
+    final parts = <String>[];
+    if (gs.user.waistCm != null) {
+      parts.add('腰围 ${gs.user.waistCm!.toStringAsFixed(1)} cm');
+    }
+    if (gs.weightRecords.length >= 2) {
+      final logs = gs.weightRecords
+          .map((r) => core.WeightLogEntry(date: r.date, weightKg: r.weight))
+          .toList();
+      final smoothed = core.smoothWeightSeries(
+        logs,
+        windowDays: logs.length >= 14 ? 14 : 7,
+      );
+      if (smoothed.isNotEmpty) {
+        parts.add('平滑体重 ${smoothed.last.toStringAsFixed(1)} kg');
+      }
+    }
+    if (parts.isEmpty) return null;
+    return parts.join(' · ');
   }
 
   Widget _buildTopBar(GameState gs) {
@@ -319,6 +360,17 @@ class _HomePageState extends ConsumerState<HomePage> {
           ),
         ),
         const SizedBox(width: AppSpace.xs),
+        ForgePressable(
+          onTap: () {
+            Navigator.of(context).push(
+              forgePageRoute(builder: (_) => const CoachPage()),
+            );
+          },
+          child: const Padding(
+            padding: EdgeInsets.all(AppSpace.sm),
+            child: Icon(Icons.chat_bubble_outline_rounded, color: AppColors.copper, size: 22),
+          ),
+        ),
         ForgePressable(
           onTap: () {
             Navigator.of(context).push(
@@ -395,6 +447,17 @@ class _HomePageState extends ConsumerState<HomePage> {
         builder: (_) => const ExercisePage(showMonsterHeader: true),
       ),
     );
+    if (!mounted) return;
+    await _consumePendingAttack();
+  }
+
+  /// 教练课回城：舞台可见后再扣血，受击动效走 [_reactToCombat]。
+  Future<void> _consumePendingAttack() async {
+    final pending = ref.read(gameStateProvider).pendingAttack;
+    if (pending == null || pending.isOvereat || pending.damage <= 0) return;
+    await Future<void>.delayed(const Duration(milliseconds: 160));
+    if (!mounted) return;
+    await ref.read(gameStateProvider.notifier).attackMonster(pending.damage);
   }
 
   void _showHubBottomSheet(BuildContext context) {

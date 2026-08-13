@@ -5,10 +5,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/game_models.dart';
 import '../constants/app_constants.dart';
+import '../core/barrel.dart' as core;
 import '../services/game_algorithm.dart';
 import '../services/notification_service.dart';
 import '../services/progress_sync_service.dart';
 import '../services/voice_service.dart';
+import '../services/coach_feel.dart';
 
 /// 游戏状态Provider
 ///
@@ -173,6 +175,21 @@ class GameStateNotifier extends StateNotifier<GameState> {
         weekData.removeRange(0, weekData.length - 7);
       }
 
+      final floor = _calorieFloorFor(state.user);
+      final hadActivity = state.todayCalIn > 0 ||
+          state.todayCalExercise > 0 ||
+          state.meals.values.any((list) => list.isNotEmpty) ||
+          state.exercises.isNotEmpty;
+      final yesterdayExtreme = core.wasExtremeDeficitDay(
+        intake: state.todayCalIn,
+        calorieFloor: floor,
+        hadActivity: hadActivity,
+      );
+      final extremeStreak = core.nextExtremeDeficitStreak(
+        currentStreak: state.extremeDeficitStreak,
+        yesterdayWasExtreme: yesterdayExtreme,
+      );
+
       // 新的一天
       state = state.copyWith(
         day: state.day + 1,
@@ -186,6 +203,10 @@ class GameStateNotifier extends StateNotifier<GameState> {
         lastDate: today,
         weekData: weekData,
         waterCups: 0, // 每日重置饮水杯数
+        extremeDeficitStreak: extremeStreak,
+        targetCal: _calcTargetCalFor(state.user),
+        pendingAttack: null,
+        clearPendingAttack: true,
       );
 
       // 生成新怪物
@@ -214,7 +235,7 @@ class GameStateNotifier extends StateNotifier<GameState> {
       user.runDuration,
       user.weeklyFreq,
     );
-    final targetCal = GameAlgorithm.calcTargetCal(user.weight, user.difficulty);
+    final targetCal = _calcTargetCalFor(user);
     final playerMaxHp = GameAlgorithm.calcPlayerMaxHp(fitnessLevel);
     
     final newUser = user.copyWith(
@@ -248,6 +269,14 @@ class GameStateNotifier extends StateNotifier<GameState> {
         date: DateTime.now().toDateString(),
         weight: user.weight,
       )],
+      waistRecords: user.waistCm != null
+          ? [
+              WaistRecord(
+                date: DateTime.now().toDateString(),
+                waistCm: user.waistCm!,
+              ),
+            ]
+          : [],
       weekData: [],
     );
     
@@ -320,13 +349,27 @@ class GameStateNotifier extends StateNotifier<GameState> {
   }
   
   /// 添加锻炼记录
-  Future<void> addExercise(ExerciseRecord exercise) async {
+  ///
+  /// [applyCombat] 为 false 时只记账消耗，不立刻扣怪血（留给 pendingAttack → attackMonster）。
+  Future<void> addExercise(ExerciseRecord exercise, {bool applyCombat = true}) async {
     final exercises = List<ExerciseRecord>.from(state.exercises);
     exercises.add(exercise);
     
+    if (!applyCombat) {
+      state = state.copyWith(
+        exercises: exercises,
+        todayCalExercise: state.todayCalExercise + exercise.cal,
+        user: state.user.copyWith(
+          totalExercise: state.user.totalExercise + exercise.cal,
+        ),
+      );
+      await _saveGame();
+      return;
+    }
+
     // 获取当前赛季配置
     final season = Seasons.getCurrentSeason();
-    
+
     // 计算伤害（先破盾再掉血），传入赛季加成
     final result = GameAlgorithm.exerciseImpactOnMonster(
       exercise.cal,
@@ -335,6 +378,11 @@ class GameStateNotifier extends StateNotifier<GameState> {
       state.monster.maxHp,
       state.monster.shield,
       season: season,
+      todayCalIn: state.todayCalIn,
+      targetCal: state.targetCal,
+      safetyMultiplier: core.extremeDeficitCombatMultiplier(
+        state.extremeDeficitStreak,
+      ),
     );
     
     // 计算疲劳
@@ -387,6 +435,9 @@ class GameStateNotifier extends StateNotifier<GameState> {
     final reward = GameAlgorithm.calcKillReward(
       state.monster.isBoss,
       season: season,
+      safetyMultiplier: core.extremeDeficitCombatMultiplier(
+        state.extremeDeficitStreak,
+      ),
     );
     
     state = state.copyWith(
@@ -479,29 +530,55 @@ class GameStateNotifier extends StateNotifier<GameState> {
         VoiceService().maintenanceEnter();
       }
     }
+
+    final updatedUser = state.user.copyWith(
+      weight: weight,
+      bmi: bmi,
+      status: newStatus,
+    );
     
     state = state.copyWith(
       weightRecords: records,
-      user: state.user.copyWith(
-        weight: weight,
-        bmi: bmi,
-        status: newStatus,
-      ),
+      user: updatedUser,
       maintenanceMode: newMaintenanceMode,
+      targetCal: _calcTargetCalFor(updatedUser),
     );
     
     await _checkAchievements();
     await _saveGame();
   }
+
+  /// 记录腰围（厘米，可选，不依赖硬件）
+  Future<void> recordWaist(double waistCm) async {
+    if (waistCm < 40 || waistCm > 200) return;
+    final records = List<WaistRecord>.from(state.waistRecords);
+    final today = DateTime.now().toDateString();
+    final existing = records.indexWhere((r) => r.date == today);
+    final entry = WaistRecord(date: today, waistCm: waistCm);
+    if (existing >= 0) {
+      records[existing] = entry;
+    } else {
+      records.add(entry);
+    }
+    if (records.length > 60) {
+      records.removeRange(0, records.length - 60);
+    }
+    state = state.copyWith(
+      waistRecords: records,
+      user: state.user.copyWith(waistCm: waistCm),
+    );
+    await _saveGame();
+  }
   
   /// 更新难度
   Future<void> updateDifficulty(Difficulty difficulty) async {
-    final targetCal = GameAlgorithm.calcTargetCal(state.user.weight, difficulty);
+    final updatedUser = state.user.copyWith(difficulty: difficulty);
+    final targetCal = _calcTargetCalFor(updatedUser);
     
     state = state.copyWith(
       difficulty: difficulty,
       targetCal: targetCal,
-      user: state.user.copyWith(difficulty: difficulty),
+      user: updatedUser,
     );
     
     await _saveGame();
@@ -536,9 +613,136 @@ class GameStateNotifier extends StateNotifier<GameState> {
     state = state.copyWith(reminderFrequency: frequency);
     await _saveGame();
   }
+
+  /// 更新 PIPL 本地同意开关（云同步 / 食物视觉 / 摄像头姿态）
+  Future<void> updatePrivacyFlags({
+    bool? cloudSyncEnabled,
+    bool? foodVisionEnabled,
+    bool? cameraPoseEnabled,
+  }) async {
+    state = state.copyWith(
+      cloudSyncEnabled: cloudSyncEnabled,
+      foodVisionEnabled: foodVisionEnabled,
+      cameraPoseEnabled: cameraPoseEnabled,
+    );
+    await _saveGame();
+  }
+
+  /// 膝盖 / 腰腹伤病标记（默认全部动作可用）。
+  Future<void> updateInjuryFlags({bool? kneeIssue, bool? waistIssue}) async {
+    state = state.copyWith(
+      user: state.user.copyWith(
+        kneeIssue: kneeIssue ?? state.user.kneeIssue,
+        waistIssue: waistIssue ?? state.user.waistIssue,
+      ),
+    );
+    await _saveGame();
+  }
+
+  int _calcTargetCalFor(User user) {
+    return GameAlgorithm.calcTargetCal(
+      user.weight,
+      user.difficulty,
+      heightCm: user.height,
+      age: user.age,
+      gender: user.gender,
+      workType: user.workType,
+    );
+  }
+
+  int _calorieFloorFor(User user) {
+    final bmr = core.calculateBmr(
+      user.gender,
+      user.weight,
+      user.height,
+      user.age,
+    );
+    return core.calorieFloorFor(gender: user.gender, bmr: bmr);
+  }
+
+  /// 教练课后手感：微调明天训练量，顶档时轻推难度。
+  Future<void> recordCoachFeel(CoachFeel feel) async {
+    final adj = applyCoachFeel(
+      feel: feel,
+      currentNudge: state.coachFeelNudge,
+      difficulty: state.difficulty,
+    );
+    var next = state.copyWith(coachFeelNudge: adj.volumeNudge);
+    if (adj.difficultyChanged && adj.difficulty != state.difficulty) {
+      final updatedUser = next.user.copyWith(difficulty: adj.difficulty);
+      next = next.copyWith(
+        difficulty: adj.difficulty,
+        targetCal: _calcTargetCalFor(updatedUser),
+        user: updatedUser,
+      );
+    }
+    state = next;
+    await _saveGame();
+  }
+
+  Future<void> setPendingAttack(PendingAttack? attack) async {
+    state = state.copyWith(
+      pendingAttack: attack,
+      clearPendingAttack: attack == null,
+    );
+    await _saveGame();
+  }
+
+  /// 回城播放 VFX 后扣血。伤害已由教练结算算好。
+  Future<void> attackMonster(int damage) async {
+    if (damage <= 0 || state.monster.hp <= 0) {
+      await setPendingAttack(null);
+      return;
+    }
+    final before = core.MonsterState(
+      hp: state.monster.hp,
+      maxHp: state.monster.maxHp,
+      level: state.monster.level,
+      name: state.monster.name,
+      emoji: state.monster.emoji,
+      defId: 'compat',
+      tier: core.MonsterTier.minion,
+      weakness: core.ExerciseCategory.cardio,
+      affinity: state.monster.resolvedAffinity,
+      baseAttack: 0,
+      description: '',
+      enrageThreshold: 0.2,
+      enrageMultiplier: 1.3,
+      coinMultiplier: 1,
+      phaseIndex: 0,
+      phaseName: '',
+      phaseEmoji: '',
+      isEnraged: false,
+      hpMultiplier: 1,
+      isPhantom: false,
+      shield: state.monster.shield,
+      maxShield: state.monster.shield > state.monster.maxHp
+          ? state.monster.shield
+          : state.monster.maxHp,
+      shieldReductionRate: 0.15,
+    );
+    final after = core.applyDamageToMonster(before, damage);
+    state = state.copyWith(
+      monster: state.monster.copyWith(hp: after.hp, shield: after.shield),
+      todayDamage: state.todayDamage + damage,
+      user: state.user.copyWith(
+        totalDamage: state.user.totalDamage + damage,
+      ),
+      pendingAttack: null,
+      clearPendingAttack: true,
+    );
+    if (after.hp == 0) {
+      await _onMonsterDefeated();
+    }
+    await _checkAchievements();
+    await _saveGame();
+  }
   
   /// 检查成就
   Future<void> _checkAchievements() async {
+    if (core.isExtremeDeficitCrisis(state.extremeDeficitStreak)) {
+      return;
+    }
     final achievements = List<String>.from(state.achievements);
     
     for (final achievement in Achievements.all) {
@@ -694,6 +898,7 @@ class GameState {
   final List<ExerciseRecord> exercises;
   final List<String> achievements;
   final List<WeightRecord> weightRecords;
+  final List<WaistRecord> waistRecords;
   final List<WeekData> weekData;
   final GameStatus status;
   final Difficulty difficulty;
@@ -711,12 +916,26 @@ class GameState {
   final bool maintenanceMode;
   final String reminderFrequency;
 
+  /// 连续极端赤字天数（摄入低于热量下限）。
+  final int extremeDeficitStreak;
+
   // 饮水追踪
   final int waterCups; // 今日已饮水杯数
   final int waterGoal; // 每日饮水目标杯数
 
   // 身体变化相册
   final List<ProgressPhoto> progressPhotos;
+
+  // PIPL 式本地同意开关（默认开启，关闭后对应功能不再上传/采集）
+  final bool cloudSyncEnabled;
+  final bool foodVisionEnabled;
+  final bool cameraPoseEnabled;
+
+  /// 教练课结算后的待攻（回舞台再扣血）。
+  final PendingAttack? pendingAttack;
+
+  /// 课后手感训练量档位，-2～+2。
+  final int coachFeelNudge;
 
   const GameState({
     this.user = const User(),
@@ -733,6 +952,7 @@ class GameState {
     this.exercises = const [],
     this.achievements = const [],
     this.weightRecords = const [],
+    this.waistRecords = const [],
     this.weekData = const [],
     this.status = GameStatus.playing,
     this.difficulty = Difficulty.normal,
@@ -752,6 +972,12 @@ class GameState {
     this.waterCups = 0,
     this.waterGoal = 8,
     this.progressPhotos = const [],
+    this.cloudSyncEnabled = true,
+    this.foodVisionEnabled = true,
+    this.cameraPoseEnabled = true,
+    this.extremeDeficitStreak = 0,
+    this.pendingAttack,
+    this.coachFeelNudge = 0,
   });
   
   GameState copyWith({
@@ -769,6 +995,7 @@ class GameState {
     List<ExerciseRecord>? exercises,
     List<String>? achievements,
     List<WeightRecord>? weightRecords,
+    List<WaistRecord>? waistRecords,
     List<WeekData>? weekData,
     GameStatus? status,
     Difficulty? difficulty,
@@ -788,6 +1015,13 @@ class GameState {
     int? waterCups,
     int? waterGoal,
     List<ProgressPhoto>? progressPhotos,
+    bool? cloudSyncEnabled,
+    bool? foodVisionEnabled,
+    bool? cameraPoseEnabled,
+    int? extremeDeficitStreak,
+    PendingAttack? pendingAttack,
+    bool clearPendingAttack = false,
+    int? coachFeelNudge,
   }) {
     return GameState(
       user: user ?? this.user,
@@ -804,6 +1038,7 @@ class GameState {
       exercises: exercises ?? this.exercises,
       achievements: achievements ?? this.achievements,
       weightRecords: weightRecords ?? this.weightRecords,
+      waistRecords: waistRecords ?? this.waistRecords,
       weekData: weekData ?? this.weekData,
       status: status ?? this.status,
       difficulty: difficulty ?? this.difficulty,
@@ -823,6 +1058,14 @@ class GameState {
       waterCups: waterCups ?? this.waterCups,
       waterGoal: waterGoal ?? this.waterGoal,
       progressPhotos: progressPhotos ?? this.progressPhotos,
+      cloudSyncEnabled: cloudSyncEnabled ?? this.cloudSyncEnabled,
+      foodVisionEnabled: foodVisionEnabled ?? this.foodVisionEnabled,
+      cameraPoseEnabled: cameraPoseEnabled ?? this.cameraPoseEnabled,
+      extremeDeficitStreak:
+          extremeDeficitStreak ?? this.extremeDeficitStreak,
+      pendingAttack:
+          clearPendingAttack ? null : (pendingAttack ?? this.pendingAttack),
+      coachFeelNudge: coachFeelNudge ?? this.coachFeelNudge,
     );
   }
   
@@ -839,6 +1082,7 @@ class GameState {
         'isBoss': monster.isBoss,
         'healBonus': monster.healBonus,
         'shield': monster.shield,
+        'affinity': monster.resolvedAffinity.name,
       },
       'playerMaxHp': playerMaxHp,
       'playerHp': playerHp,
@@ -854,6 +1098,7 @@ class GameState {
         'size': f.size.index,
         'totalCal': f.totalCal,
         'meal': f.meal.index,
+        if (f.grams != null) 'grams': f.grams,
       }).toList())),
       'exercises': exercises.map((e) => {
         'id': e.id,
@@ -869,6 +1114,7 @@ class GameState {
       'weightRecords': weightRecords.map((w) => {
         'date': w.date, 'weight': w.weight,
       }).toList(),
+      'waistRecords': waistRecords.map((w) => w.toJson()).toList(),
       'weekData': weekData.map((w) => {
         'day': w.day,
         'date': w.date,
@@ -895,6 +1141,12 @@ class GameState {
       'waterCups': waterCups,
       'waterGoal': waterGoal,
       'progressPhotos': progressPhotos.map((p) => p.toJson()).toList(),
+      'cloudSyncEnabled': cloudSyncEnabled,
+      'foodVisionEnabled': foodVisionEnabled,
+      'cameraPoseEnabled': cameraPoseEnabled,
+      'extremeDeficitStreak': extremeDeficitStreak,
+      'pendingAttack': pendingAttack?.toJson(),
+      'coachFeelNudge': coachFeelNudge,
     };
   }
   
@@ -909,6 +1161,7 @@ class GameState {
           size: FoodSize.values[f['size'] ?? 1],
           totalCal: f['totalCal'],
           meal: mealType,
+          grams: f['grams'] is int ? f['grams'] as int : int.tryParse('${f['grams'] ?? ''}'),
         )).toList();
         mealsMap[mealType] = items;
       }
@@ -926,6 +1179,7 @@ class GameState {
         isBoss: json['monster']?['isBoss'] ?? false,
         healBonus: (json['monster']?['healBonus'] ?? 0).toDouble(),
         shield: json['monster']?['shield'] ?? 0,
+        affinity: _parseAffinity(json['monster']?['affinity']),
       ),
       playerMaxHp: json['playerMaxHp'] ?? 100,
       playerHp: json['playerHp'] ?? 100,
@@ -950,6 +1204,9 @@ class GameState {
       weightRecords: (json['weightRecords'] as List?)?.map((w) => WeightRecord(
         date: w['date'] ?? '',
         weight: (w['weight'] ?? 0).toDouble(),
+      )).toList() ?? [],
+      waistRecords: (json['waistRecords'] as List?)?.map((w) => WaistRecord.fromJson(
+        Map<String, dynamic>.from(w as Map),
       )).toList() ?? [],
       weekData: (json['weekData'] as List?)?.map((w) => WeekData(
         day: w['day'] ?? 0,
@@ -979,12 +1236,41 @@ class GameState {
       progressPhotos: (json['progressPhotos'] as List?)
           ?.map((p) => ProgressPhoto.fromJson(p as Map<String, dynamic>))
           .toList() ?? [],
+      cloudSyncEnabled: json['cloudSyncEnabled'] ?? true,
+      foodVisionEnabled: json['foodVisionEnabled'] ?? true,
+      cameraPoseEnabled: json['cameraPoseEnabled'] ?? true,
+      extremeDeficitStreak: json['extremeDeficitStreak'] ?? 0,
+      pendingAttack: json['pendingAttack'] is Map
+          ? PendingAttack.fromJson(
+              Map<String, dynamic>.from(json['pendingAttack'] as Map),
+            )
+          : null,
+      coachFeelNudge: (json['coachFeelNudge'] ?? 0) is int
+          ? (json['coachFeelNudge'] ?? 0) as int
+          : 0,
     );
   }
   
   bool get hasGame => lastDate.isNotEmpty;
   
   int get remainingCal => targetCal - todayCalIn + todayCalExercise;
+
+  bool get inExtremeDeficitCrisis =>
+      core.isExtremeDeficitCrisis(extremeDeficitStreak);
+}
+
+core.ExerciseCategory? _parseAffinity(dynamic raw) {
+  if (raw is! String) return null;
+  switch (raw) {
+    case 'cardio':
+      return core.ExerciseCategory.cardio;
+    case 'strength':
+      return core.ExerciseCategory.strength;
+    case 'core':
+      return core.ExerciseCategory.core;
+    default:
+      return null;
+  }
 }
 
 /// DateTime扩展

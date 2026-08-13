@@ -68,6 +68,9 @@ class PoseCoachPage extends StatefulWidget {
   /// 暂停并保存进度后退出（可续训）；为 null 时不显示暂停按钮
   final Future<void> Function()? onPauseSave;
 
+  /// 最近一次动作等级（S–D），教练 HUD 展示。
+  final ValueNotifier<String>? qualityGrade;
+
   const PoseCoachPage({
     super.key,
     required this.exerciseName,
@@ -99,6 +102,7 @@ class PoseCoachPage extends StatefulWidget {
     this.onShareDiary,
     this.onWarmPreview,
     this.onPauseSave,
+    this.qualityGrade,
   });
 
   @override
@@ -272,6 +276,7 @@ class _PoseCoachPageState extends State<PoseCoachPage> {
                   compact: isPortrait,
                   targetCount: widget.targetCount,
                   targetUnit: widget.targetUnit,
+                  qualityGrade: widget.qualityGrade,
                 ),
               ),
               // 结束 + 切换镜头 + 分享日记
@@ -712,6 +717,7 @@ class _CoachHud extends StatelessWidget {
   final bool compact;
   final int? targetCount;
   final String? targetUnit;
+  final ValueNotifier<String>? qualityGrade;
 
   const _CoachHud({
     required this.feedback,
@@ -725,6 +731,7 @@ class _CoachHud extends StatelessWidget {
     this.compact = false,
     this.targetCount,
     this.targetUnit,
+    this.qualityGrade,
   });
 
   Widget _repBlock(int reps, String unit) {
@@ -772,6 +779,18 @@ class _CoachHud extends StatelessWidget {
               );
             },
           ),
+          if (qualityGrade != null)
+            ValueListenableBuilder<String>(
+              valueListenable: qualityGrade!,
+              builder: (_, g, __) {
+                if (g.isEmpty) return const SizedBox.shrink();
+                return Align(
+                  alignment:
+                      compact ? Alignment.centerLeft : Alignment.centerRight,
+                  child: _chip('$g 级', AppColors.forgeGlow),
+                );
+              },
+            ),
           ValueListenableBuilder<bool>(
             valueListenable: preparing,
             builder: (_, prep, __) {

@@ -129,12 +129,20 @@ func defaultTextModel(provider string) string {
 
 // chat 调用 OpenAI 兼容的 chat/completions 接口（zhipu/qwen 等），返回 choices[0].message.content
 func (cfg *llmConfig) chat(ctx context.Context, model string, messages []gin.H) (string, error) {
+	return cfg.chatWith(ctx, model, messages, 0.1, 2048)
+}
+
+// chatWith 与 chat 相同，可指定 temperature / max_tokens（教练对话略提高温度）
+func (cfg *llmConfig) chatWith(ctx context.Context, model string, messages []gin.H, temperature float64, maxTokens int) (string, error) {
 	url := cfg.chatEndpoint()
+	if maxTokens <= 0 {
+		maxTokens = 2048
+	}
 	body, err := json.Marshal(gin.H{
-		"model":      model,
-		"messages":   messages,
-		"temperature": 0.1,
-		"max_tokens": 2048,
+		"model":       model,
+		"messages":    messages,
+		"temperature": temperature,
+		"max_tokens":  maxTokens,
 	})
 	if err != nil {
 		return "", fmt.Errorf("构造请求体: %w", err)
@@ -457,11 +465,98 @@ JSON格式：
 	}
 }
 
-// barcodeHandler 条形码查询（后续接入条码库）
+// barcodeHandler 条形码查询：代理公开的 Open Food Facts（无第三方密钥）
+//
+// 请求: {"barcode": "..."}
+// 响应: {"success": true, "items": [...]}  与 search 同结构；未找到则为空列表
 func barcodeHandler() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		c.JSON(http.StatusNotImplemented, gin.H{
-			"error": "条码查询将在后续接入",
+		var req struct {
+			Barcode string `json:"barcode" binding:"required"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			foodError(c, http.StatusBadRequest, "参数错误: "+err.Error())
+			return
+		}
+		code := strings.TrimSpace(req.Barcode)
+		if code == "" {
+			foodError(c, http.StatusBadRequest, "barcode 不能为空")
+			return
+		}
+
+		url := "https://world.openfoodfacts.org/api/v2/product/" + code + ".json"
+		httpReq, err := http.NewRequestWithContext(c.Request.Context(), http.MethodGet, url, nil)
+		if err != nil {
+			foodError(c, http.StatusInternalServerError, "构造条码请求失败")
+			return
+		}
+		httpReq.Header.Set("User-Agent", "BodyStudio/1.0 (塑身工坊)")
+		client := &http.Client{Timeout: 10 * time.Second}
+		resp, err := client.Do(httpReq)
+		if err != nil {
+			log.Printf("[food] OpenFoodFacts 请求失败: %v", err)
+			foodError(c, http.StatusBadGateway, "条码服务暂时不可用")
+			return
+		}
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+		if resp.StatusCode != http.StatusOK {
+			c.JSON(http.StatusOK, gin.H{"success": true, "items": []gin.H{}})
+			return
+		}
+
+		var off struct {
+			Status  int `json:"status"`
+			Product *struct {
+				ProductNameZH string                 `json:"product_name_zh"`
+				ProductName   string                 `json:"product_name"`
+				Brands        string                 `json:"brands"`
+				GenericNameZH string                 `json:"generic_name_zh"`
+				GenericName   string                 `json:"generic_name"`
+				Nutriments    map[string]interface{} `json:"nutriments"`
+			} `json:"product"`
+		}
+		if err := json.Unmarshal(body, &off); err != nil || off.Status != 1 || off.Product == nil {
+			c.JSON(http.StatusOK, gin.H{"success": true, "items": []gin.H{}})
+			return
+		}
+		p := off.Product
+		name := p.ProductNameZH
+		if name == "" {
+			name = p.ProductName
+		}
+		if name == "" {
+			name = p.Brands
+		}
+		if name == "" {
+			c.JSON(http.StatusOK, gin.H{"success": true, "items": []gin.H{}})
+			return
+		}
+		kcal := 0.0
+		if p.Nutriments != nil {
+			kcal = numToFloat(p.Nutriments["energy-kcal_100g"])
+			if kcal == 0 {
+				kj := numToFloat(p.Nutriments["energy_100g"])
+				if kj > 0 {
+					kcal = kj / 4.184
+				}
+			}
+		}
+		desc := p.GenericNameZH
+		if desc == "" {
+			desc = p.GenericName
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"success": true,
+			"items": []gin.H{{
+				"name":        name,
+				"calorie":     kcal,
+				"confidence":  0.9,
+				"has_calorie": kcal > 0,
+				"category":    "",
+				"description": desc,
+				"code":        code,
+			}},
 		})
 	}
 }
@@ -474,9 +569,9 @@ func feedbackHandler(pool *pgxpool.Pool) gin.HandlerFunc {
 			return
 		}
 		var req struct {
-			ImageURL string          `json:"image_url"`
+			ImageURL  string          `json:"image_url"`
 			OCRResult json.RawMessage `json:"ocr_result"`
-			UserCal  *int            `json:"user_cal"`
+			UserCal   *int            `json:"user_cal"`
 		}
 		if err := c.ShouldBindJSON(&req); err != nil {
 			jsonError(c, http.StatusBadRequest, "参数错误: "+err.Error())
