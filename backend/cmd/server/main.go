@@ -18,6 +18,7 @@ import (
 	backend "fatbattle/backend"
 	"fatbattle/backend/internal/api"
 	"fatbattle/backend/internal/repo"
+	"fatbattle/backend/internal/tokenstore"
 )
 
 func main() {
@@ -29,6 +30,7 @@ func main() {
 	adminJwtSecret := envOr("ADMIN_JWT_SECRET", "admin-secret-change-me")
 	adminUser := envOr("ADMIN_USER", "admin")
 	adminPass := envOr("ADMIN_PASS", "admin123456")
+	redisURL := envOr("REDIS_URL", "redis://localhost:6379/0")
 
 	if os.Getenv("GIN_MODE") == "release" {
 		gin.SetMode(gin.ReleaseMode)
@@ -56,8 +58,18 @@ func main() {
 		}
 	}()
 
+	var dl tokenstore.Denylist = tokenstore.Nop{}
+	rdb, err := repo.ConnectRedis(context.Background(), redisURL)
+	if err != nil {
+		log.Printf("[warn] Redis 未就绪，登出黑名单不可用（token 仅客户端丢弃）: %v", err)
+	} else {
+		log.Println("[ok] Redis 已连接（登出黑名单启用）")
+		dl = tokenstore.NewRedis(rdb)
+		defer rdb.Close()
+	}
+
 	r := api.NewRouter(pool, jwtSecret)
-	api.RegisterRoutes(r, pool, jwtSecret, adminJwtSecret)
+	api.RegisterRoutes(r, pool, jwtSecret, adminJwtSecret, dl)
 
 	srv := &http.Server{
 		Addr:              ":" + port,

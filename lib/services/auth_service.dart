@@ -157,7 +157,20 @@ class AuthService {
     if (userMap is! Map) {
       throw const AuthException('后端响应缺少 user 字段');
     }
-    return AuthUser.fromJson(Map<String, dynamic>.from(userMap));
+    final user = AuthUser.fromJson(Map<String, dynamic>.from(userMap));
+    await _cacheUser(user);
+    return user;
+  }
+
+  Future<void> _cacheUser(AuthUser user) async {
+    final prefs = await _prefs;
+    if (user.email.isNotEmpty) {
+      await prefs.setString('user_email', user.email);
+    }
+    if (user.nickname.isNotEmpty) {
+      await prefs.setString('user_nickname', user.nickname);
+      await prefs.setString('user_account', user.nickname);
+    }
   }
 
   /// 持久化 token 对（加密存储）与本地登录态（is_logged_in 供 main.dart 分流）
@@ -211,6 +224,10 @@ class AuthService {
   Future<http.Response> authedGet(String path) =>
       _authedRequest('GET', path);
 
+  /// 带鉴权的 DELETE：自动附加 Bearer token，401 时自动 refresh 并重试一次
+  Future<http.Response> authedDelete(String path) =>
+      _authedRequest('DELETE', path);
+
   Future<http.Response> _authedRequest(
     String method,
     String path, {
@@ -243,10 +260,30 @@ class AuthService {
     if (method == 'GET') {
       return http.get(uri, headers: headers).timeout(_timeout);
     }
+    if (method == 'DELETE') {
+      return http.delete(uri, headers: headers).timeout(_timeout);
+    }
     final encoded = body == null ? null : jsonEncode(body);
     return http
         .post(uri, headers: headers, body: encoded)
         .timeout(_timeout);
+  }
+
+  /// 探测后端 /healthz（未配置或网络失败返回 false）
+  Future<bool> pingHealthz() async {
+    if (!isBackendConfigured) return false;
+    try {
+      final resp = await http.get(_uri('/api/v1/healthz')).timeout(
+            const Duration(seconds: 5),
+          );
+      if (resp.statusCode != 200) return false;
+      final map = _decodeMap(resp.body);
+      final status = map['status']?.toString() ?? '';
+      return status == 'ok' || status == 'degraded';
+    } catch (e) {
+      debugPrint('AuthService: healthz 探测失败: $e');
+      return false;
+    }
   }
 
   /// 获取当前登录用户资料（未登录或请求失败返回 null）
@@ -256,7 +293,9 @@ class AuthService {
     final map = _decodeMap(resp.body);
     final userMap = map['user'];
     if (userMap is! Map) return null;
-    return AuthUser.fromJson(Map<String, dynamic>.from(userMap));
+    final user = AuthUser.fromJson(Map<String, dynamic>.from(userMap));
+    await _cacheUser(user);
+    return user;
   }
 
   /// 注销账号：调用后端 DELETE /user 永久删除云端数据，成功后清理本地登录态
@@ -266,17 +305,25 @@ class AuthService {
   Future<bool> deleteAccount() async {
     if (isBackendConfigured) {
       try {
-        final token = await getAccessToken();
-        final headers = <String, String>{'Content-Type': 'application/json'};
-        if (token != null && token.isNotEmpty) {
-          headers['Authorization'] = 'Bearer $token';
-        }
-        final resp = await http
-            .delete(_uri('/api/v1/user'), headers: headers)
-            .timeout(_timeout);
+        final refreshToken = await _getRefreshToken();
+        final resp = await authedDelete('/api/v1/user');
         if (resp.statusCode >= 400 && resp.statusCode != 404) {
           debugPrint('AuthService: 注销账号失败 HTTP ${resp.statusCode}');
           return false;
+        }
+        // 注销后单独作废 refresh（logout 不要求仍有效的 access）
+        if (refreshToken != null && refreshToken.isNotEmpty) {
+          try {
+            await http
+                .post(
+                  _uri('/api/v1/auth/logout'),
+                  headers: const {'Content-Type': 'application/json'},
+                  body: jsonEncode({'refreshToken': refreshToken}),
+                )
+                .timeout(_timeout);
+          } catch (e) {
+            debugPrint('AuthService: 注销后作废 refresh 失败（忽略）: $e');
+          }
         }
       } catch (e) {
         debugPrint('AuthService: 注销账号请求异常: $e');
@@ -291,7 +338,14 @@ class AuthService {
   Future<void> logout() async {
     if (isBackendConfigured) {
       try {
-        await authedPost('/api/v1/auth/logout');
+        final refreshToken = await _getRefreshToken();
+        await authedPost(
+          '/api/v1/auth/logout',
+          body: {
+            if (refreshToken != null && refreshToken.isNotEmpty)
+              'refreshToken': refreshToken,
+          },
+        );
       } catch (e) {
         debugPrint('AuthService: 登出通知失败（忽略，继续清理本地）: $e');
       }
@@ -312,6 +366,8 @@ class AuthService {
     await prefs.remove(kAccessTokenKey);
     await prefs.remove(kRefreshTokenKey);
     await prefs.setBool('is_logged_in', false);
+    await prefs.remove('user_email');
+    await prefs.remove('user_nickname');
   }
 
   /// 从后端错误响应提取用户可读信息（后端错误格式: {"error": "..."}）

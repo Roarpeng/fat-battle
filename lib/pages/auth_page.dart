@@ -135,6 +135,11 @@ class _AuthPageState extends ConsumerState<AuthPage> with SingleTickerProviderSt
         'user_account',
         user.nickname.isNotEmpty ? user.nickname : email,
       );
+      await prefs.setString('user_email', user.email.isNotEmpty ? user.email : email);
+      await prefs.setString(
+        'user_nickname',
+        user.nickname.isNotEmpty ? user.nickname : email.split('@').first,
+      );
 
       if (!mounted) return;
       setState(() => _isLoading = false);
@@ -168,9 +173,21 @@ class _AuthPageState extends ConsumerState<AuthPage> with SingleTickerProviderSt
   }
 
   Future<void> _handleGuestLogin() async {
+    if (!_agreedPolicy) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('试用前请先阅读并勾选《用户协议与隐私政策》'),
+          backgroundColor: AppColors.red,
+        ),
+      );
+      return;
+    }
+
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('is_logged_in', true);
     await prefs.setString('user_account', '离线体验勇士');
+    await prefs.remove('user_email');
+    await prefs.setString('user_nickname', '离线体验勇士');
 
     if (!mounted) return;
     _navigateAfterAuth();
@@ -325,19 +342,21 @@ class _AuthPageState extends ConsumerState<AuthPage> with SingleTickerProviderSt
                             keyboardType: TextInputType.emailAddress,
                             style: TextStyle(color: AppColors.text),
                             decoration: InputDecoration(
-                              labelText: '手机号 / 邮箱',
+                              labelText: '邮箱',
+                              helperText: '仅支持邮箱登录，手机号暂不支持',
+                              helperMaxLines: 2,
                               prefixIcon: Icon(Icons.email_outlined, color: AppColors.copper),
                               border: OutlineInputBorder(borderRadius: AppRadii.smAll),
                             ),
                             validator: (val) {
                               final v = val?.trim() ?? '';
                               if (v.isEmpty) {
-                                return '请输入登录账号/邮箱';
+                                return '请输入邮箱';
                               }
-                              final isEmail = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(v);
-                              final isPhone = RegExp(r'^1\d{10}$').hasMatch(v);
-                              if (!isEmail && !isPhone) {
-                                return '请输入正确的邮箱或 11 位手机号';
+                              final isEmail =
+                                  RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(v);
+                              if (!isEmail) {
+                                return '请输入正确的邮箱地址';
                               }
                               return null;
                             },
@@ -466,7 +485,7 @@ class _AuthPageState extends ConsumerState<AuthPage> with SingleTickerProviderSt
                   ),
                   const SizedBox(height: AppSpace.xl),
 
-                  // 离线游客模式按钮
+                  // 离线游客模式按钮（与账号登录同样需要同意隐私政策）
                   TextButton.icon(
                     onPressed: _handleGuestLogin,
                     icon: Icon(Icons.bolt_outlined, color: AppColors.ember, size: 18),
@@ -477,6 +496,11 @@ class _AuthPageState extends ConsumerState<AuthPage> with SingleTickerProviderSt
                         fontSize: 13,
                       ),
                     ),
+                  ),
+                  Text(
+                    '离线试用同样适用隐私政策，数据仅保存在本机',
+                    style: AppFonts.body(fontSize: 11, color: AppColors.text2),
+                    textAlign: TextAlign.center,
                   ),
                 ],
               ),
