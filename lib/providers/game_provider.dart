@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/game_models.dart';
 import '../constants/app_constants.dart';
+import '../core/barrel.dart' as core;
 import '../services/game_algorithm.dart';
 import '../services/notification_service.dart';
 import '../services/progress_sync_service.dart';
@@ -173,6 +174,21 @@ class GameStateNotifier extends StateNotifier<GameState> {
         weekData.removeRange(0, weekData.length - 7);
       }
 
+      final floor = _calorieFloorFor(state.user);
+      final hadActivity = state.todayCalIn > 0 ||
+          state.todayCalExercise > 0 ||
+          state.meals.values.any((list) => list.isNotEmpty) ||
+          state.exercises.isNotEmpty;
+      final yesterdayExtreme = core.wasExtremeDeficitDay(
+        intake: state.todayCalIn,
+        calorieFloor: floor,
+        hadActivity: hadActivity,
+      );
+      final extremeStreak = core.nextExtremeDeficitStreak(
+        currentStreak: state.extremeDeficitStreak,
+        yesterdayWasExtreme: yesterdayExtreme,
+      );
+
       // 新的一天
       state = state.copyWith(
         day: state.day + 1,
@@ -186,6 +202,8 @@ class GameStateNotifier extends StateNotifier<GameState> {
         lastDate: today,
         weekData: weekData,
         waterCups: 0, // 每日重置饮水杯数
+        extremeDeficitStreak: extremeStreak,
+        targetCal: _calcTargetCalFor(state.user),
       );
 
       // 生成新怪物
@@ -214,7 +232,7 @@ class GameStateNotifier extends StateNotifier<GameState> {
       user.runDuration,
       user.weeklyFreq,
     );
-    final targetCal = GameAlgorithm.calcTargetCal(user.weight, user.difficulty);
+    final targetCal = _calcTargetCalFor(user);
     final playerMaxHp = GameAlgorithm.calcPlayerMaxHp(fitnessLevel);
     
     final newUser = user.copyWith(
@@ -248,6 +266,14 @@ class GameStateNotifier extends StateNotifier<GameState> {
         date: DateTime.now().toDateString(),
         weight: user.weight,
       )],
+      waistRecords: user.waistCm != null
+          ? [
+              WaistRecord(
+                date: DateTime.now().toDateString(),
+                waistCm: user.waistCm!,
+              ),
+            ]
+          : [],
       weekData: [],
     );
     
@@ -335,6 +361,11 @@ class GameStateNotifier extends StateNotifier<GameState> {
       state.monster.maxHp,
       state.monster.shield,
       season: season,
+      todayCalIn: state.todayCalIn,
+      targetCal: state.targetCal,
+      safetyMultiplier: core.extremeDeficitCombatMultiplier(
+        state.extremeDeficitStreak,
+      ),
     );
     
     // 计算疲劳
@@ -387,6 +418,9 @@ class GameStateNotifier extends StateNotifier<GameState> {
     final reward = GameAlgorithm.calcKillReward(
       state.monster.isBoss,
       season: season,
+      safetyMultiplier: core.extremeDeficitCombatMultiplier(
+        state.extremeDeficitStreak,
+      ),
     );
     
     state = state.copyWith(
@@ -479,29 +513,55 @@ class GameStateNotifier extends StateNotifier<GameState> {
         VoiceService().maintenanceEnter();
       }
     }
+
+    final updatedUser = state.user.copyWith(
+      weight: weight,
+      bmi: bmi,
+      status: newStatus,
+    );
     
     state = state.copyWith(
       weightRecords: records,
-      user: state.user.copyWith(
-        weight: weight,
-        bmi: bmi,
-        status: newStatus,
-      ),
+      user: updatedUser,
       maintenanceMode: newMaintenanceMode,
+      targetCal: _calcTargetCalFor(updatedUser),
     );
     
     await _checkAchievements();
     await _saveGame();
   }
+
+  /// 记录腰围（厘米，可选，不依赖硬件）
+  Future<void> recordWaist(double waistCm) async {
+    if (waistCm < 40 || waistCm > 200) return;
+    final records = List<WaistRecord>.from(state.waistRecords);
+    final today = DateTime.now().toDateString();
+    final existing = records.indexWhere((r) => r.date == today);
+    final entry = WaistRecord(date: today, waistCm: waistCm);
+    if (existing >= 0) {
+      records[existing] = entry;
+    } else {
+      records.add(entry);
+    }
+    if (records.length > 60) {
+      records.removeRange(0, records.length - 60);
+    }
+    state = state.copyWith(
+      waistRecords: records,
+      user: state.user.copyWith(waistCm: waistCm),
+    );
+    await _saveGame();
+  }
   
   /// 更新难度
   Future<void> updateDifficulty(Difficulty difficulty) async {
-    final targetCal = GameAlgorithm.calcTargetCal(state.user.weight, difficulty);
+    final updatedUser = state.user.copyWith(difficulty: difficulty);
+    final targetCal = _calcTargetCalFor(updatedUser);
     
     state = state.copyWith(
       difficulty: difficulty,
       targetCal: targetCal,
-      user: state.user.copyWith(difficulty: difficulty),
+      user: updatedUser,
     );
     
     await _saveGame();
@@ -550,9 +610,33 @@ class GameStateNotifier extends StateNotifier<GameState> {
     );
     await _saveGame();
   }
+
+  int _calcTargetCalFor(User user) {
+    return GameAlgorithm.calcTargetCal(
+      user.weight,
+      user.difficulty,
+      heightCm: user.height,
+      age: user.age,
+      gender: user.gender,
+      workType: user.workType,
+    );
+  }
+
+  int _calorieFloorFor(User user) {
+    final bmr = core.calculateBmr(
+      user.gender,
+      user.weight,
+      user.height,
+      user.age,
+    );
+    return core.calorieFloorFor(gender: user.gender, bmr: bmr);
+  }
   
   /// 检查成就
   Future<void> _checkAchievements() async {
+    if (core.isExtremeDeficitCrisis(state.extremeDeficitStreak)) {
+      return;
+    }
     final achievements = List<String>.from(state.achievements);
     
     for (final achievement in Achievements.all) {
@@ -708,6 +792,7 @@ class GameState {
   final List<ExerciseRecord> exercises;
   final List<String> achievements;
   final List<WeightRecord> weightRecords;
+  final List<WaistRecord> waistRecords;
   final List<WeekData> weekData;
   final GameStatus status;
   final Difficulty difficulty;
@@ -724,6 +809,9 @@ class GameState {
   final bool voiceEnabled;
   final bool maintenanceMode;
   final String reminderFrequency;
+
+  /// 连续极端赤字天数（摄入低于热量下限）。
+  final int extremeDeficitStreak;
 
   // 饮水追踪
   final int waterCups; // 今日已饮水杯数
@@ -752,6 +840,7 @@ class GameState {
     this.exercises = const [],
     this.achievements = const [],
     this.weightRecords = const [],
+    this.waistRecords = const [],
     this.weekData = const [],
     this.status = GameStatus.playing,
     this.difficulty = Difficulty.normal,
@@ -774,6 +863,7 @@ class GameState {
     this.cloudSyncEnabled = true,
     this.foodVisionEnabled = true,
     this.cameraPoseEnabled = true,
+    this.extremeDeficitStreak = 0,
   });
   
   GameState copyWith({
@@ -791,6 +881,7 @@ class GameState {
     List<ExerciseRecord>? exercises,
     List<String>? achievements,
     List<WeightRecord>? weightRecords,
+    List<WaistRecord>? waistRecords,
     List<WeekData>? weekData,
     GameStatus? status,
     Difficulty? difficulty,
@@ -813,6 +904,7 @@ class GameState {
     bool? cloudSyncEnabled,
     bool? foodVisionEnabled,
     bool? cameraPoseEnabled,
+    int? extremeDeficitStreak,
   }) {
     return GameState(
       user: user ?? this.user,
@@ -829,6 +921,7 @@ class GameState {
       exercises: exercises ?? this.exercises,
       achievements: achievements ?? this.achievements,
       weightRecords: weightRecords ?? this.weightRecords,
+      waistRecords: waistRecords ?? this.waistRecords,
       weekData: weekData ?? this.weekData,
       status: status ?? this.status,
       difficulty: difficulty ?? this.difficulty,
@@ -851,6 +944,8 @@ class GameState {
       cloudSyncEnabled: cloudSyncEnabled ?? this.cloudSyncEnabled,
       foodVisionEnabled: foodVisionEnabled ?? this.foodVisionEnabled,
       cameraPoseEnabled: cameraPoseEnabled ?? this.cameraPoseEnabled,
+      extremeDeficitStreak:
+          extremeDeficitStreak ?? this.extremeDeficitStreak,
     );
   }
   
@@ -897,6 +992,7 @@ class GameState {
       'weightRecords': weightRecords.map((w) => {
         'date': w.date, 'weight': w.weight,
       }).toList(),
+      'waistRecords': waistRecords.map((w) => w.toJson()).toList(),
       'weekData': weekData.map((w) => {
         'day': w.day,
         'date': w.date,
@@ -926,6 +1022,7 @@ class GameState {
       'cloudSyncEnabled': cloudSyncEnabled,
       'foodVisionEnabled': foodVisionEnabled,
       'cameraPoseEnabled': cameraPoseEnabled,
+      'extremeDeficitStreak': extremeDeficitStreak,
     };
   }
   
@@ -982,6 +1079,9 @@ class GameState {
         date: w['date'] ?? '',
         weight: (w['weight'] ?? 0).toDouble(),
       )).toList() ?? [],
+      waistRecords: (json['waistRecords'] as List?)?.map((w) => WaistRecord.fromJson(
+        Map<String, dynamic>.from(w as Map),
+      )).toList() ?? [],
       weekData: (json['weekData'] as List?)?.map((w) => WeekData(
         day: w['day'] ?? 0,
         date: w['date'] ?? '',
@@ -1013,12 +1113,16 @@ class GameState {
       cloudSyncEnabled: json['cloudSyncEnabled'] ?? true,
       foodVisionEnabled: json['foodVisionEnabled'] ?? true,
       cameraPoseEnabled: json['cameraPoseEnabled'] ?? true,
+      extremeDeficitStreak: json['extremeDeficitStreak'] ?? 0,
     );
   }
   
   bool get hasGame => lastDate.isNotEmpty;
   
   int get remainingCal => targetCal - todayCalIn + todayCalExercise;
+
+  bool get inExtremeDeficitCrisis =>
+      core.isExtremeDeficitCrisis(extremeDeficitStreak);
 }
 
 /// DateTime扩展

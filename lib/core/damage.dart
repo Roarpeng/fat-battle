@@ -19,6 +19,13 @@ const double _counterSuperEffective = 1.5; // 克制
 const double _counterNormal = 1.0;
 const double _counterNotVeryEffective = 0.7; // 被克
 
+/// 热量预算带：目标 ±10%，且至少 ±100 kcal。
+const double kCalorieBandRatio = 0.10;
+const int kCalorieBandMinAbsKcal = 100;
+
+/// 打中预算带时的伤害加成（奖励贴近目标，而不是吃得越少越好）。
+const double kCalorieBandHitBonus = 1.15;
+
 /// 伤害结算效果标签，供 UI 显示「效果绝佳！」/「效果不太好…」
 enum DamageEffectiveness { superEffective, normal, weak }
 
@@ -71,26 +78,50 @@ _DamageModifier _resolveCounter(
   );
 }
 
+/// 预算带半宽（kcal）。
+int calorieBandHalfWidth(num targetCalories) {
+  final target = math.max(0, targetCalories.toInt());
+  return math.max(kCalorieBandMinAbsKcal, (target * kCalorieBandRatio).round());
+}
+
+/// 当日摄入是否落在目标热量预算带内。
+bool isIntakeInCalorieBand(num intake, num targetCalories) {
+  final target = math.max(0, targetCalories.toInt());
+  if (target <= 0) return false;
+  final food = math.max(0, intake.toInt());
+  return (food - target).abs() <= calorieBandHalfWidth(target);
+}
+
+/// 打中预算带 → [kCalorieBandHitBonus]，否则 1.0。吃得更少不会额外加伤。
+double calorieBandHitBonus(num intake, num? targetCalories) {
+  if (targetCalories == null) return 1.0;
+  return isIntakeInCalorieBand(intake, targetCalories)
+      ? kCalorieBandHitBonus
+      : 1.0;
+}
+
 /// 计算基础伤害值（不含克制倍率）。
 ///
 /// 基础伤害来自运动消耗，保持原有 `attackMonster` 中「运动卡路里即伤害」的语义。
 /// 难度倍率与怪物 HP 难度倍率反向：简单模式玩家伤害更高，困难模式更低。
-/// 当处于热量赤字（运动消耗 > 摄入）时，减脂效果更显著，给予 10% 伤害加成。
+/// 传入 [targetCalories] 时，打中热量预算带给予加成；不再奖励「吃得越少越好」。
+///
+/// Flutter 端已改为「打中热量预算带」加成；web/src/core/damage.ts 仍为 burn>food 赤字加成，可能静默漂移。
 ///
 /// 注意：过量摄入（intake > targetCalories）不在此处削减伤害，
 /// 而是通过 `calculateOvereatCalories` + `calculateShieldFromOvereat` 转化为怪物护盾。
 int calculateDamageBase(
   num intake,
   num exerciseBurn,
-  Difficulty difficulty,
-) {
+  Difficulty difficulty, {
+  num? targetCalories,
+}) {
   final diffMultiplier = difficulty == Difficulty.easy
       ? 1.3
       : (difficulty == Difficulty.hard ? 0.7 : 1.0);
   final burn = math.max(0, exerciseBurn.toInt());
-  final food = math.max(0, intake.toInt());
-  final deficitBonus = burn > food ? 1.1 : 1.0;
-  return (burn * diffMultiplier * deficitBonus).round();
+  final bandBonus = calorieBandHitBonus(intake, targetCalories);
+  return (burn * diffMultiplier * bandBonus).round();
 }
 
 /// 计算对怪物的伤害值（不含克制参数，向后兼容版本）。
@@ -102,9 +133,15 @@ int calculateDamageBase(
 int calculateDamage(
   num intake,
   num exerciseBurn,
-  Difficulty difficulty,
-) {
-  return calculateDamageBase(intake, exerciseBurn, difficulty);
+  Difficulty difficulty, {
+  num? targetCalories,
+}) {
+  return calculateDamageBase(
+    intake,
+    exerciseBurn,
+    difficulty,
+    targetCalories: targetCalories,
+  );
 }
 
 /// 计算对怪物的伤害值（启用克制系统版本）。
@@ -123,9 +160,15 @@ DamageResult calculateDamageWithCounter(
   num exerciseBurn,
   Difficulty difficulty,
   ExerciseCategory exerciseCategory,
-  ExerciseCategory monsterAffinity,
-) {
-  final baseDamage = calculateDamageBase(intake, exerciseBurn, difficulty);
+  ExerciseCategory monsterAffinity, {
+  num? targetCalories,
+}) {
+  final baseDamage = calculateDamageBase(
+    intake,
+    exerciseBurn,
+    difficulty,
+    targetCalories: targetCalories,
+  );
   final mod = _resolveCounter(exerciseCategory, monsterAffinity);
   final finalDamage = (baseDamage * mod.multiplier).round();
   return DamageResult(
@@ -148,7 +191,7 @@ int calculateOvereatCalories(num intake, num targetCalories) {
 /// [ratio] 转化比例（每 ratio 卡路里 = 1 点护盾），默认 10:1
 /// 返回护盾值（非负整数）。
 ///
-/// 双端基准统一采用 10:1：暴食惩罚但不至于过强，
+/// 双端基准统一采用 10:1：超出预算会生成护盾（玩法机制，不是羞辱），
 /// 避免高卡路里数值导致护盾条瞬间溢出。
 /// `ratio <= 0` 时回退为默认 10。
 int calculateShieldFromOvereat(num overeatCalories, [num ratio = 10]) {

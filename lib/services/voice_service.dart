@@ -169,7 +169,7 @@ class VoiceService {
   Future<void> monsterFailed() =>
       speak('没关系主人~ 明天继续加油~ 你一定可以的~');
   Future<void> foodOver(int over) =>
-      speak('主人注意~ 超标了${over}卡路里，脂肪怪在偷偷增强防御~');
+      speak('摄入超过预算带 ${over} kcal，怪物生成了护盾，去锤炼就能削掉~');
   Future<void> foodAdded(String name) => speak('已记录${name}~');
   Future<void> dailySummary(int calIn, int calEx, int net) {
     final rating = net <= 0 ? '优秀' : net < 300 ? '不错' : '加油';

@@ -28,6 +28,7 @@ import '../widgets/exercise/pose_coach_guide.dart';
 import '../widgets/forge_pressable.dart';
 import '../widgets/home/forge_background.dart';
 import '../widgets/home/mini_monster_header.dart';
+import '../widgets/medical_disclaimer.dart';
 import 'package:gal/gal.dart';
 import 'pose_coach_page.dart';
 
@@ -210,6 +211,13 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
     _refreshResumableSession();
     // ignore: discarded_futures
     _coachVoice.ensureReady();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      MedicalDisclaimer.ensureAccepted(
+        context,
+        prefs: ref.read(sharedPreferencesProvider),
+      );
+    });
   }
 
   void _syncCoachVoiceEnabled() {

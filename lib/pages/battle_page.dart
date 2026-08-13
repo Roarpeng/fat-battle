@@ -10,6 +10,7 @@ import '../widgets/battle/hp_bar.dart';
 import '../widgets/battle/victory_effect.dart';
 import '../widgets/home/forge_background.dart';
 import '../widgets/hub_status_dot.dart';
+import '../widgets/medical_disclaimer.dart';
 import '../services/ble_service.dart';
 
 /// 锻造工坊 · 战斗舞台（核心玩法页）
@@ -109,26 +110,22 @@ class _BattlePageState extends ConsumerState<BattlePage> {
       return '精力耗尽，好好休养，明天满血归来';
     }
     if (gs.monster.hasShield) {
-      return '它裹着护甲——吃少一点，或去锤炼破盾';
+      return '它裹着护甲——贴近预算带，或去锤炼破盾';
     }
     if (gs.remainingCal >= 0) {
       return '再消耗约 ${(gs.monster.hp * 0.8).toInt()} kcal 就能攻克它';
     }
-    return '已超出 ${-gs.remainingCal} kcal，动一动就能削盾';
+    return calorieBudgetStatusCopy(gs.remainingCal);
   }
 
   String _getCalorieDisplay(GameState gs) {
-    final remaining = gs.remainingCal;
-    if (remaining >= 0) {
-      return '今日目标还剩 $remaining kcal';
-    }
-    return '已超支 ${-remaining} kcal';
+    return calorieBudgetStatusCopy(gs.remainingCal);
   }
 
   Color _getCalorieColor(GameState gs) {
     if (gs.remainingCal >= 500) return AppColors.green;
     if (gs.remainingCal >= 0) return AppColors.copper;
-    return AppColors.ember;
+    return AppColors.shield;
   }
 
   String _getTierName(Monster monster) {
@@ -356,13 +353,13 @@ class _BattlePageState extends ConsumerState<BattlePage> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
               decoration: BoxDecoration(
-                color: Colors.orange.withValues(alpha: 0.2),
+                color: AppColors.shield.withValues(alpha: 0.2),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Text(
-                '超支 ${-gs.remainingCal}',
+                '护盾 +${-gs.remainingCal}',
                 style: const TextStyle(
-                  color: Colors.orange,
+                  color: AppColors.shield,
                   fontSize: 11,
                   fontWeight: FontWeight.bold,
                 ),

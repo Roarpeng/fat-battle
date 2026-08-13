@@ -18,4 +18,5 @@ export 'difficulty.dart';
 export 'streak.dart';
 export 'calories.dart';
 export 'weight.dart';
+export 'safety.dart';
 export 'exercise_quality.dart';

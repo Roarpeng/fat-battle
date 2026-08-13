@@ -4,6 +4,7 @@ import 'core_types.dart';
 /// BMR / TDEE / 目标卡路里计算 —— 纯函数实现。
 ///
 /// 对应 web/src/core/calories.ts。
+/// Flutter 端目标不低于 max(性别下限, BMR)，日赤字上限 750 kcal；web/src/core/calories.ts 的 extremeLoss 仍为 1000，可能静默漂移。
 
 // ========== 常量配置 ==========
 
@@ -19,10 +20,15 @@ const Map<ActivityLevel, double> activityFactors = {
 
 /// 性别 → 最低安全卡路里摄入。
 /// 对应 web/src/core/calories.ts 中的 `SAFE_MIN_CALORIES`。
-const Map<Gender, int> _safeMinCalories = {
+const Map<Gender, int> safeMinCalories = {
   Gender.male: 1500,
   Gender.female: 1200,
 };
+
+/// 每日赤字上限（kcal）。困难模式允许到 750，默认减脂 500。
+const int kMaxDailyDeficitKcal = 750;
+const int kDefaultDailyDeficitKcal = 500;
+const int kMildDailyDeficitKcal = 250;
 
 /// 减重目标配置。
 /// 对应 web/src/core/calories.ts 中的 `GOAL_CONFIGS`。
@@ -33,9 +39,12 @@ class _GoalConfig {
 }
 
 const Map<CaloriesGoal, _GoalConfig> _goalConfigs = {
-  CaloriesGoal.mildLoss: _GoalConfig(dailyDeficit: 250, weeklyLoss: 0.25),
-  CaloriesGoal.loss: _GoalConfig(dailyDeficit: 500, weeklyLoss: 0.5),
-  CaloriesGoal.extremeLoss: _GoalConfig(dailyDeficit: 1000, weeklyLoss: 1.0),
+  CaloriesGoal.mildLoss:
+      _GoalConfig(dailyDeficit: kMildDailyDeficitKcal, weeklyLoss: 0.25),
+  CaloriesGoal.loss:
+      _GoalConfig(dailyDeficit: kDefaultDailyDeficitKcal, weeklyLoss: 0.5),
+  CaloriesGoal.extremeLoss:
+      _GoalConfig(dailyDeficit: kMaxDailyDeficitKcal, weeklyLoss: 0.75),
 };
 
 /// `calculateTargetCalories` 的返回结果。
@@ -50,11 +59,14 @@ class TargetCaloriesResult {
   /// 目标每日摄入卡路里
   final int targetCalories;
 
-  /// 实际每日赤字（受安全下限影响）
+  /// 实际每日赤字（受安全下限与赤字上限影响）
   final int dailyDeficit;
 
   /// 预计每周减重 (kg)
   final double estimatedWeeklyLoss;
+
+  /// 实际采用的热量下限 = max(性别下限, BMR)
+  final int calorieFloor;
 
   const TargetCaloriesResult({
     required this.bmr,
@@ -62,10 +74,19 @@ class TargetCaloriesResult {
     required this.targetCalories,
     required this.dailyDeficit,
     required this.estimatedWeeklyLoss,
+    required this.calorieFloor,
   });
 }
 
 // ========== 计算函数 ==========
+
+/// 性别对应的最低安全摄入。
+int safeMinCaloriesFor(Gender gender) => safeMinCalories[gender]!;
+
+/// 热量下限：max(1200 女 / 1500 男, BMR)，永不低于该值生成目标。
+int calorieFloorFor({required Gender gender, required int bmr}) {
+  return math.max(safeMinCaloriesFor(gender), math.max(0, bmr));
+}
 
 /// 计算 BMR（基础代谢率），采用 Mifflin-St Jeor 公式。
 ///
@@ -96,7 +117,12 @@ int calculateTdee(num bmr, ActivityLevel activityLevel) {
   return (baseBmr * factor).round();
 }
 
-/// 计算目标卡路里摄入，结合减重目标与安全下限。
+/// 将计划赤字限制在 [0, kMaxDailyDeficitKcal]。
+int capDailyDeficit(num deficit) {
+  return math.max(0, math.min(kMaxDailyDeficitKcal, deficit.round()));
+}
+
+/// 计算目标卡路里摄入，结合减重目标、赤字上限与安全下限。
 ///
 /// [gender] 性别
 /// [weightKg] 体重 (kg)
@@ -105,8 +131,10 @@ int calculateTdee(num bmr, ActivityLevel activityLevel) {
 /// [activityLevel] 活动水平
 /// [goal] 减重目标，默认 `CaloriesGoal.loss`
 ///
-/// 当目标摄入低于性别对应的安全下限时，回退到安全下限，
-/// 并按安全下限重新计算实际赤字与每周减重。
+/// 规则：
+/// - 日赤字上限 750 kcal（extremeLoss），默认 500，温和 250。
+/// - 目标 = max(热量下限, TDEE − 赤字)；热量下限 = max(性别下限, BMR)。
+/// - 永不生成低于下限的目标。
 TargetCaloriesResult calculateTargetCalories(
   Gender gender,
   num weightKg,
@@ -118,24 +146,28 @@ TargetCaloriesResult calculateTargetCalories(
   final bmr = calculateBmr(gender, weightKg, heightCm, age);
   final tdee = calculateTdee(bmr, activityLevel);
   final goalConfig = _goalConfigs[goal]!;
-  final safeMin = _safeMinCalories[gender]!;
+  final floor = calorieFloorFor(gender: gender, bmr: bmr);
 
-  var targetCalories = tdee - goalConfig.dailyDeficit;
-  var actualDeficit = goalConfig.dailyDeficit;
-  var actualWeeklyLoss = goalConfig.weeklyLoss;
+  var desiredDeficit = capDailyDeficit(goalConfig.dailyDeficit);
+  var targetCalories = tdee - desiredDeficit;
 
-  if (targetCalories < safeMin) {
-    targetCalories = safeMin;
-    actualDeficit = tdee - safeMin;
-    actualWeeklyLoss = (actualDeficit * 7) / 7700;
+  if (targetCalories < floor) {
+    targetCalories = floor;
   }
+
+  var actualDeficit = math.max(0, tdee - targetCalories);
+  actualDeficit = capDailyDeficit(actualDeficit);
+  targetCalories = math.max(floor, tdee - actualDeficit);
+
+  final actualWeeklyLoss = (actualDeficit * 7) / 7700;
 
   return TargetCaloriesResult(
     bmr: bmr,
     tdee: tdee,
-    targetCalories: math.max(0, targetCalories),
+    targetCalories: math.max(floor, targetCalories),
     dailyDeficit: math.max(0, actualDeficit),
     estimatedWeeklyLoss:
         math.max(0.0, (actualWeeklyLoss * 100).roundToDouble() / 100),
+    calorieFloor: floor,
   );
 }
