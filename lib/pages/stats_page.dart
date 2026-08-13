@@ -1,4 +1,5 @@
 ﻿import 'dart:io';
+import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,12 +11,15 @@ import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
 import '../constants/app_constants.dart';
+import '../core/barrel.dart' as core;
 import '../models/game_models.dart';
 import '../providers/game_provider.dart';
 import '../services/game_algorithm.dart';
 import '../widgets/forge_pressable.dart';
 import '../widgets/home/forge_background.dart';
 import '../widgets/hp_bar.dart';
+import '../widgets/medical_disclaimer.dart';
+import '../widgets/trend_line_chart.dart';
 
 /// 进度页 — 锻造工坊视觉（方案 A）
 class StatsPage extends ConsumerStatefulWidget {
@@ -27,10 +31,12 @@ class StatsPage extends ConsumerStatefulWidget {
 
 class _StatsPageState extends ConsumerState<StatsPage> {
   final _weightController = TextEditingController();
+  final _waistController = TextEditingController();
 
   @override
   void dispose() {
     _weightController.dispose();
+    _waistController.dispose();
     super.dispose();
   }
 
@@ -80,14 +86,16 @@ class _StatsPageState extends ConsumerState<StatsPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              ForgeStagger(index: 0, child: _buildHero(progress, user)),
+              if (gameState.inExtremeDeficitCrisis)
+                const SafetyCrisisBanner(),
+              ForgeStagger(index: 0, child: _buildHero(progress, user, gameState)),
               const SizedBox(height: AppSpace.xl),
               ForgeStagger(
                 index: 1,
                 child: _sectionCard(
                   icon: Icons.track_changes_outlined,
                   title: '雕琢进度',
-                  subtitle: '当前体重到目标的锻造进度',
+                  subtitle: '腰围趋势与平滑体重是主指标，单日体重作参考',
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -213,6 +221,7 @@ class _StatsPageState extends ConsumerState<StatsPage> {
               _sectionCard(
                 icon: Icons.monitor_weight_outlined,
                 title: '记录今日体重',
+                subtitle: '单日体重波动较大，趋势看平滑曲线',
                 child: Row(
                   children: [
                     Expanded(
@@ -246,18 +255,84 @@ class _StatsPageState extends ConsumerState<StatsPage> {
               ),
               const SizedBox(height: AppSpace.lg),
               _sectionCard(
+                icon: Icons.straighten,
+                title: '记录腰围（可选）',
+                subtitle: '主进度指标，不需要连接腰部 Hub',
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _waistController,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        style: _bodyStyle,
+                        decoration: InputDecoration(
+                          hintText: '腰围 (cm)',
+                          hintStyle: _mutedStyle,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: AppSpace.md),
+                    ElevatedButton(
+                      onPressed: () {
+                        final waist = double.tryParse(_waistController.text);
+                        if (waist == null || waist < 40 || waist > 200) {
+                          _showToast('请输入有效腰围 (40-200cm)');
+                          return;
+                        }
+                        gameNotifier.recordWaist(waist);
+                        _waistController.clear();
+                        _showToast('腰围已记录: ${waist}cm');
+                      },
+                      child: const Text('记录'),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: AppSpace.lg),
+              _sectionCard(
                 icon: Icons.show_chart_outlined,
-                title: '体重趋势 (7日移动平均)',
+                title: '平滑体重 (7–14日)',
+                subtitle: '主曲线为移动平均，虚线为每日体重',
                 child: gameState.weightRecords.length < 2
                     ? Center(
                         child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: AppSpace.xl),
+                          padding: const EdgeInsets.symmetric(
+                            vertical: AppSpace.xl,
+                          ),
                           child: Text('需要至少 2 天记录', style: _mutedStyle),
                         ),
                       )
                     : SizedBox(
-                        height: 150,
-                        child: _buildWeightChart(gameState.weightRecords),
+                        height: 180,
+                        child: _buildSmoothedWeightChart(
+                          gameState.weightRecords,
+                        ),
+                      ),
+              ),
+              const SizedBox(height: AppSpace.lg),
+              _sectionCard(
+                icon: Icons.accessibility_new_outlined,
+                title: '腰围趋势',
+                subtitle: '塑身主指标，手动录入即可',
+                child: gameState.waistRecords.length < 2
+                    ? Center(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            vertical: AppSpace.xl,
+                          ),
+                          child: Text(
+                            gameState.waistRecords.isEmpty
+                                ? '还没有腰围记录，可在上方手动录入'
+                                : '再记一天就能看到趋势',
+                            style: _mutedStyle,
+                          ),
+                        ),
+                      )
+                    : SizedBox(
+                        height: 180,
+                        child: _buildWaistChart(gameState.waistRecords),
                       ),
               ),
             ],
@@ -267,7 +342,34 @@ class _StatsPageState extends ConsumerState<StatsPage> {
     );
   }
 
-  Widget _buildHero(double progress, User user) {
+  Widget _buildHero(double progress, User user, GameState gs) {
+    final logs = gs.weightRecords
+        .map((r) => core.WeightLogEntry(date: r.date, weightKg: r.weight))
+        .toList();
+    final smoothed = core.smoothWeightSeries(
+      logs,
+      windowDays: logs.length >= 14 ? 14 : 7,
+    );
+    final smoothKg =
+        smoothed.isNotEmpty ? smoothed.last : user.weight;
+    final waistTrend = core.analyzeWaistTrend(
+      gs.waistRecords
+          .map((r) => core.WaistLogEntry(date: r.date, waistCm: r.waistCm))
+          .toList(),
+    );
+    final waistLabel = waistTrend == null
+        ? (user.waistCm != null
+            ? '${user.waistCm!.toStringAsFixed(1)} cm'
+            : '未记录')
+        : '${waistTrend.currentWaistCm.toStringAsFixed(1)} cm';
+    final waistHint = waistTrend == null
+        ? '主指标'
+        : (waistTrend.trend == core.WeightTrendDirection.decreasing
+            ? '趋势下降'
+            : waistTrend.trend == core.WeightTrendDirection.increasing
+                ? '趋势上升'
+                : '趋势平稳');
+
     return ForgeSurface(
       borderColor: AppColors.copper.withValues(alpha: 0.35),
       child: Column(
@@ -279,7 +381,7 @@ class _StatsPageState extends ConsumerState<StatsPage> {
           ),
           const SizedBox(height: AppSpace.sm),
           Text(
-            '称重、补水与回顾——在炉火旁记录每一刻变化',
+            '腰围与平滑体重是主进度；单日体重只作参考',
             style: _mutedStyle.copyWith(height: 1.45),
           ),
           const SizedBox(height: AppSpace.lg),
@@ -289,14 +391,15 @@ class _StatsPageState extends ConsumerState<StatsPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('进度', style: _mutedStyle.copyWith(fontSize: 11)),
+                    Text('腰围', style: _mutedStyle.copyWith(fontSize: 11)),
                     Text(
-                      '${progress.toStringAsFixed(0)}%',
+                      waistLabel,
                       style: _displayStyle.copyWith(
-                        fontSize: 22,
+                        fontSize: 18,
                         color: AppColors.ember,
                       ),
                     ),
+                    Text(waistHint, style: _mutedStyle.copyWith(fontSize: 10)),
                   ],
                 ),
               ),
@@ -304,10 +407,14 @@ class _StatsPageState extends ConsumerState<StatsPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('当前', style: _mutedStyle.copyWith(fontSize: 11)),
+                    Text('平滑体重', style: _mutedStyle.copyWith(fontSize: 11)),
                     Text(
-                      '${user.weight.toStringAsFixed(1)} kg',
+                      '${smoothKg.toStringAsFixed(1)} kg',
                       style: _displayStyle.copyWith(fontSize: 18),
+                    ),
+                    Text(
+                      '7–14日均值',
+                      style: _mutedStyle.copyWith(fontSize: 10),
                     ),
                   ],
                 ),
@@ -316,13 +423,17 @@ class _StatsPageState extends ConsumerState<StatsPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('目标', style: _mutedStyle.copyWith(fontSize: 11)),
+                    Text('今日体重', style: _mutedStyle.copyWith(fontSize: 11)),
                     Text(
-                      '${user.targetWeight.toStringAsFixed(1)} kg',
+                      '${user.weight.toStringAsFixed(1)} kg',
                       style: _displayStyle.copyWith(
                         fontSize: 18,
                         color: AppColors.copper,
                       ),
+                    ),
+                    Text(
+                      '${progress.toStringAsFixed(0)}% 目标',
+                      style: _mutedStyle.copyWith(fontSize: 10),
                     ),
                   ],
                 ),
@@ -765,27 +876,39 @@ class _StatsPageState extends ConsumerState<StatsPage> {
     }).toList();
   }
 
-  Widget _buildWeightChart(List<WeightRecord> records) {
-    final maData = <MapEntry<String, double>>[];
-    for (int i = 0; i < records.length; i++) {
-      final start = i > 6 ? i - 6 : 0;
-      final slice = records.sublist(start, i + 1);
-      final avg = slice.fold(0.0, (s, r) => s + r.weight) / slice.length;
-      maData.add(MapEntry(records[i].date, avg));
-    }
+  Widget _buildSmoothedWeightChart(List<WeightRecord> records) {
+    final logs = records
+        .map((r) => core.WeightLogEntry(date: r.date, weightKg: r.weight))
+        .toList();
+    final window = logs.length >= 14 ? 14 : 7;
+    final smoothed = core.smoothWeightSeries(logs, windowDays: window);
+    final primary = <FlSpot>[
+      for (var i = 0; i < smoothed.length; i++)
+        FlSpot(i.toDouble(), smoothed[i]),
+    ];
+    final daily = <FlSpot>[
+      for (var i = 0; i < records.length; i++)
+        FlSpot(i.toDouble(), records[i].weight),
+    ];
+    return TrendLineChart(
+      primary: primary,
+      secondary: daily,
+      showSecondary: true,
+      labels: records.map((r) => r.date).toList(),
+      primaryColor: AppColors.copper,
+      secondaryColor: AppColors.text2,
+    );
+  }
 
-    final weights = maData.map((e) => e.value).toList();
-    final minW = weights.reduce((a, b) => a < b ? a : b) - 1;
-    final maxW = weights.reduce((a, b) => a > b ? a : b) + 1;
-    final range = maxW - minW;
-
-    return CustomPaint(
-      painter: WeightChartPainter(
-        data: maData,
-        minWeight: minW,
-        maxWeight: maxW,
-        range: range,
-      ),
+  Widget _buildWaistChart(List<WaistRecord> records) {
+    final primary = <FlSpot>[
+      for (var i = 0; i < records.length; i++)
+        FlSpot(i.toDouble(), records[i].waistCm),
+    ];
+    return TrendLineChart(
+      primary: primary,
+      labels: records.map((r) => r.date).toList(),
+      primaryColor: AppColors.ember,
     );
   }
 
@@ -798,91 +921,4 @@ class _StatsPageState extends ConsumerState<StatsPage> {
       ),
     );
   }
-}
-
-/// 体重图表绘制器
-class WeightChartPainter extends CustomPainter {
-  final List<MapEntry<String, double>> data;
-  final double minWeight;
-  final double maxWeight;
-  final double range;
-
-  WeightChartPainter({
-    required this.data,
-    required this.minWeight,
-    required this.maxWeight,
-    required this.range,
-  });
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final linePaint = Paint()
-      ..color = AppColors.copper
-      ..strokeWidth = 2
-      ..style = PaintingStyle.stroke;
-
-    final dotPaint = Paint()
-      ..color = AppColors.ember
-      ..style = PaintingStyle.fill;
-
-    final gridPaint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.05)
-      ..strokeWidth = 1;
-
-    const padding = 20.0;
-    final chartWidth = size.width - padding * 2;
-    final chartHeight = size.height - padding * 2;
-
-    for (int i = 0; i <= 4; i++) {
-      final y = padding + (chartHeight / 4) * i;
-      canvas.drawLine(
-          Offset(padding, y), Offset(size.width - padding, y), gridPaint);
-    }
-
-    final path = Path();
-    for (int i = 0; i < data.length; i++) {
-      final x = padding + (i / (data.length - 1)) * chartWidth;
-      final y =
-          padding + (1 - (data[i].value - minWeight) / range) * chartHeight;
-
-      if (i == 0) {
-        path.moveTo(x, y);
-      } else {
-        path.lineTo(x, y);
-      }
-
-      canvas.drawCircle(Offset(x, y), 3, dotPaint);
-    }
-
-    canvas.drawPath(path, linePaint);
-
-    final textPainter = TextPainter(textDirection: TextDirection.ltr);
-
-    final step = (data.length / 5).ceil();
-    for (int i = 0; i < data.length; i += step) {
-      final x = padding + (i / (data.length - 1)) * chartWidth;
-      textPainter.text = TextSpan(
-        text: data[i].key.substring(5),
-        style: AppFonts.body(color: AppColors.text2, fontSize: 10),
-      );
-      textPainter.layout();
-      textPainter.paint(
-          canvas, Offset(x - textPainter.width / 2, size.height - 8));
-    }
-
-    for (int i = 0; i <= 4; i++) {
-      final val = maxWeight - (range / 4) * i;
-      final y = padding + (chartHeight / 4) * i;
-      textPainter.text = TextSpan(
-        text: val.toStringAsFixed(1),
-        style: AppFonts.body(color: AppColors.text2, fontSize: 10),
-      );
-      textPainter.layout();
-      textPainter.paint(canvas,
-          Offset(size.width - padding - textPainter.width, y - 4));
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
 }

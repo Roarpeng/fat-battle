@@ -18,6 +18,7 @@ import '../widgets/city_food_recommend_bar.dart';
 import '../widgets/forge_pressable.dart';
 import '../widgets/home/forge_background.dart';
 import '../widgets/home/mini_monster_header.dart';
+import '../widgets/medical_disclaimer.dart';
 
 class FoodPage extends ConsumerStatefulWidget {
   /// 从舞台 push 进入时显示迷你怪血条
@@ -565,7 +566,18 @@ class _FoodPageState extends ConsumerState<FoodPage> {
                                 '已摄入 ${budget.todayCalIn} kcal${budget.todayCalExercise > 0 ? ' · 运动消耗 ${budget.todayCalExercise} kcal' : ''}',
                                 style: _bodyStyle.copyWith(fontSize: 12, color: AppColors.text2),
                               ),
-                              Text('还可摄入 ${budget.remainingCal} kcal', style: _bodyStyle.copyWith(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.green)),
+                              Text(
+                                budget.remainingCal >= 0
+                                    ? '还可摄入 ${budget.remainingCal} kcal'
+                                    : calorieBudgetStatusCopy(budget.remainingCal),
+                                style: _bodyStyle.copyWith(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                  color: budget.remainingCal >= 0
+                                      ? AppColors.green
+                                      : AppColors.shield,
+                                ),
+                              ),
                             ],
                           ),
                         ],
@@ -796,10 +808,10 @@ class _FoodPageState extends ConsumerState<FoodPage> {
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 Text(
-                                  leftAfter >= 0 ? '记录后今日还可摄入' : '记录后将超出建议摄入',
+                                  leftAfter >= 0 ? '记录后今日还可摄入' : '记录后怪物将获得护盾',
                                   style: _bodyStyle.copyWith(
                                     fontSize: 12,
-                                    color: leftAfter >= 0 ? AppColors.text2 : AppColors.red,
+                                    color: leftAfter >= 0 ? AppColors.text2 : AppColors.shield,
                                   ),
                                 ),
                                 Text(
@@ -807,7 +819,7 @@ class _FoodPageState extends ConsumerState<FoodPage> {
                                   style: _bodyStyle.copyWith(
                                     fontSize: 12,
                                     fontWeight: FontWeight.w700,
-                                    color: leftAfter >= 0 ? AppColors.green : AppColors.red,
+                                    color: leftAfter >= 0 ? AppColors.green : AppColors.shield,
                                   ),
                                 ),
                               ],
@@ -840,7 +852,7 @@ class _FoodPageState extends ConsumerState<FoodPage> {
                         final leftAfterAdd = budget.remainingCal - totalCal;
                         _showSnack(leftAfterAdd >= 0
                             ? '已记录${selected.length}种食物到${meal.name}，今日还可摄入 $leftAfterAdd kcal'
-                            : '已记录${selected.length}种食物到${meal.name}，今日已超出建议摄入 ${-leftAfterAdd} kcal');
+                            : '已记录${selected.length}种食物到${meal.name}，${calorieBudgetStatusCopy(leftAfterAdd)}');
                       },
                 child: const Text('确认记录'),
               ),
@@ -1293,7 +1305,7 @@ class _FoodPageState extends ConsumerState<FoodPage> {
                 final leftAfter = ref.read(gameStateProvider).remainingCal;
                 _showSnack(leftAfter >= 0
                     ? '已添加 $name，今日还可摄入 $leftAfter kcal'
-                    : '已添加 $name，今日已超出建议摄入 ${-leftAfter} kcal');
+                    : '已添加 $name，${calorieBudgetStatusCopy(leftAfter)}');
               },
               style: ElevatedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(horizontal: AppSpace.md, vertical: AppSpace.md),
@@ -1322,7 +1334,7 @@ class _FoodPageState extends ConsumerState<FoodPage> {
         final leftAfter = ref.read(gameStateProvider).remainingCal;
         _showSnack(leftAfter >= 0
             ? '已添加 ${food.name} 到${meal.name}，今日还可摄入 $leftAfter kcal'
-            : '已添加 ${food.name} 到${meal.name}，今日已超出建议摄入 ${-leftAfter} kcal');
+            : '已添加 ${food.name} 到${meal.name}，${calorieBudgetStatusCopy(leftAfter)}');
       },
     );
   }

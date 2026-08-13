@@ -185,6 +185,96 @@ List<WeightLogEntry> addWeightRecord(
   return _sortRecordsByDate([...records, newRecord]);
 }
 
+/// 7–14 日简单移动平均。窗口会夹在 [7, 14]；记录不足窗口时用已有全部点。
+List<double> smoothWeightSeries(
+  List<WeightLogEntry> records, {
+  int windowDays = 7,
+}) {
+  if (records.isEmpty) return const [];
+  final window = windowDays.clamp(7, 14);
+  final sorted = _sortRecordsByDate(records);
+  final out = <double>[];
+  for (var i = 0; i < sorted.length; i++) {
+    final start = math.max(0, i + 1 - window);
+    final slice = sorted.sublist(start, i + 1);
+    final avg =
+        slice.fold<double>(0, (sum, r) => sum + r.weightKg) / slice.length;
+    out.add((avg * 100).roundToDouble() / 100);
+  }
+  return out;
+}
+
+/// 腰围记录（厘米，手动录入；不依赖 BLE 硬件）。
+class WaistLogEntry {
+  final String date;
+  final double waistCm;
+  final String? note;
+
+  const WaistLogEntry({
+    required this.date,
+    required this.waistCm,
+    this.note,
+  });
+}
+
+/// 新增或更新腰围记录（按日期去重）。
+List<WaistLogEntry> addWaistRecord(
+  List<WaistLogEntry> records,
+  WaistLogEntry newRecord,
+) {
+  final existingIndex = records.indexWhere((r) => r.date == newRecord.date);
+  List<WaistLogEntry> next;
+  if (existingIndex >= 0) {
+    next = [...records];
+    next[existingIndex] = newRecord;
+  } else {
+    next = [...records, newRecord];
+  }
+  return [...next]..sort((a, b) => _parseDate(a.date).compareTo(_parseDate(b.date)));
+}
+
+/// 腰围趋势（主进度指标之一）。不足 2 条时返回 null。
+class WaistTrend {
+  final double currentWaistCm;
+  final double startWaistCm;
+  final double totalChange;
+  final WeightTrendDirection trend;
+
+  const WaistTrend({
+    required this.currentWaistCm,
+    required this.startWaistCm,
+    required this.totalChange,
+    required this.trend,
+  });
+}
+
+/// 分析腰围趋势：最近 7–14 条，差 > 1cm 视为升降。
+WaistTrend? analyzeWaistTrend(List<WaistLogEntry> records) {
+  if (records.isEmpty) return null;
+  final sorted = [...records]
+    ..sort((a, b) => _parseDate(a.date).compareTo(_parseDate(b.date)));
+  final start = sorted.first.waistCm;
+  final current = sorted.last.waistCm;
+  final takeCount = math.min(14, math.max(2, sorted.length));
+  final recent = sorted.sublist(sorted.length - math.min(takeCount, sorted.length));
+  var trend = WeightTrendDirection.stable;
+  if (recent.length >= 2) {
+    final diff = recent.last.waistCm - recent.first.waistCm;
+    const threshold = 1.0;
+    if (diff > threshold) {
+      trend = WeightTrendDirection.increasing;
+    } else if (diff < -threshold) {
+      trend = WeightTrendDirection.decreasing;
+    }
+  }
+  return WaistTrend(
+    currentWaistCm: current,
+    startWaistCm: start,
+    totalChange: ((current - start) * 10).roundToDouble() / 10,
+    trend: trend,
+  );
+}
+
 /// 综合分析体重趋势。
 ///
 /// [records] 体重记录列表

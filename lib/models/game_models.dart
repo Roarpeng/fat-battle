@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 import '../constants/app_constants.dart';
+import '../core/core_types.dart' show Gender;
 
 // 用户模型
 class User {
@@ -12,6 +13,9 @@ class User {
   final double weight;
   final double targetWeight;
   final double bmi;
+  final int age;
+  final Gender gender;
+  final double? waistCm;
   
   // 生活习惯
   final SleepType sleepType;
@@ -53,6 +57,9 @@ class User {
     this.weight = 70,
     this.targetWeight = 65,
     this.bmi = 0,
+    this.age = 30,
+    this.gender = Gender.female,
+    this.waistCm,
     this.sleepType = SleepType.normal,
     this.workType = WorkType.sedentary,
     this.exerciseTime = ExerciseTime.evening,
@@ -85,6 +92,9 @@ class User {
     double? weight,
     double? targetWeight,
     double? bmi,
+    int? age,
+    Gender? gender,
+    double? waistCm,
     SleepType? sleepType,
     WorkType? workType,
     ExerciseTime? exerciseTime,
@@ -116,6 +126,9 @@ class User {
       weight: weight ?? this.weight,
       targetWeight: targetWeight ?? this.targetWeight,
       bmi: bmi ?? this.bmi,
+      age: age ?? this.age,
+      gender: gender ?? this.gender,
+      waistCm: waistCm ?? this.waistCm,
       sleepType: sleepType ?? this.sleepType,
       workType: workType ?? this.workType,
       exerciseTime: exerciseTime ?? this.exerciseTime,
@@ -150,6 +163,9 @@ class User {
       'weight': weight,
       'targetWeight': targetWeight,
       'bmi': bmi,
+      'age': age,
+      'gender': gender.name,
+      'waistCm': waistCm,
       'sleepType': sleepType.index,
       'workType': workType.index,
       'exerciseTime': exerciseTime.index,
@@ -184,6 +200,9 @@ class User {
       weight: (json['weight'] ?? 70).toDouble(),
       targetWeight: (json['targetWeight'] ?? 65).toDouble(),
       bmi: (json['bmi'] ?? 0).toDouble(),
+      age: json['age'] ?? 30,
+      gender: _genderFromJson(json['gender']),
+      waistCm: json['waistCm'] == null ? null : (json['waistCm'] as num).toDouble(),
       sleepType: SleepType.values[json['sleepType'] ?? 1],
       workType: WorkType.values[json['workType'] ?? 0],
       exerciseTime: ExerciseTime.values[json['exerciseTime'] ?? 2],
@@ -208,6 +227,11 @@ class User {
       statusMark: json['statusMark'] ?? '',
     );
   }
+}
+
+Gender _genderFromJson(dynamic value) {
+  if (value == 'male' || value == 0) return Gender.male;
+  return Gender.female;
 }
 
 // 怪物模型
@@ -418,6 +442,27 @@ class WeightRecord {
     this.date = '',
     this.weight = 0,
   });
+}
+
+/// 腰围记录（厘米，手动录入）
+class WaistRecord {
+  final String date;
+  final double waistCm;
+
+  const WaistRecord({
+    this.date = '',
+    this.waistCm = 0,
+  });
+
+  Map<String, dynamic> toJson() => {
+    'date': date,
+    'waistCm': waistCm,
+  };
+
+  factory WaistRecord.fromJson(Map<String, dynamic> json) => WaistRecord(
+    date: json['date'] ?? '',
+    waistCm: (json['waistCm'] ?? 0).toDouble(),
+  );
 }
 
 // 身体变化照片

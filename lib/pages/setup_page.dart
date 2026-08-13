@@ -7,8 +7,10 @@ import '../constants/app_constants.dart';
 import '../models/game_models.dart';
 import '../providers/game_provider.dart';
 import '../services/game_algorithm.dart';
+import '../core/core_types.dart' show Gender;
 import '../widgets/forge_pressable.dart';
 import '../widgets/home/forge_background.dart';
+import '../widgets/medical_disclaimer.dart';
 import '../main.dart';
 
 /// 角色创建页面（5步流程）
@@ -26,6 +28,9 @@ class _SetupPageState extends ConsumerState<SetupPage> {
   double _height = 170;
   double _weight = 70;
   double _targetWeight = 65;
+  int _age = 30;
+  Gender _gender = Gender.female;
+  double? _waistCm;
   SleepType _sleepType = SleepType.normal;
   WorkType _workType = WorkType.sedentary;
   ExerciseTime _exerciseTime = ExerciseTime.evening;
@@ -34,6 +39,18 @@ class _SetupPageState extends ConsumerState<SetupPage> {
   int _runDuration = 15;
   int _weeklyFreq = 3;
   Difficulty _difficulty = Difficulty.normal;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      MedicalDisclaimer.ensureAccepted(
+        context,
+        prefs: ref.read(sharedPreferencesProvider),
+      );
+    });
+  }
 
   TextStyle get _displayStyle => AppFonts.display(
         fontWeight: FontWeight.w600,
@@ -168,6 +185,16 @@ class _SetupPageState extends ConsumerState<SetupPage> {
             children: [
               _buildSectionTitle(Icons.straighten, '基础数据'),
               const SizedBox(height: AppSpace.lg),
+              Text('性别', style: _mutedStyle),
+              const SizedBox(height: AppSpace.sm),
+              _buildOptionGrid(
+                options: Gender.values,
+                selected: _gender,
+                onSelect: (v) => setState(() => _gender = v),
+                icons: const [Icons.male, Icons.female],
+                labels: const ['男', '女'],
+              ),
+              const SizedBox(height: AppSpace.md),
               Row(
                 children: [
                   Expanded(
@@ -185,6 +212,30 @@ class _SetupPageState extends ConsumerState<SetupPage> {
                       value: _weight,
                       suffix: 'kg',
                       onChanged: (v) => setState(() => _weight = v),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: AppSpace.md),
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildInputField(
+                      label: '年龄',
+                      value: _age.toDouble(),
+                      suffix: '岁',
+                      onChanged: (v) => setState(() => _age = v.round()),
+                    ),
+                  ),
+                  const SizedBox(width: AppSpace.md),
+                  Expanded(
+                    child: _buildInputField(
+                      label: '腰围（可选）',
+                      value: _waistCm ?? 0,
+                      suffix: 'cm',
+                      onChanged: (v) => setState(
+                        () => _waistCm = v <= 0 ? null : v,
+                      ),
                     ),
                   ),
                 ],
@@ -376,7 +427,7 @@ class _SetupPageState extends ConsumerState<SetupPage> {
                 icon: Icons.shield_outlined,
                 iconColor: AppColors.green,
                 name: '简单模式',
-                desc: '怪物较弱，每日卡路里目标+200',
+                desc: '日赤字约 250 kcal，目标不低于安全下限',
                 value: Difficulty.easy,
               ),
               const SizedBox(height: 12),
@@ -384,7 +435,7 @@ class _SetupPageState extends ConsumerState<SetupPage> {
                 icon: Icons.balance,
                 iconColor: AppColors.copper,
                 name: '普通模式',
-                desc: '标准挑战，平衡体验',
+                desc: '日赤字约 500 kcal，打中预算带伤害更高',
                 value: Difficulty.normal,
               ),
               const SizedBox(height: 12),
@@ -392,7 +443,7 @@ class _SetupPageState extends ConsumerState<SetupPage> {
                 icon: Icons.local_fire_department_outlined,
                 iconColor: AppColors.ember,
                 name: '困难模式',
-                desc: '怪物凶猛，每日卡路里目标-400',
+                desc: '日赤字上限 750 kcal，且不低于安全下限',
                 value: Difficulty.hard,
               ),
             ],
@@ -416,6 +467,10 @@ class _SetupPageState extends ConsumerState<SetupPage> {
               _buildSummaryItem('身高', '${_height.toInt()} cm'),
               _buildSummaryItem('体重', '${_weight.toInt()} kg'),
               _buildSummaryItem('目标体重', '${_targetWeight.toInt()} kg'),
+              _buildSummaryItem('年龄', '$_age 岁'),
+              _buildSummaryItem('性别', _gender == Gender.male ? '男' : '女'),
+              if (_waistCm != null && _waistCm! > 0)
+                _buildSummaryItem('腰围', '${_waistCm!.toStringAsFixed(0)} cm'),
               _buildSummaryItem('BMI', '${bmi.toStringAsFixed(1)} ($bodyType)'),
               _buildSummaryItem('作息', _sleepType.name),
               _buildSummaryItem('办公', _workType.name),
@@ -670,6 +725,14 @@ class _SetupPageState extends ConsumerState<SetupPage> {
         _showToast('目标体重应小于当前体重');
         return;
       }
+      if (_age < 14 || _age > 90) {
+        _showToast('请输入有效年龄(14-90)');
+        return;
+      }
+      if (_waistCm != null && (_waistCm! < 40 || _waistCm! > 200)) {
+        _showToast('腰围可留空，或输入 40-200cm');
+        return;
+      }
     }
 
     if (_currentStep == 5) {
@@ -678,6 +741,9 @@ class _SetupPageState extends ConsumerState<SetupPage> {
         height: _height,
         weight: _weight,
         targetWeight: _targetWeight,
+        age: _age,
+        gender: _gender,
+        waistCm: _waistCm,
         sleepType: _sleepType,
         workType: _workType,
         exerciseTime: _exerciseTime,

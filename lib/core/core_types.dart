@@ -63,6 +63,8 @@ enum CaloriesGoal { mildLoss, loss, extremeLoss }
 /// 对应 web/src/core/weight.ts 中的 `trend`。
 enum WeightTrendDirection { increasing, decreasing, stable }
 
+// 腰围记录仅 Flutter 端使用；web/src/core/weight.ts 无对应字段。
+
 // ========== 怪物定义与状态 ==========
 
 /// 怪物阶段定义。
