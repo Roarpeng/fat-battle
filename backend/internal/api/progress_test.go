@@ -55,7 +55,7 @@ func TestIsJSONObject(t *testing.T) {
 func TestGetSnapshotUnauthorized(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	r.GET("/api/v1/progress/snapshot", middleware.Auth("test-secret"), getSnapshotHandler(nil))
+	r.GET("/api/v1/progress/snapshot", middleware.Auth("test-secret", nil), getSnapshotHandler(nil))
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/progress/snapshot", nil)
@@ -72,7 +72,7 @@ func TestGetSnapshotDBUnavailable(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := gin.New()
-	r.GET("/api/v1/progress/snapshot", middleware.Auth("test-secret"), getSnapshotHandler(nil))
+	r.GET("/api/v1/progress/snapshot", middleware.Auth("test-secret", nil), getSnapshotHandler(nil))
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/progress/snapshot", nil)
@@ -90,7 +90,7 @@ func TestPostSnapshotRejectsNonObject(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := gin.New()
-	r.POST("/api/v1/progress/snapshot", middleware.Auth("test-secret"), snapshotHandler(nil))
+	r.POST("/api/v1/progress/snapshot", middleware.Auth("test-secret", nil), snapshotHandler(nil))
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/progress/snapshot", strings.NewReader(`{"state":[1,2]}`))
@@ -109,7 +109,7 @@ func TestPostSnapshotInvalidJSON(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := gin.New()
-	r.POST("/api/v1/progress/snapshot", middleware.Auth("test-secret"), snapshotHandler(nil))
+	r.POST("/api/v1/progress/snapshot", middleware.Auth("test-secret", nil), snapshotHandler(nil))
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/progress/snapshot", strings.NewReader(`not-json`))
@@ -128,8 +128,8 @@ func TestEventsStillNotImplemented(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := gin.New()
-	r.POST("/api/v1/progress/events", middleware.Auth("test-secret"), eventsHandler())
-	r.GET("/api/v1/progress/summary", middleware.Auth("test-secret"), summaryHandler())
+	r.POST("/api/v1/progress/events", middleware.Auth("test-secret", nil), eventsHandler())
+	r.GET("/api/v1/progress/summary", middleware.Auth("test-secret", nil), summaryHandler())
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/progress/events", strings.NewReader(`{}`))
