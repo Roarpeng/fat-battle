@@ -37,6 +37,16 @@ items 项: `{name, calorie(每100g), confidence, has_calorie, category, descript
 服务端按 `llm_configs` 表 enabled + priority 选择 provider（当前 zhipu），
 请求带 `X-Provider` 响应头。无可用配置 → 503。
 
+## 2.1 营养教练 /coach（密钥只存服务器）
+
+| 方法 | 路径 | 请求 | 响应 |
+|------|------|------|------|
+| POST | /coach/turn | `{message, history?, context}` | `{success, reply, filtered, proposedLogs}` |
+
+`context` 由 App 从本地 GameState 组装（饮食账、剩余预算、怪物 HP/护盾、今日锤炼、5 步档案）。
+教练**不能**改卡路里目标/下限，**不能**静默写饮食账；`proposedLogs` 需用户改克数后确认才记入。
+限流与 `/food` 相同（30 次/分钟）。系统提示 + 输出过滤器禁止低于安全下限、催吐、惩罚性禁食、「跳过正餐打怪」。
+
 ## 3. 进度同步 /progress
 
 鉴权：`Authorization: Bearer <accessToken>`。只同步 `GameState.toJson()` 文本快照，**不**上传姿态视频、训练日记或 IMU 流。

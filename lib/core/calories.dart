@@ -20,7 +20,7 @@ const Map<ActivityLevel, double> activityFactors = {
 
 /// 性别 → 最低安全卡路里摄入。
 /// 对应 web/src/core/calories.ts 中的 `SAFE_MIN_CALORIES`。
-const Map<Gender, int> safeMinCalories = {
+const Map<Gender, int> safeMinCaloriesByGender = {
   Gender.male: 1500,
   Gender.female: 1200,
 };
@@ -29,6 +29,13 @@ const Map<Gender, int> safeMinCalories = {
 const int kMaxDailyDeficitKcal = 750;
 const int kDefaultDailyDeficitKcal = 500;
 const int kMildDailyDeficitKcal = 250;
+
+/// 档案未记录性别时的保守下限（取男性下限，避免建议过低摄入）。
+const int defaultCalorieFloor = 1500;
+
+/// 返回该性别的全日安全摄入下限。
+int safeMinCalories(Gender gender) =>
+    safeMinCaloriesByGender[gender] ?? defaultCalorieFloor;
 
 /// 减重目标配置。
 /// 对应 web/src/core/calories.ts 中的 `GOAL_CONFIGS`。
@@ -81,7 +88,7 @@ class TargetCaloriesResult {
 // ========== 计算函数 ==========
 
 /// 性别对应的最低安全摄入。
-int safeMinCaloriesFor(Gender gender) => safeMinCalories[gender]!;
+int safeMinCaloriesFor(Gender gender) => safeMinCalories(gender);
 
 /// 热量下限：max(1200 女 / 1500 男, BMR)，永不低于该值生成目标。
 int calorieFloorFor({required Gender gender, required int bmr}) {

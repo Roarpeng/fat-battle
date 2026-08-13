@@ -1098,6 +1098,7 @@ class GameState {
         'size': f.size.index,
         'totalCal': f.totalCal,
         'meal': f.meal.index,
+        if (f.grams != null) 'grams': f.grams,
       }).toList())),
       'exercises': exercises.map((e) => {
         'id': e.id,
@@ -1160,6 +1161,7 @@ class GameState {
           size: FoodSize.values[f['size'] ?? 1],
           totalCal: f['totalCal'],
           meal: mealType,
+          grams: f['grams'] is int ? f['grams'] as int : int.tryParse('${f['grams'] ?? ''}'),
         )).toList();
         mealsMap[mealType] = items;
       }

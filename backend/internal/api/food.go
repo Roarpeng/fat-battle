@@ -129,12 +129,20 @@ func defaultTextModel(provider string) string {
 
 // chat 调用 OpenAI 兼容的 chat/completions 接口（zhipu/qwen 等），返回 choices[0].message.content
 func (cfg *llmConfig) chat(ctx context.Context, model string, messages []gin.H) (string, error) {
+	return cfg.chatWith(ctx, model, messages, 0.1, 2048)
+}
+
+// chatWith 与 chat 相同，可指定 temperature / max_tokens（教练对话略提高温度）
+func (cfg *llmConfig) chatWith(ctx context.Context, model string, messages []gin.H, temperature float64, maxTokens int) (string, error) {
 	url := cfg.chatEndpoint()
+	if maxTokens <= 0 {
+		maxTokens = 2048
+	}
 	body, err := json.Marshal(gin.H{
 		"model":       model,
 		"messages":    messages,
-		"temperature": 0.1,
-		"max_tokens":  2048,
+		"temperature": temperature,
+		"max_tokens":  maxTokens,
 	})
 	if err != nil {
 		return "", fmt.Errorf("构造请求体: %w", err)

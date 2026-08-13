@@ -56,6 +56,7 @@ App 不再持有第三方密钥，统一走后端（均在鉴权保护下）：
 - `POST /api/v1/food/search` — 文本搜索：`{"query":"米饭","topNum":3}` → 同上结构
 - `POST /api/v1/food/feedback` — 识别纠错反馈落库
 - `POST /api/v1/food/barcode` — 条码查询（Open Food Facts 代理）
+- `POST /api/v1/coach/turn` — 营养教练一轮对话（接地气上下文 + 安全过滤；不改目标、不静默记账）
 
 LLM 配置在管理后台维护（表 `llm_configs`，支持多配置、优先级、启用/停用、一键测连通）。
 未配置任何 LLM 时识别/搜索返回 `503 {"success":false,"error":"未配置可用的 LLM 服务，请在管理后台配置"}`。

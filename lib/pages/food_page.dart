@@ -14,6 +14,7 @@ import '../models/game_models.dart';
 import '../providers/game_provider.dart';
 import '../services/food_recognition_service_v2.dart';
 import '../services/food_preference_service.dart';
+import '../services/food_feedback_service.dart';
 import '../widgets/city_food_recommend_bar.dart';
 import '../widgets/forge_pressable.dart';
 import '../widgets/home/forge_background.dart';
@@ -498,8 +499,17 @@ class _FoodPageState extends ConsumerState<FoodPage> {
   }) {
     final selected = <String, RecognizedFood>{};
     final portions = <String, FoodSize>{};
+    final gramsOf = <String, int>{};
+    final editedNames = <String, String>{};
+    final nameControllers = <String, TextEditingController>{};
+    final gramControllers = <String, TextEditingController>{};
     for (final f in foods) {
       portions[f.name] = FoodSize.medium;
+      final g = f.amountGram?.round() ?? 100;
+      gramsOf[f.name] = g;
+      editedNames[f.name] = f.name;
+      nameControllers[f.name] = TextEditingController(text: f.name);
+      gramControllers[f.name] = TextEditingController(text: '$g');
     }
     if (foods.isNotEmpty) {
       selected[foods.first.name] = foods.first;
@@ -510,14 +520,18 @@ class _FoodPageState extends ConsumerState<FoodPage> {
     // 今日卡路里预算（目标/已摄入/剩余），打开弹窗时快照
     final budget = ref.read(gameStateProvider);
 
+    int estimateCal(RecognizedFood food, String key) {
+      final g = gramsOf[key] ?? 100;
+      return (food.calories * g / 100).round();
+    }
+
     showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (context, sb) {
           int totalCal = 0;
           for (final entry in selected.entries) {
-            final size = portions[entry.key] ?? FoodSize.medium;
-            totalCal += (entry.value.calories * size.multiplier).round();
+            totalCal += estimateCal(entry.value, entry.key);
           }
 
           final showCount = expanded ? foods.length : (foods.length > 1 ? 1 : foods.length);
@@ -623,9 +637,11 @@ class _FoodPageState extends ConsumerState<FoodPage> {
                     ...foods.asMap().entries.take(showCount).map((entry) {
                       final idx = entry.key;
                       final food = entry.value;
-                      final checked = selected.containsKey(food.name);
-                      final size = portions[food.name] ?? FoodSize.medium;
-                      final cal = (food.calories * size.multiplier).round();
+                      final key = food.name;
+                      final checked = selected.containsKey(key);
+                      final size = portions[key] ?? FoodSize.medium;
+                      final grams = gramsOf[key] ?? 100;
+                      final cal = estimateCal(food, key);
                       double? probability;
                       if (topDishes != null && idx < topDishes.length) {
                         probability = topDishes[idx].probability as double;
@@ -642,19 +658,33 @@ class _FoodPageState extends ConsumerState<FoodPage> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             CheckboxListTile(
-                              title: Text(
-                                food.name,
-                                style: _bodyStyle.copyWith(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
+                              title: checked
+                                  ? TextField(
+                                      controller: nameControllers[key],
+                                      style: _bodyStyle.copyWith(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                      decoration: const InputDecoration(
+                                        isDense: true,
+                                        border: InputBorder.none,
+                                        hintText: '纠正食物名称',
+                                      ),
+                                      onChanged: (v) => editedNames[key] = v,
+                                    )
+                                  : Text(
+                                      food.name,
+                                      style: _bodyStyle.copyWith(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
                               subtitle: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   const SizedBox(height: AppSpace.xs),
                                   Text(
-                                    '${food.calories} kcal/份',
+                                    '${food.calories} kcal/100g · 估 $cal kcal（${grams}g）',
                                     style: _mutedStyle.copyWith(fontSize: 12),
                                   ),
                                   if (probability != null) ...[
@@ -703,49 +733,95 @@ class _FoodPageState extends ConsumerState<FoodPage> {
                             ),
                             if (checked)
                               Padding(
-                                padding: const EdgeInsets.only(left: 48),
-                                child: Row(
+                                padding: const EdgeInsets.only(left: 48, bottom: AppSpace.xs),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text('份量:', style: _mutedStyle.copyWith(fontSize: 12)),
-                                    const SizedBox(width: AppSpace.sm),
-                                    ...FoodSize.values.map((s) {
-                                      final isSel = size == s;
-                                      return ForgePressable(
-                                        onTap: () {
-                                          portions[food.name] = s;
-                                          sb(() {});
-                                        },
-                                        borderRadius: AppRadii.smAll,
-                                        child: Container(
-                                          margin: const EdgeInsets.only(right: AppSpace.xs + 2),
-                                          padding: const EdgeInsets.symmetric(horizontal: AppSpace.md, vertical: 3),
-                                          decoration: BoxDecoration(
-                                            color: isSel
-                                                ? AppColors.copper.withValues(alpha: 0.15)
-                                                : Colors.transparent,
-                                            borderRadius: AppRadii.smAll,
-                                            border: Border.all(
-                                              color: isSel ? AppColors.copper : AppColors.border,
+                                    Row(
+                                      children: [
+                                        Text('克数', style: _mutedStyle.copyWith(fontSize: 12)),
+                                        const SizedBox(width: AppSpace.sm),
+                                        SizedBox(
+                                          width: 72,
+                                          child: TextField(
+                                            controller: gramControllers[key],
+                                            keyboardType: TextInputType.number,
+                                            style: _bodyStyle.copyWith(fontSize: 13),
+                                            decoration: const InputDecoration(
+                                              isDense: true,
+                                              suffixText: 'g',
+                                              contentPadding: EdgeInsets.symmetric(
+                                                horizontal: 8,
+                                                vertical: 8,
+                                              ),
                                             ),
-                                          ),
-                                          child: Text(
-                                            s.name,
-                                            style: _bodyStyle.copyWith(
-                                              fontSize: 12,
-                                              color: isSel ? AppColors.copper : AppColors.text,
-                                            ),
+                                            onChanged: (v) {
+                                              final g = int.tryParse(v.trim());
+                                              if (g != null && g > 0) {
+                                                gramsOf[key] = g;
+                                                if (g <= 80) {
+                                                  portions[key] = FoodSize.small;
+                                                } else if (g >= 140) {
+                                                  portions[key] = FoodSize.large;
+                                                } else {
+                                                  portions[key] = FoodSize.medium;
+                                                }
+                                                sb(() {});
+                                              }
+                                            },
                                           ),
                                         ),
-                                      );
-                                    }),
-                                    const Spacer(),
-                                    Text(
-                                      '$cal kcal',
-                                      style: _bodyStyle.copyWith(
-                                        color: AppColors.copper,
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.bold,
-                                      ),
+                                        const SizedBox(width: AppSpace.sm),
+                                        ...FoodSize.values.map((s) {
+                                          final isSel = size == s;
+                                          return ForgePressable(
+                                            onTap: () {
+                                              portions[key] = s;
+                                              final g = switch (s) {
+                                                FoodSize.small => 70,
+                                                FoodSize.medium => 100,
+                                                FoodSize.large => 150,
+                                              };
+                                              gramsOf[key] = g;
+                                              gramControllers[key]?.text = '$g';
+                                              sb(() {});
+                                            },
+                                            borderRadius: AppRadii.smAll,
+                                            child: Container(
+                                              margin: const EdgeInsets.only(right: AppSpace.xs + 2),
+                                              padding: const EdgeInsets.symmetric(
+                                                horizontal: AppSpace.md,
+                                                vertical: 3,
+                                              ),
+                                              decoration: BoxDecoration(
+                                                color: isSel
+                                                    ? AppColors.copper.withValues(alpha: 0.15)
+                                                    : Colors.transparent,
+                                                borderRadius: AppRadii.smAll,
+                                                border: Border.all(
+                                                  color: isSel ? AppColors.copper : AppColors.border,
+                                                ),
+                                              ),
+                                              child: Text(
+                                                s.name,
+                                                style: _bodyStyle.copyWith(
+                                                  fontSize: 12,
+                                                  color: isSel ? AppColors.copper : AppColors.text,
+                                                ),
+                                              ),
+                                            ),
+                                          );
+                                        }),
+                                        const Spacer(),
+                                        Text(
+                                          '$cal kcal',
+                                          style: _bodyStyle.copyWith(
+                                            color: AppColors.copper,
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ],
                                 ),
@@ -848,9 +924,36 @@ class _FoodPageState extends ConsumerState<FoodPage> {
                         Navigator.pop(ctx);
                         final gameNotifier = ref.read(gameStateProvider.notifier);
                         for (final entry in selected.entries) {
+                          final original = entry.value;
                           final size = portions[entry.key] ?? FoodSize.medium;
-                          gameNotifier.addFood(entry.value.toFoodItem(meal, size: size));
-                          _foodPrefService.recordFoodAdded(entry.key);
+                          final grams = gramsOf[entry.key] ?? 100;
+                          final originalGrams = original.amountGram?.round() ?? 100;
+                          final name = (editedNames[entry.key] ?? original.name).trim();
+                          final foodName = name.isEmpty ? original.name : name;
+                          final item = original.toFoodItem(meal, size: size, grams: grams);
+                          gameNotifier.addFood(
+                            foodName == original.name
+                                ? item
+                                : FoodItem(
+                                    name: foodName,
+                                    baseCal: item.baseCal,
+                                    size: item.size,
+                                    totalCal: item.totalCal,
+                                    meal: item.meal,
+                                    photoUrl: item.photoUrl,
+                                    grams: item.grams,
+                                  ),
+                          );
+                          _foodPrefService.recordFoodAdded(foodName);
+                          FoodFeedbackService().submitCorrection(
+                            originalName: original.name,
+                            correctedName: foodName,
+                            originalGrams: originalGrams,
+                            correctedGrams: grams,
+                            caloriePer100g: original.calories,
+                            userCal: item.totalCal,
+                            imageUrl: original.thumbUrl,
+                          );
                         }
                         _notifyRecommendBarRefresh(meal);
                         final leftAfterAdd = budget.remainingCal - totalCal;
@@ -864,7 +967,14 @@ class _FoodPageState extends ConsumerState<FoodPage> {
           );
         },
       ),
-    );
+    ).whenComplete(() {
+      for (final c in nameControllers.values) {
+        c.dispose();
+      }
+      for (final c in gramControllers.values) {
+        c.dispose();
+      }
+    });
   }
 
   void _showLoading(String message) {
@@ -1204,6 +1314,9 @@ class _FoodPageState extends ConsumerState<FoodPage> {
           ),
           const SizedBox(width: AppSpace.sm),
           Expanded(child: Text(food.name, style: _bodyStyle.copyWith(fontSize: 13))),
+          if (food.grams != null)
+            Text('${food.grams}g', style: _mutedStyle.copyWith(fontSize: 11)),
+          const SizedBox(width: AppSpace.sm),
           Text(food.size.name, style: _mutedStyle.copyWith(fontSize: 11)),
           const SizedBox(width: AppSpace.sm),
           Container(

@@ -31,14 +31,19 @@ class RecognizedFood {
     this.amountGram,
   });
 
-  FoodItem toFoodItem(MealType meal, {FoodSize size = FoodSize.medium}) {
+  FoodItem toFoodItem(MealType meal, {FoodSize size = FoodSize.medium, int? grams}) {
+    final g = grams ?? amountGram?.round();
+    final total = g != null
+        ? (calories * g / 100).round()
+        : (calories * size.multiplier).toInt();
     return FoodItem(
       name: name,
       baseCal: calories,
       size: size,
-      totalCal: (calories * size.multiplier).toInt(),
+      totalCal: total,
       meal: meal,
       photoUrl: thumbUrl,
+      grams: g,
     );
   }
 }
