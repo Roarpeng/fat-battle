@@ -61,13 +61,15 @@ LLM 配置在管理后台维护（表 `llm_configs`，支持多配置、优先�
 未配置任何 LLM 时识别/搜索返回 `503 {"success":false,"error":"未配置可用的 LLM 服务，请在管理后台配置"}`。
 GLM 调用失败返回 502；响应带 `X-Provider: zhipu` 头。
 
-### 进度（M4 待实现）
+### 进度快照（M4）
 
-- `/progress/*` 快照 + 增量流水 + 统计
+- `POST /api/v1/progress/snapshot` — upsert `GameState` JSON（`updatedAt` last-write-wins，返回 `revision`）
+- `GET /api/v1/progress/snapshot` — 拉取最新快照；无存档 404
+- `POST/GET /progress/events`、`GET /progress/summary` — 仍为 501
 
 ## 待实现（按 docs/backend-plan.md 路线）
 
-- M4：`/progress/*` 快照 + 增量流水 + 统计
+- 行为流水 `/progress/events` 与周报 `/progress/summary`
 - 条码库接入
 
 ## App 对接

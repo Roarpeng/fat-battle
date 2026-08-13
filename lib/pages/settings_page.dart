@@ -14,6 +14,7 @@ import '../constants/app_constants.dart';
 import '../providers/game_provider.dart';
 import '../services/auth_service.dart';
 import '../services/voice_service.dart';
+import '../widgets/settings/sync_status_tile.dart';
 import '../pages/auth_page.dart';
 import '../pages/companion_page.dart';
 import '../pages/achievements_page.dart';
@@ -358,6 +359,16 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     ),
                   ],
                 ),
+            ),
+            const SizedBox(height: AppSpace.lg),
+
+            // —— 云同步（P0）独立 widget：lib/widgets/settings/sync_status_tile.dart ——
+            const ForgeSectionHeader(
+              title: '云同步',
+              subtitle: '登录后自动备份进度，重装可从服务器恢复',
+            ),
+            ForgeSurface(
+              child: const SyncStatusTile(),
             ),
             const SizedBox(height: AppSpace.lg),
 

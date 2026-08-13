@@ -188,6 +188,8 @@ GitHub Actions: 推送 backend/ → 构建镜像 → docker compose up
 | **M2 账号** | 注册/登录/刷新/登出 + JWT + bcrypt + `flutter_secure_storage` 接入 | 2-3 天 |
 | **M3 识别代理** | `/food/recognize` 转发 GLM + 照片存 MinIO + App 改造 `recognize()` | 2-3 天 |
 | **M4 进度同步** | snapshot/events 两接口 + App `SyncService` + 断线合并 | 2-3 天 |
+
+> M4 快照通道（`POST/GET /progress/snapshot` + App `ProgressSyncService`）已落地；events/summary 仍为 501。
 | **M5 合规上线** | 注销账号、隐私政策、日志审计、限流 | 1-2 天 |
 
 > 建议 M2 完成后即可替换现有模拟登录体验，M4 完成后 App 才真正"换机不丢"。

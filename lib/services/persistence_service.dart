@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../providers/game_provider.dart';
+import 'progress_sync_service.dart';
 
 /// 持久化服务
 ///
@@ -23,6 +24,8 @@ class PersistenceService {
     final prefs = _prefs;
     if (prefs == null) return;
     await prefs.setString(gameKey, jsonEncode(state.toJson()));
+    // 云同步钩子：已登录且配置了后端时 debounce 推送快照（游客 / 无 API_BASE_URL 为 no-op）
+    await ProgressSyncService.instance.onLocalSaved(state.toJson());
   }
 
   /// 从本地存储加载 [GameState]
