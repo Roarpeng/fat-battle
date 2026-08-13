@@ -69,6 +69,11 @@ web/.env
 # Screenshots
 screenshot.png
 *.png
+# 保留品牌与启动图标
+!android/app/src/main/res/**/*.png
+!assets/branding/*.png
+!web/public/icon-*.png
+!images/*.png
 
 # Android build
 android/build/

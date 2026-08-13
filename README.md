@@ -11,6 +11,8 @@
 
 **在线体验：** [https://roarpeng-trae-idera.ms.show](https://roarpeng-trae-idera.ms.show)
 
+**Android APK：** [Releases（Latest）](https://github.com/Roarpeng/fat-battle/releases/latest) — 文件名 `SuxingGongfang-<版本>.apk`（安装后显示「塑身工坊」）
+
 ---
 
 ## 📖 目录
@@ -201,7 +203,9 @@ flutter build apk --debug
 flutter build apk --release
 ```
 
-构建产物路径：`build/app/outputs/flutter-apk/app-debug.apk`
+构建产物路径：`build/app/outputs/flutter-apk/app-release.apk`
+
+CI 会在每次 `master` 推送后自动构建 APK，并发布到 [GitHub Releases](https://github.com/Roarpeng/fat-battle/releases/latest)（同时保留 14 天的 Actions Artifact）。
 
 ### Web 端运行
 

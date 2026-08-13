@@ -1,27 +1,49 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
   <defs>
-    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#FF6B35"/>
-      <stop offset="100%" stop-color="#FF4E50"/>
+    <radialGradient id="bgGlow" cx="50%" cy="58%" r="55%">
+      <stop offset="0%" stop-color="#3A2418"/>
+      <stop offset="55%" stop-color="#1C1814"/>
+      <stop offset="100%" stop-color="#14110E"/>
+    </radialGradient>
+    <linearGradient id="metal" x1="18%" y1="12%" x2="82%" y2="90%">
+      <stop offset="0%" stop-color="#E2C9A0"/>
+      <stop offset="35%" stop-color="#C4A574"/>
+      <stop offset="100%" stop-color="#8A6B3E"/>
+    </linearGradient>
+    <linearGradient id="ember" x1="30%" y1="30%" x2="70%" y2="80%">
+      <stop offset="0%" stop-color="#FFB08A"/>
+      <stop offset="45%" stop-color="#FF8A5B"/>
+      <stop offset="100%" stop-color="#E85D4C"/>
     </linearGradient>
   </defs>
 
-  <!-- 背景圆 -->
-  <circle cx="256" cy="256" r="240" fill="url(#bg)"/>
+  <rect width="512" height="512" fill="url(#bgGlow)"/>
 
-  <!-- 白色火焰（填充） -->
-  <path d="M256 130
-           C205 195, 170 265, 170 325
-           C170 370, 208 392, 256 392
-           C304 392, 342 370, 342 325
-           C342 265, 307 195, 256 130Z"
-        fill="#FFFFFF"/>
+  <!-- anvil -->
+  <path fill="url(#metal)" d="M150 318h212c8 0 14 6 14 14v18c0 8-6 14-14 14H150c-8 0-14-6-14-14v-18c0-8 6-14 14-14z"/>
+  <path fill="#A88852" d="M188 318h136v-22c0-10-8-18-18-18H206c-10 0-18 8-18 18v22z"/>
+  <path fill="#8A6B3E" d="M232 364h48v48c0 8-6 14-14 14h-20c-8 0-14-6-14-14v-48z"/>
 
-  <!-- 镂空向下箭头（透出背景色） -->
-  <path d="M256 195 L256 330 M216 290 L256 330 L296 290"
-        fill="none"
-        stroke="url(#bg)"
-        stroke-width="32"
-        stroke-linecap="round"
-        stroke-linejoin="round"/>
+  <!-- hammer head -->
+  <g transform="rotate(-32 286 210)">
+    <rect x="248" y="148" width="118" height="58" rx="10" fill="url(#metal)"/>
+    <rect x="258" y="158" width="98" height="10" rx="4" fill="#E8D2A8" opacity="0.55"/>
+    <!-- handle -->
+    <rect x="292" y="200" width="22" height="150" rx="8" fill="#5C4632"/>
+    <rect x="296" y="210" width="14" height="120" rx="5" fill="#7A5C3E"/>
+  </g>
+
+  <!-- strike glow -->
+  <circle cx="256" cy="292" r="34" fill="url(#ember)" opacity="0.95"/>
+  <circle cx="256" cy="292" r="14" fill="#FFF3E0"/>
+
+  <!-- sparks -->
+  <g fill="#FF8A5B">
+    <circle cx="210" cy="250" r="4"/>
+    <circle cx="300" cy="236" r="3.5"/>
+    <circle cx="328" cy="278" r="3"/>
+    <circle cx="188" cy="288" r="3"/>
+    <circle cx="274" cy="220" r="2.5"/>
+    <circle cx="236" cy="228" r="2.5"/>
+  </g>
 </svg>

@@ -11,6 +11,9 @@ concurrency:
   group: build-apk-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: write
+
 jobs:
   build:
     name: Flutter APK
@@ -57,11 +60,61 @@ jobs:
           echo "Building with API_BASE_URL=$API_BASE_URL"
           flutter build apk --release --dart-define=API_BASE_URL="$API_BASE_URL"
 
-      - name: Upload APK
+      - name: Rename APK for release
+        if: github.event_name != 'pull_request'
+        id: apk
+        run: |
+          set -euo pipefail
+          VERSION="$(sed -n 's/^version: //p' pubspec.yaml | cut -d'+' -f1)"
+          BUILD="$(sed -n 's/^version: //p' pubspec.yaml | cut -d'+' -f2)"
+          APK_SRC="build/app/outputs/flutter-apk/app-release.apk"
+          # 文件名用拼音，避免 GitHub Releases 丢弃中文；桌面显示名仍是「塑身工坊」
+          APK_NAME="SuxingGongfang-${VERSION}.apk"
+          mkdir -p dist-apk
+          cp "$APK_SRC" "dist-apk/${APK_NAME}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "build=${BUILD}" >> "$GITHUB_OUTPUT"
+          echo "apk_name=${APK_NAME}" >> "$GITHUB_OUTPUT"
+          echo "apk_path=dist-apk/${APK_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload APK artifact
         if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
-          name: fat-battle-apk-${{ github.sha }}
-          path: build/app/outputs/flutter-apk/app-release.apk
+          name: suxing-gongfang-apk-${{ github.sha }}
+          path: ${{ steps.apk.outputs.apk_path }}
           if-no-files-found: error
           retention-days: 14
+
+      - name: Publish APK to GitHub Releases
+        # Actions Artifact ≠ GitHub Releases；master 构建成功后同步到 Releases 页
+        if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/master' || github.event_name == 'workflow_dispatch')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.apk.outputs.version }}"
+          BUILD="${{ steps.apk.outputs.build }}"
+          APK_NAME="${{ steps.apk.outputs.apk_name }}"
+          APK_PATH="${{ steps.apk.outputs.apk_path }}"
+
+          NOTES="$(cat <<EOF
+          ## 塑身工坊 Android APK
+
+          - **版本**: ${VERSION}+${BUILD}
+          - **安装包**: \`${APK_NAME}\`（安装后桌面显示「塑身工坊」）
+          - **Commit**: \`${GITHUB_SHA}\`
+          - **工作流**: [Run #${GITHUB_RUN_NUMBER}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})
+
+          下载下方 APK 安装即可（当前为 debug 签名）。
+          EOF
+          )"
+
+          # 滚动更新 latest，保证 Releases 页始终有可下载的最新 APK
+          if gh release view latest >/dev/null 2>&1; then
+            gh release delete latest --yes --cleanup-tag
+          fi
+          gh release create latest "$APK_PATH" \
+            --title "塑身工坊 v${VERSION}" \
+            --notes "$NOTES" \
+            --latest
