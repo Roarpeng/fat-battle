@@ -1,6 +1,6 @@
 import 'dart:math' as math;
 import '../constants/app_constants.dart';
-import '../core/core_types.dart' show Gender;
+import '../core/core_types.dart' show Gender, ExerciseCategory;
 
 // 用户模型
 class User {
@@ -48,6 +48,12 @@ class User {
   final String dndStart;
   final String dndEnd;
   final String statusMark;
+
+  /// 膝盖不适：处方去掉深蹲/弓步。默认 false（全部动作可用）。
+  final bool kneeIssue;
+
+  /// 腰腹不适：处方去掉平板/登山跑。默认 false。
+  final bool waistIssue;
   
   const User({
     this.id = '',
@@ -82,6 +88,8 @@ class User {
     this.dndStart = '22:00',
     this.dndEnd = '08:00',
     this.statusMark = '',
+    this.kneeIssue = false,
+    this.waistIssue = false,
   });
   
   User copyWith({
@@ -117,6 +125,8 @@ class User {
     String? dndStart,
     String? dndEnd,
     String? statusMark,
+    bool? kneeIssue,
+    bool? waistIssue,
   }) {
     return User(
       id: id ?? this.id,
@@ -151,6 +161,8 @@ class User {
       dndStart: dndStart ?? this.dndStart,
       dndEnd: dndEnd ?? this.dndEnd,
       statusMark: statusMark ?? this.statusMark,
+      kneeIssue: kneeIssue ?? this.kneeIssue,
+      waistIssue: waistIssue ?? this.waistIssue,
     );
   }
   
@@ -188,6 +200,8 @@ class User {
       'dndStart': dndStart,
       'dndEnd': dndEnd,
       'statusMark': statusMark,
+      'kneeIssue': kneeIssue,
+      'waistIssue': waistIssue,
     };
   }
   
@@ -225,6 +239,8 @@ class User {
       dndStart: json['dndStart'] ?? '22:00',
       dndEnd: json['dndEnd'] ?? '08:00',
       statusMark: json['statusMark'] ?? '',
+      kneeIssue: json['kneeIssue'] ?? false,
+      waistIssue: json['waistIssue'] ?? false,
     );
   }
 }
@@ -245,6 +261,9 @@ class Monster {
   final bool isBoss;
   final double healBonus;
   final int shield;
+
+  /// 克制三角属性；缺省时按 [index] 循环 core→cardio→strength。
+  final ExerciseCategory? affinity;
   
   const Monster({
     this.index = 0,
@@ -256,7 +275,19 @@ class Monster {
     this.isBoss = false,
     this.healBonus = 0,
     this.shield = 0,
+    this.affinity,
   });
+
+  /// 今日克制课使用的属性。
+  ExerciseCategory get resolvedAffinity {
+    if (affinity != null) return affinity!;
+    const cycle = [
+      ExerciseCategory.core,
+      ExerciseCategory.cardio,
+      ExerciseCategory.strength,
+    ];
+    return cycle[index.abs() % cycle.length];
+  }
   
   Monster copyWith({
     int? index,
@@ -268,6 +299,7 @@ class Monster {
     bool? isBoss,
     double? healBonus,
     int? shield,
+    ExerciseCategory? affinity,
   }) {
     return Monster(
       index: index ?? this.index,
@@ -279,12 +311,70 @@ class Monster {
       isBoss: isBoss ?? this.isBoss,
       healBonus: healBonus ?? this.healBonus,
       shield: shield ?? this.shield,
+      affinity: affinity ?? this.affinity,
     );
   }
   
   double get hpPercent => hp / maxHp;
   double get shieldPercent => maxHp > 0 ? (shield / maxHp).clamp(0.0, 1.0) : 0;
   bool get hasShield => shield > 0;
+}
+
+/// 待播放的回城攻击（教练/运动结算后，回舞台再扣血）。
+class PendingAttack {
+  final int damage;
+  final String attackType;
+  final bool isOvereat;
+  final int overeatCalories;
+  final String? exerciseType;
+  final bool isCounter;
+  final bool isResisted;
+  final String? counterLabel;
+  final String? grade;
+  final int calories;
+  final int reps;
+
+  const PendingAttack({
+    this.damage = 0,
+    this.attackType = 'missile',
+    this.isOvereat = false,
+    this.overeatCalories = 0,
+    this.exerciseType,
+    this.isCounter = false,
+    this.isResisted = false,
+    this.counterLabel,
+    this.grade,
+    this.calories = 0,
+    this.reps = 0,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'damage': damage,
+        'attackType': attackType,
+        'isOvereat': isOvereat,
+        'overeatCalories': overeatCalories,
+        'exerciseType': exerciseType,
+        'isCounter': isCounter,
+        'isResisted': isResisted,
+        'counterLabel': counterLabel,
+        'grade': grade,
+        'calories': calories,
+        'reps': reps,
+      };
+
+  factory PendingAttack.fromJson(Map<String, dynamic> json) => PendingAttack(
+        damage: json['damage'] ?? 0,
+        attackType: json['attackType'] ?? 'missile',
+        isOvereat: json['isOvereat'] ?? false,
+        overeatCalories: json['overeatCalories'] ?? 0,
+        exerciseType: json['exerciseType'] as String?,
+        isCounter: json['isCounter'] ?? false,
+        isResisted: json['isResisted'] ?? false,
+        counterLabel: json['counterLabel'] as String?,
+        grade: json['grade'] as String?,
+        calories: json['calories'] ?? 0,
+        reps: json['reps'] ?? 0,
+      );
 }
 
 // 每日状态
