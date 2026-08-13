@@ -143,5 +143,17 @@ void main() {
       expect(cue.kind, CoachCueKind.squatDepth);
       expect(cue.spoken, contains('平行地面'));
     });
+
+    test('俯卧撑浅下压与塌腰走具体口令', () {
+      expect(
+        resolveCoachCue(liveFeedback: '幅度不够，再往下压一点', exerciseType: 'pushup')
+            .kind,
+        CoachCueKind.pushupDepth,
+      );
+      expect(
+        resolveCoachCue(liveFeedback: '腰往下塌了，收紧核心把髋抬平').kind,
+        CoachCueKind.hipSag,
+      );
+    });
   });
 }

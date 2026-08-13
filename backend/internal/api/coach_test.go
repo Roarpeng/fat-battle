@@ -1,8 +1,14 @@
 package api
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/gin-gonic/gin"
+
+	"fatbattle/backend/internal/middleware"
 )
 
 func TestClampCalorieFloor(t *testing.T) {
@@ -138,5 +144,46 @@ func TestFormatCoachContextIncludesDietAndMonster(t *testing.T) {
 		if !strings.Contains(s, needle) {
 			t.Fatalf("context missing %q in %s", needle, s)
 		}
+	}
+}
+
+func TestSanitizeFormRecapKeepsTwoSentences(t *testing.T) {
+	got := sanitizeFormRecap("第一句。第二句。第三句不该保留。")
+	if got != "第一句。第二句。" {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestFormRecapPromptHasNoHardcodedGLM(t *testing.T) {
+	p := formRecapSystemPrompt()
+	for _, bad := range []string{"GLM", "glm", "zhipu", "智谱"} {
+		if strings.Contains(p, bad) {
+			t.Fatalf("prompt must not hardcode %q", bad)
+		}
+	}
+	user := formatFormRecapUser(formRecapRequest{
+		ExerciseType: "squat",
+		RepCount:     12,
+		AvgGrade:     "A",
+		DurationSec:  40,
+	})
+	if !strings.Contains(user, "squat") || !strings.Contains(user, "12") {
+		t.Fatalf("user payload %q", user)
+	}
+}
+
+func TestFormRecapUnauthorized(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.POST("/api/v1/coach/form-recap", middleware.Auth("test-secret", nil), coachFormRecapHandler(nil))
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/coach/form-recap", strings.NewReader(`{"repCount":1}`))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d body=%s", w.Code, w.Body.String())
+	}
+	if w.Header().Get("X-Provider") == "zhipu" {
+		t.Fatal("must not hardcode zhipu on unauthorized")
 	}
 }

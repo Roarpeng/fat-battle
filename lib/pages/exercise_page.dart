@@ -25,6 +25,7 @@ import '../services/coach_feel.dart';
 import '../services/coach_injury.dart';
 import '../services/coach_lesson.dart';
 import '../services/coach_settlement.dart';
+import '../services/coach_api.dart';
 import '../services/pose_coach_diary.dart';
 import '../services/pose_coach_voice.dart';
 import '../services/training_session_store.dart';
@@ -87,6 +88,8 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
   int _peakCombo = 0;
   String _lastGrade = 'D';
   String? _sessionExerciseType;
+  final List<String> _sessionQualityGrades = [];
+  double? _sessionMinKneeAngle;
   bool _returnToBattle = false;
   final ValueNotifier<String> _qualityGradeN = ValueNotifier('');
 
@@ -173,13 +176,24 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
     _wireCameraCallbacks(_tfliteDetector);
 
     _fusionService.onRepDetected = (count, exercise) {
-      if (_cameraBleFusion && mounted) {
-        setState(() {
-          _cameraRepCount = count;
-          _repCountN.value = count;
-        });
-        _maybeCompletePlanTarget(count);
+      if (!_cameraBleFusion || !mounted) return;
+      final increased = count > _cameraRepCount;
+      setState(() {
+        _cameraRepCount = count;
+        _repCountN.value = count;
+      });
+      if (increased) {
+        final type = _selectedExercise != null
+            ? Exercises.all[_selectedExercise!].type
+            : '';
+        if (type != 'plank') {
+          _gameLogic.handleRepSuccess();
+        } else if (count > 0 && count % 5 == 0) {
+          _gameLogic.handleRepSuccess();
+        }
+        _coachVoice.announceRep(count);
       }
+      _maybeCompletePlanTarget(count);
     };
     _fusionService.onFeedback = (feedback) {
       if (_cameraBleFusion && mounted) {
@@ -290,12 +304,13 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
           repCount: count,
           accuracy: 0.85,
         );
-      } else {
-        setState(() {
-          _cameraRepCount = count;
-          _repCountN.value = count;
-        });
+        // 融合开启时 HUD/TTS 走融合计数，避免与摄像头报数脱节
+        return;
       }
+      setState(() {
+        _cameraRepCount = count;
+        _repCountN.value = count;
+      });
       // 平板按秒累计：不要每秒都抽体力，否则十几秒就「耗尽」
       final type = _selectedExercise != null
           ? Exercises.all[_selectedExercise!].type
@@ -329,6 +344,19 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
     };
 
     if (detector is PoseDetectionService) {
+      detector.onQualityScore = (quality, grade) {
+        if (!mounted || !_isActiveCamera(detector)) return;
+        _gameLogic.lastRepQuality = quality.round();
+        _gameLogic.lastRepGrade = grade;
+        _sessionQualityGrades.add(grade);
+        final k = detector.lastMinKneeAngle;
+        if (k != null) {
+          _sessionMinKneeAngle = _sessionMinKneeAngle == null
+              ? k
+              : math.min(_sessionMinKneeAngle!, k);
+        }
+        _gameLogic.onQualityScored?.call(quality.round(), grade);
+      };
       detector.onPoseUpdate = (landmarks) {
         if (!_isActiveCamera(detector) || !mounted) return;
         if (landmarks == null) {
@@ -412,7 +440,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
         PoseCoachDiary.instance.logPhase('setup', 'align', 'grace_done');
         _coachPhaseN.value = 'align';
         _alignGoodSince = null;
-        _coachPhaseHintN.value = '请正对手机，全身入镜，站稳准备';
+        _coachPhaseHintN.value = '请正对手机，全身入镜，站直两秒校准站姿';
         _prepareProgressN.value = 0;
       }
     });
@@ -687,6 +715,18 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
       _announceFormTipOnce('too_far');
       return;
     }
+    if (cue.kind == CoachCueKind.hipSag) {
+      if (_lastFormTipForVoice == 'hip_sag') return;
+      _lastFormTipForVoice = 'hip_sag';
+      _coachVoice.announceHipSagCue();
+      return;
+    }
+    if (cue.kind == CoachCueKind.pushupDepth) {
+      if (_lastFormTipForVoice == 'pushup_depth') return;
+      _lastFormTipForVoice = 'pushup_depth';
+      _coachVoice.announcePushupDepthCue();
+      return;
+    }
     _coachVoice.announceLiveCue(feedback);
   }
 
@@ -727,6 +767,8 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
     _peakCombo = 0;
     _lastGrade = 'D';
     _sessionExerciseType = null;
+    _sessionQualityGrades.clear();
+    _sessionMinKneeAngle = null;
     _qualityGradeN.value = '';
   }
 
@@ -2881,6 +2923,18 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
       ),
     );
 
+    // 组后 recap：不阻塞计次 TTS；LLM 不可用时本地兑底
+    final detectorKnee = _activeCameraDetector is PoseDetectionService
+        ? (_activeCameraDetector as PoseDetectionService).sessionMinKneeAngle
+        : null;
+    _kickoffFormRecap(
+      exerciseType: _sessionExerciseType ?? exercise.type,
+      reps: _sessionReps,
+      durationSec: elapsed.inSeconds,
+      avgGrade: avgGrade,
+      minKnee: _sessionMinKneeAngle ?? detectorKnee,
+    );
+
     final modeLabel = _cameraEngine == 'tflite' ? 'camera_tflite' : 'camera';
     final record = ExerciseRecord(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
@@ -2943,6 +2997,32 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
     if (score >= 70) return 'B';
     if (score >= 60) return 'C';
     return 'D';
+  }
+
+  /// 组后 1–2 句 recap。不 await，避免挡住报数 TTS。
+  void _kickoffFormRecap({
+    required String exerciseType,
+    required int reps,
+    required int durationSec,
+    required String avgGrade,
+    double? minKnee,
+  }) {
+    final grades = List<String>.from(_sessionQualityGrades);
+    // ignore: discarded_futures
+    CoachApi.instance
+        .formRecap(
+          exerciseType: exerciseType,
+          repCount: reps,
+          qualityGrades: grades,
+          minKneeAngle: minKnee,
+          durationSec: durationSec,
+          avgGrade: avgGrade,
+        )
+        .then((text) {
+      if (!mounted || text.isEmpty) return;
+      _feedbackN.value = text;
+      _showToast(text);
+    });
   }
 
   Future<void> _promptFeelThenPop() async {

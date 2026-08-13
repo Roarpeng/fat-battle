@@ -4,6 +4,8 @@ enum CoachCueKind {
   tooClose,
   tooFar,
   squatDepth,
+  pushupDepth,
+  hipSag,
   none,
 }
 
@@ -45,6 +47,13 @@ CoachCue resolveCoachCue({
   }
 
   final type = exerciseType ?? '';
+  if (fb.contains('腰往下塌') || fb.contains('收紧核心把髋')) {
+    return const CoachCue(CoachCueKind.hipSag, '腰往下塌了，收紧核心把髋抬平');
+  }
+  if (fb.contains('再往下压')) {
+    return const CoachCue(CoachCueKind.pushupDepth, '幅度不够，再往下压一点');
+  }
+
   final depthLike = fb.contains('幅度不够') ||
       fb.contains('再蹲低') ||
       fb.contains('再蹲深') ||

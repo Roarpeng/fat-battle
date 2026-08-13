@@ -1,9 +1,8 @@
 import 'dart:async';
 import 'dart:math' as math;
-import 'dart:typed_data';
 import 'package:camera/camera.dart';
 import '../models/game_models.dart';
-import '../constants/app_constants.dart';
+import 'imu_peak.dart';
 
 /// 动作识别服务 - 融合摄像头和IMU数据
 class MotionRecognitionService {
@@ -14,13 +13,9 @@ class MotionRecognitionService {
   // 动作检测状态
   String _currentExercise = '';
   int _repCount = 0;
-  String _lastState = 'up';
   bool _isDetecting = false;
-  
-  // 检测阈值
-  final double _accelThreshold = 2.0; // 加速度变化阈值
-  final double _gyroThreshold = 100; // 角速度变化阈值
-  
+  ImuPeakCounter? _peak;
+
   // 动作计数回调
   Function(int count, String exercise)? onRepDetected;
   Function(String feedback)? onFeedback;
@@ -41,9 +36,9 @@ class MotionRecognitionService {
   void startDetection(String exerciseType) {
     _currentExercise = exerciseType;
     _repCount = 0;
-    _lastState = 'up';
     _isDetecting = true;
     _imuBuffer.clear();
+    _peak = ImuExercisePeaks.forType(exerciseType);
   }
   
   /// 停止检测
@@ -52,157 +47,36 @@ class MotionRecognitionService {
     _currentExercise = '';
   }
   
-  /// 分析运动
+  /// 分析运动：峰值 + 1–2s 不应期，不用单样本阈值。
   void _analyzeMotion(ImuData data) {
+    final peak = _peak;
+    if (peak == null) return;
+    final mag = data.accelMagnitude;
+    if (!peak.ingest(mag)) return;
+
+    _repCount = peak.count;
     switch (_currentExercise) {
       case 'pushup':
-        _detectPushup(data);
-        break;
+        onRepDetected?.call(_repCount, '俯卧撑');
+        onFeedback?.call('$_repCount个！继续保持');
       case 'squat':
-        _detectSquat(data);
-        break;
+        onRepDetected?.call(_repCount, '深蹲');
+        onFeedback?.call('$_repCount个！大腿在发力');
       case 'jumping_jack':
-        _detectJumpingJack(data);
-        break;
+        onRepDetected?.call(_repCount, '开合跳');
+        onFeedback?.call('$_repCount个！心跳加速');
       case 'running':
-        _detectRunning(data);
-        break;
-      case 'walking':
-        _detectWalking(data);
-        break;
-    }
-  }
-  
-  /// 检测俯卧撑
-  /// 腰部IMU检测：身体上下运动，加速度Z轴变化明显
-  void _detectPushup(ImuData data) {
-    // 俯卧撑时，腰部会有明显的上下运动
-    // Z轴加速度会周期性变化
-    
-    final accelZ = data.az;
-    
-    // 判断状态：低位置（下）vs 高位置（上）
-    String newState = _lastState;
-    
-    if (accelZ < -1.5) {
-      newState = 'down';
-    } else if (accelZ > 0.5) {
-      newState = 'up';
-    }
-    
-    // 检测完成一次：从下到上
-    if (_lastState == 'down' && newState == 'up') {
-      _repCount++;
-      onRepDetected?.call(_repCount, '俯卧撑');
-      onFeedback?.call('${_repCount}个！继续保持~');
-    }
-    
-    _lastState = newState;
-    
-    // 提供反馈
-    if (accelZ.abs() < 0.3 && _lastState == 'up') {
-      onFeedback?.call('身体再低一点，效果更好~');
-    }
-  }
-  
-  /// 检测深蹲
-  /// 腰部IMU检测：身体上下运动，加速度Y轴（垂直方向）变化明显
-  void _detectSquat(ImuData data) {
-    // 深蹲时，腰部会有明显的上下运动
-    // Y轴加速度（垂直方向）会周期性变化
-    
-    final accelY = data.ay;
-    final gyroX = data.gx.abs(); // 膝盖弯曲时会有旋转
-    
-    String newState = _lastState;
-    
-    // 判断状态：蹲下（低）vs 站立（高）
-    if (accelY < -0.5 || gyroX > 50) {
-      newState = 'down';
-    } else if (accelY > 0.8) {
-      newState = 'up';
-    }
-    
-    // 检测完成一次：从蹲下到站立
-    if (_lastState == 'down' && newState == 'up') {
-      _repCount++;
-      onRepDetected?.call(_repCount, '深蹲');
-      onFeedback?.call('${_repCount}个！大腿肌肉在燃烧~');
-    }
-    
-    _lastState = newState;
-    
-    // 提供反馈
-    if (gyroX > 80 && gyroX < 100) {
-      onFeedback?.call('膝盖不要超过脚尖~');
-    }
-  }
-  
-  /// 检测开合跳
-  /// 腰部IMU检测：身体上下跳动，加速度变化剧烈
-  void _detectJumpingJack(ImuData data) {
-    // 开合跳时，腰部会有明显的上下跳动
-    // 加速度幅值会有周期性峰值
-    
-    final accelMag = data.accelMagnitude;
-    final gyroMag = data.gyroMagnitude;
-    
-    String newState = _lastState;
-    
-    // 判断状态：跳起（高加速度）vs 落地（低加速度）
-    if (accelMag > 2.5) {
-      newState = 'jump';
-    } else if (accelMag < 1.2) {
-      newState = 'land';
-    }
-    
-    // 检测完成一次：从跳起到落地
-    if (_lastState == 'jump' && newState == 'land') {
-      _repCount++;
-      onRepDetected?.call(_repCount, '开合跳');
-      onFeedback?.call('${_repCount}个！心跳加速~');
-    }
-    
-    _lastState = newState;
-  }
-  
-  /// 检测跑步
-  /// 腰部IMU检测：周期性的上下运动，频率较高
-  void _detectRunning(ImuData data) {
-    // 跑步时，腰部会有周期性的上下运动
-    // 通过检测加速度峰值来计算步数
-    
-    final accelMag = data.accelMagnitude;
-    
-    // 检测峰值（每一步）
-    if (accelMag > 2.0 && _lastState != 'peak') {
-      _repCount++;
-      _lastState = 'peak';
-      
-      if (_repCount % 10 == 0) {
         onRepDetected?.call(_repCount, '跑步');
-        onFeedback?.call('${_repCount}步！继续跑~');
-      }
-    } else if (accelMag < 1.5) {
-      _lastState = 'low';
-    }
-  }
-  
-  /// 检测快走
-  void _detectWalking(ImuData data) {
-    final accelMag = data.accelMagnitude;
-    
-    // 快走时加速度变化较小
-    if (accelMag > 1.5 && _lastState != 'peak') {
-      _repCount++;
-      _lastState = 'peak';
-      
-      if (_repCount % 20 == 0) {
+        if (_repCount % 10 == 0) {
+          onFeedback?.call('$_repCount步！继续跑');
+        }
+      case 'walking':
         onRepDetected?.call(_repCount, '快走');
-        onFeedback?.call('${_repCount}步！');
-      }
-    } else if (accelMag < 1.2) {
-      _lastState = 'low';
+        if (_repCount % 20 == 0) {
+          onFeedback?.call('$_repCount步！');
+        }
+      default:
+        onRepDetected?.call(_repCount, _currentExercise);
     }
   }
   
@@ -275,6 +149,7 @@ class MotionRecognitionService {
   void clearBuffer() {
     _imuBuffer.clear();
     _repCount = 0;
+    _peak?.reset();
   }
 }
 
@@ -290,10 +165,14 @@ class FusionRecognitionService {
   // 融合结果
   int _finalRepCount = 0;
   double _finalAccuracy = 0;
-  
+  bool _lowConfidence = false;
+  int _lastEmittedCount = -1;
+
   /// 融合结果回调
   Function(int count, String exercise)? onRepDetected;
   Function(String feedback)? onFeedback;
+
+  bool get lowConfidence => _lowConfidence;
 
   /// 更新摄像头检测结果
   void updateCameraResult({
@@ -314,41 +193,37 @@ class FusionRecognitionService {
     _fuseResults();
   }
   
-  /// 融合摄像头和IMU结果
+  /// 融合摄像头和IMU结果。摄像头为计次主源；IMU 为第二票。
+  /// 不一致时不以整数平均，标低置信并以摄像头为准。
   void _fuseResults() {
     final exercise = _cameraExerciseType ?? _imuService.currentExercise;
+    final camera = _cameraRepCount;
+    final imu = _imuService.repCount;
 
-    // 如果只有摄像头结果
-    if (_cameraRepCount != null && _imuService.repCount == 0) {
-      _finalRepCount = _cameraRepCount!;
+    int next;
+    if (camera != null && imu > 0) {
+      final delta = (camera - imu).abs();
+      _lowConfidence = delta > 1;
+      next = camera;
+      _finalAccuracy = _lowConfidence ? 0.55 : 0.9;
+    } else if (camera != null) {
+      next = camera;
+      _lowConfidence = imu == 0;
       _finalAccuracy = _cameraAccuracy ?? 0.8;
-      onRepDetected?.call(_finalRepCount, exercise);
+    } else if (imu > 0) {
+      next = imu;
+      _lowConfidence = true;
+      _finalAccuracy = 0.7;
+    } else {
       return;
     }
-    
-    // 如果只有IMU结果
-    if (_imuService.repCount > 0 && _cameraRepCount == null) {
-      _finalRepCount = _imuService.repCount;
-      _finalAccuracy = 0.7; // IMU单独检测精度较低
-      onRepDetected?.call(_finalRepCount, exercise);
-      return;
-    }
-    
-    // 融合两者结果
-    if (_cameraRepCount != null && _imuService.repCount > 0) {
-      // 取两者平均值，摄像头权重更高
-      final fused = ((_cameraRepCount! * 0.6) + (_imuService.repCount * 0.4)).round();
-      if (fused != _finalRepCount) {
-        _finalRepCount = fused;
-        onRepDetected?.call(_finalRepCount, exercise);
-        onFeedback?.call('融合计数 $_finalRepCount（摄像头+IMU）');
-      }
-      
-      // 融合精度：摄像头精度 + IMU强度验证
-      final imuIntensity = _imuService.calculateIntensity();
-      final intensityBonus = imuIntensity > 1.0 ? 0.1 : 0;
-      _finalAccuracy = (_cameraAccuracy ?? 0.8) + intensityBonus;
-      _finalAccuracy = _finalAccuracy.clamp(0, 1);
+
+    if (next == _lastEmittedCount) return;
+    _finalRepCount = next;
+    _lastEmittedCount = next;
+    onRepDetected?.call(_finalRepCount, exercise);
+    if (camera != null && imu > 0 && _lowConfidence) {
+      onFeedback?.call('摄像头与 IMU 不完全一致，以摄像头为准');
     }
   }
   
@@ -368,6 +243,8 @@ class FusionRecognitionService {
     _cameraExerciseType = exerciseType;
     _cameraRepCount = null;
     _finalRepCount = 0;
+    _lastEmittedCount = -1;
+    _lowConfidence = false;
   }
   
   /// 停止检测
