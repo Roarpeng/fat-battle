@@ -68,6 +68,9 @@ func RegisterRoutes(r *gin.Engine, pool *pgxpool.Pool, jwtSecret, adminJwtSecret
 				food.POST("/feedback", feedbackHandler(pool))
 			}
 
+			// 营养教练（同一套 LLM 配置；不改目标、不静默记账）
+			protected.POST("/coach/turn", middleware.RateLimit(30, time.Minute), coachTurnHandler(pool))
+
 			// 进度同步（M4 实现快照与增量流水）
 			progress := protected.Group("/progress")
 			{

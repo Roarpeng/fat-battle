@@ -18,6 +18,7 @@ import '../widgets/hp_bar.dart';
 import '../widgets/hub_status_dot.dart';
 import 'exercise_page.dart';
 import 'food_page.dart';
+import 'coach_page.dart';
 import 'settings_page.dart';
 import 'setup_page.dart';
 
@@ -319,6 +320,17 @@ class _HomePageState extends ConsumerState<HomePage> {
           ),
         ),
         const SizedBox(width: AppSpace.xs),
+        ForgePressable(
+          onTap: () {
+            Navigator.of(context).push(
+              forgePageRoute(builder: (_) => const CoachPage()),
+            );
+          },
+          child: const Padding(
+            padding: EdgeInsets.all(AppSpace.sm),
+            child: Icon(Icons.chat_bubble_outline_rounded, color: AppColors.copper, size: 22),
+          ),
+        ),
         ForgePressable(
           onTap: () {
             Navigator.of(context).push(

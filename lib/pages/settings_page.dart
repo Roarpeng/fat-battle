@@ -18,6 +18,7 @@ import '../pages/auth_page.dart';
 import '../pages/companion_page.dart';
 import '../pages/achievements_page.dart';
 import '../pages/privacy_page.dart';
+import '../pages/coach_page.dart';
 import '../providers/inventory_provider.dart';
 import '../widgets/forge_pressable.dart';
 import '../widgets/home/forge_background.dart';
@@ -180,6 +181,47 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     ),
                   ],
                 ),
+            ),
+            const SizedBox(height: AppSpace.lg),
+
+            ForgeSurface(
+              child: ForgePressable(
+                onTap: () {
+                  Navigator.of(context).push(
+                    forgePageRoute(builder: (_) => const CoachPage()),
+                  );
+                },
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: AppSpace.sm),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.chat_bubble_outline_rounded,
+                          color: AppColors.copper, size: 22),
+                      const SizedBox(width: AppSpace.md),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '工坊教练',
+                              style: AppFonts.body(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.text,
+                              ),
+                            ),
+                            Text(
+                              '按今日饮食与预算问怎么吃，不会改目标也不会偷偷记账',
+                              style: AppFonts.body(fontSize: 12, color: AppColors.text2),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Icon(Icons.chevron_right, color: AppColors.text2, size: 20),
+                    ],
+                  ),
+                ),
+              ),
             ),
             const SizedBox(height: AppSpace.lg),
             

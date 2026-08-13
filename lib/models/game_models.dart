@@ -332,6 +332,8 @@ class FoodItem {
   final int totalCal;
   final MealType meal;
   final String? photoUrl;
+  /// 实际克数；空则按份量档估算
+  final int? grams;
   
   const FoodItem({
     required this.name,
@@ -340,6 +342,7 @@ class FoodItem {
     required this.totalCal,
     required this.meal,
     this.photoUrl,
+    this.grams,
   });
   
   FoodItem copyWith({
@@ -349,6 +352,7 @@ class FoodItem {
     int? totalCal,
     MealType? meal,
     String? photoUrl,
+    int? grams,
   }) {
     return FoodItem(
       name: name ?? this.name,
@@ -357,6 +361,7 @@ class FoodItem {
       totalCal: totalCal ?? this.totalCal,
       meal: meal ?? this.meal,
       photoUrl: photoUrl ?? this.photoUrl,
+      grams: grams ?? this.grams,
     );
   }
 }
