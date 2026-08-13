@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../constants/app_constants.dart';
 import '../core/safety.dart';
 import '../theme/forge_theme.dart';
 import '../theme/tokens.dart';
@@ -51,7 +52,7 @@ class MedicalDisclaimerDialog extends StatelessWidget {
       backgroundColor: AppColors.card,
       shape: RoundedRectangleBorder(
         borderRadius: AppRadii.mdAll,
-        side: const BorderSide(color: AppColors.border),
+        side: BorderSide(color: AppColors.border),
       ),
       title: Text(
         '使用前请了解',
