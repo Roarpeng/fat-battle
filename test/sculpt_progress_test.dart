@@ -8,6 +8,8 @@ import 'package:fat_battle/providers/game_provider.dart';
 import 'package:fat_battle/theme/sculpt_progress.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   group('sculptLineFor', () {
     test('男大卫 女维纳斯 其他自选默认维纳斯', () {
       expect(sculptLineFor(gender: Gender.male), SculptLine.david);

@@ -73,7 +73,7 @@ class ProgressSyncStatus {
 class ProgressSyncService extends ChangeNotifier {
   ProgressSyncService({
     AuthService? auth,
-    SharedPreferences Function()? prefsFactory,
+    Future<SharedPreferences> Function()? prefsFactory,
   })  : _auth = auth ?? AuthService(),
         _prefsFactory = prefsFactory ?? SharedPreferences.getInstance;
 
