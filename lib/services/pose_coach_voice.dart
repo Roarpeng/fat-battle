@@ -42,7 +42,7 @@ class PoseCoachVoice {
   void announceSetup() => _speakTip('请把手机架稳，然后走到镜头前');
 
   /// 站进白色虚线框（听口令，不依赖看清屏幕）。
-  void announceAlign() => _speakTip('请正对手机，全身入镜，站稳准备');
+  void announceAlign() => _speakTip('请正对手机，全身入镜，站直两秒校准站姿');
 
   /// 倒计时播报，例如 3 / 2 / 1。
   void announceCountdown(int seconds) {
@@ -85,6 +85,15 @@ class PoseCoachVoice {
       _speakTip('蹲再低一点，大腿尽量平行地面');
     }
   }
+
+  /// 俯卧撑下压不够。
+  void announcePushupDepthCue() => _speakTip('幅度不够，再往下压一点');
+
+  /// 平板/俯卧撑塌腰。
+  void announceHipSagCue() => _speakTip('腰往下塌了，收紧核心把髋抬平');
+
+  /// 入镜校准站姿（align 阶段）。
+  void announceCalibration() => _speakTip('请站直两秒，校准站姿');
 
   /// 检测器实时反馈 → 语音（去表情符号，防抖）。
   void announceLiveCue(String feedback) {

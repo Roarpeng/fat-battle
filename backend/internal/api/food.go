@@ -17,11 +17,24 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// LLM 提供商常量
+// LLM 提供商常量（路由走 pickLLMConfig，禁止把 X-Provider 写死成 zhipu）
 const (
-	glmProvider     = "zhipu" // 智谱 GLM（专属路径），保留用于 X-Provider 响应头兼容
 	glmSystemPrompt = "你是专业的食物识别和营养分析专家。请识别图片中的食物，返回结构化 JSON 结果。\n【重要】只输出 JSON，不要有任何其他文字、解释或代码块标记。\n【输出格式】\n{\"items\":[{\"name\":\"食物名称\",\"calorie\":每100克卡路里数值,\"confidence\":置信度0-1,\"category\":\"食物类别\",\"description\":\"简短描述\"}]}\n【要求】name用中文；calorie为每100g千卡；置信度低于0.3不要返回；最多识别清晰可见的食物。"
 )
+
+// llmProviderHeader 返回实际选中的 provider，供 X-Provider 响应头。
+func llmProviderHeader(cfg *llmConfig) string {
+	if cfg == nil {
+		return ""
+	}
+	return strings.TrimSpace(cfg.Provider)
+}
+
+func writeLLMProviderHeader(c *gin.Context, cfg *llmConfig) {
+	if p := llmProviderHeader(cfg); p != "" {
+		c.Header("X-Provider", p)
+	}
+}
 
 // llmConfig 数据库 llm_configs 行的镜像
 type llmConfig struct {
@@ -305,7 +318,6 @@ func parseFoodItems(content string, topNum int) []gin.H {
 }
 
 func foodError(c *gin.Context, code int, msg string) {
-	c.Header("X-Provider", glmProvider)
 	c.JSON(code, gin.H{"success": false, "error": msg})
 }
 
@@ -322,7 +334,6 @@ func truncate(s string, n int) string {
 // 响应: {"success": true, "items": [...]}
 func recognizeHandler(pool *pgxpool.Pool) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		c.Header("X-Provider", glmProvider)
 		if pool == nil {
 			foodError(c, http.StatusServiceUnavailable, "数据库未就绪，请检查 Docker 服务")
 			return
@@ -356,6 +367,7 @@ func recognizeHandler(pool *pgxpool.Pool) gin.HandlerFunc {
 			foodError(c, http.StatusInternalServerError, "读取 LLM 配置失败")
 			return
 		}
+		writeLLMProviderHeader(c, cfg)
 
 		model := cfg.VisionModel
 		if model == "" {
@@ -390,7 +402,6 @@ func recognizeHandler(pool *pgxpool.Pool) gin.HandlerFunc {
 // 响应: {"success": true, "items": [...]}
 func searchHandler(pool *pgxpool.Pool) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		c.Header("X-Provider", glmProvider)
 		if pool == nil {
 			foodError(c, http.StatusServiceUnavailable, "数据库未就绪，请检查 Docker 服务")
 			return
@@ -423,12 +434,13 @@ func searchHandler(pool *pgxpool.Pool) gin.HandlerFunc {
 			foodError(c, http.StatusInternalServerError, "读取 LLM 配置失败")
 			return
 		}
+		writeLLMProviderHeader(c, cfg)
 
 		model := cfg.TextModel
 		if model == "" {
 			model = defaultTextModel(cfg.Provider)
 		}
-		// 与 App 端 GlmFoodService._searchDirect 的提示词保持一致（含常见食物卡路里参考表）
+		// 与 App 端食物搜索提示词保持一致（含常见食物卡路里参考表）
 		systemPrompt := fmt.Sprintf(`你是一个食物搜索引擎。用户输入关键词，你必须搜索并返回最匹配的食物。
 
 规则：

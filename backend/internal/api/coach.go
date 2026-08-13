@@ -323,7 +323,6 @@ func sanitizeProposedLogs(in []coachProposedLog) []coachProposedLog {
 }
 
 func coachError(c *gin.Context, code int, msg string) {
-	c.Header("X-Provider", glmProvider)
 	c.JSON(code, gin.H{"success": false, "error": msg})
 }
 
@@ -333,7 +332,6 @@ func coachError(c *gin.Context, code int, msg string) {
 // 响应: {"success":true,"reply":"...","filtered":false,"proposedLogs":[...]}
 func coachTurnHandler(pool *pgxpool.Pool) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		c.Header("X-Provider", glmProvider)
 		if pool == nil {
 			coachError(c, http.StatusServiceUnavailable, "数据库未就绪，请检查 Docker 服务")
 			return
@@ -364,6 +362,7 @@ func coachTurnHandler(pool *pgxpool.Pool) gin.HandlerFunc {
 			coachError(c, http.StatusInternalServerError, "读取 LLM 配置失败")
 			return
 		}
+		writeLLMProviderHeader(c, cfg)
 
 		model := cfg.TextModel
 		if model == "" {
@@ -397,6 +396,124 @@ func coachTurnHandler(pool *pgxpool.Pool) gin.HandlerFunc {
 			"reply":        safe,
 			"filtered":     filtered,
 			"proposedLogs": logs,
+		})
+	}
+}
+
+type formRecapRequest struct {
+	ExerciseType  string   `json:"exerciseType"`
+	RepCount      int      `json:"repCount"`
+	QualityGrades []string `json:"qualityGrades"`
+	MinKneeAngle  *float64 `json:"minKneeAngle"`
+	DurationSec   int      `json:"durationSec"`
+	AvgGrade      string   `json:"avgGrade"`
+}
+
+func formRecapSystemPrompt() string {
+	return `你是塑身工坊的动作教练。根据用户刚完成一组动作的计数与质量摘要，用中文写 1～2 句具体反馈。
+只根据提供的 JSON 数字说话，不要编造没出现的角度或次数。不要提模型名称或供应商。不要给医疗诊断。
+浅幅度要提醒下次蹲/压到底再起来。输出纯文本，不要 JSON、不要 markdown。`
+}
+
+func formatFormRecapUser(req formRecapRequest) string {
+	grade := strings.TrimSpace(req.AvgGrade)
+	if grade == "" {
+		grade = "D"
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "动作=%s 次数=%d 时长=%d秒 平均等级=%s",
+		strings.TrimSpace(req.ExerciseType), req.RepCount, req.DurationSec, grade)
+	if req.MinKneeAngle != nil {
+		fmt.Fprintf(&b, " 最低膝角=%.0f°", *req.MinKneeAngle)
+	}
+	if len(req.QualityGrades) > 0 {
+		b.WriteString(" 各次等级=")
+		b.WriteString(strings.Join(req.QualityGrades, ","))
+	}
+	return b.String()
+}
+
+func sanitizeFormRecap(content string) string {
+	text := strings.TrimSpace(content)
+	text = strings.TrimPrefix(text, "```")
+	text = strings.TrimSuffix(text, "```")
+	text = strings.TrimSpace(text)
+	// 最多两句
+	cut := 0
+	sentences := 0
+	runes := []rune(text)
+	for i, r := range runes {
+		if r == '。' || r == '！' || r == '？' || r == '!' || r == '?' {
+			sentences++
+			cut = i + 1
+			if sentences >= 2 {
+				break
+			}
+		}
+	}
+	if sentences >= 2 && cut > 0 {
+		runes = runes[:cut]
+	}
+	return truncateRunes(strings.TrimSpace(string(runes)), 120)
+}
+
+// coachFormRecapHandler 组后动作 recap：只收紧凑 JSON，不收图像。走 pickLLMConfig().TextModel。
+func coachFormRecapHandler(pool *pgxpool.Pool) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if pool == nil {
+			coachError(c, http.StatusServiceUnavailable, "数据库未就绪，请检查 Docker 服务")
+			return
+		}
+		var req formRecapRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			coachError(c, http.StatusBadRequest, "参数错误: "+err.Error())
+			return
+		}
+		if req.RepCount < 0 {
+			req.RepCount = 0
+		}
+		if req.DurationSec < 0 {
+			req.DurationSec = 0
+		}
+		if utf8.RuneCountInString(req.ExerciseType) > 40 {
+			req.ExerciseType = string([]rune(req.ExerciseType)[:40])
+		}
+		if len(req.QualityGrades) > 80 {
+			req.QualityGrades = req.QualityGrades[:80]
+		}
+
+		cfg, err := pickLLMConfig(c.Request.Context(), pool)
+		if err != nil {
+			if err == pgx.ErrNoRows {
+				coachError(c, http.StatusServiceUnavailable, "未配置可用的 LLM 服务，请在管理后台配置")
+				return
+			}
+			coachError(c, http.StatusInternalServerError, "读取 LLM 配置失败")
+			return
+		}
+		writeLLMProviderHeader(c, cfg)
+
+		model := cfg.TextModel
+		if model == "" {
+			model = defaultTextModel(cfg.Provider)
+		}
+		content, err := cfg.chatWith(c.Request.Context(), model, []gin.H{
+			{"role": "system", "content": formRecapSystemPrompt()},
+			{"role": "user", "content": formatFormRecapUser(req)},
+		}, 0.3, 256)
+		if err != nil {
+			log.Printf("[coach] form-recap 调用失败: %v", err)
+			coachError(c, http.StatusBadGateway, "教练服务调用失败: "+err.Error())
+			return
+		}
+		recap := sanitizeFormRecap(content)
+		if recap == "" {
+			coachError(c, http.StatusBadGateway, "recap 为空")
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"success": true,
+			"recap":   recap,
 		})
 	}
 }

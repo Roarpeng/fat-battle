@@ -9,6 +9,7 @@ import 'package:flutter/services.dart';
 import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
 import 'package:path_provider/path_provider.dart';
 import 'pose_coach_diary.dart';
+import 'exercise_fsm.dart';
 
 /// 基于 Google ML Kit Pose Detection 的姿态识别服务
 ///
@@ -66,7 +67,6 @@ class PoseDetectionService {
   // ===== Stamina 体力系统 =====
   double _stamina = 100.0;
   static const double _staminaRecoverPerFrame = 0.8;
-  static const double _staminaCostPerRep = 8.0;
 
   // ===== Pause 暂停系统 =====
   bool _isPaused = false;
@@ -110,6 +110,13 @@ class PoseDetectionService {
 
   /// 是否允许计次（免触控入镜门控通过前为 false，只出姿态不出次数）
   bool _countingEnabled = false;
+
+  /// 深蹲/俯卧撑/弓步蹲有限状态机（校准 + ROM）
+  ExerciseRepFsm? _repFsm;
+
+  /// 本组最低膝角（供组后 recap）；无则 null
+  double? lastMinKneeAngle;
+  double? sessionMinKneeAngle;
 
   // ===== Getters =====
   CameraController? get controller => _controller;
@@ -352,12 +359,12 @@ class PoseDetectionService {
     _isDetecting = true;
     _isBusy = false;
     _countingEnabled = false; // 等入镜门控通过后再计次
+    _repFsm = ExerciseRepFsm.forType(exerciseType);
+    _repFsm?.reset();
+    lastMinKneeAngle = null;
+    sessionMinKneeAngle = null;
 
     // 重置动作特定状态
-    _squatHipMaxY = 0;
-    _squatHipMinY = 999;
-    _pushupShoulderMinY = 999;
-    _pushupShoulderMaxY = 0;
     _jackNoseMinY = 999;
     _jackNoseMaxY = 0;
     _lastJackRhythm = 0;
@@ -367,7 +374,6 @@ class PoseDetectionService {
     _plankAccumulatedSeconds = 0;
     _plankStartTime = null;
     _burpeePhase = 'stand';
-    _lungeState = 'recovered';
     _mountainClimberState = 'left';
 
     // 重置系统状态
@@ -397,6 +403,7 @@ class PoseDetectionService {
     _countingEnabled = enabled;
     if (enabled) {
       _isPreparing = false;
+      _repFsm?.commitCalibration();
       onPrepareProgress?.call(1.0);
       onFeedback?.call('开始运动！');
     }
@@ -866,6 +873,11 @@ class PoseDetectionService {
       _heldLandmarksAt = DateTime.now();
       onPoseUpdate?.call(smoothed);
 
+      // 入镜/倒计时：采集站姿髋膝基线（不计次）
+      if (_repFsm != null && !_countingEnabled && !_isPaused) {
+        _repFsm!.ingestCalibration(_toFsmLandmarks(smoothed));
+      }
+
       // 暂停时仍展示姿态，但不计次
       if (!_isPreparing && _countingEnabled && !_isPaused) {
         _analyzePose(smoothed);
@@ -1111,10 +1123,9 @@ class PoseDetectionService {
   void _analyzePose(Map<PoseLandmarkType, Point3D> lm) {
     switch (_currentExercise) {
       case 'squat':
-        _analyzeSquat(lm);
-        break;
       case 'pushup':
-        _analyzePushup(lm);
+      case 'lunge':
+        _tickRepFsm(lm);
         break;
       case 'jumping_jack':
         _analyzeJumpingJack(lm);
@@ -1132,9 +1143,6 @@ class PoseDetectionService {
       case 'burpee':
         _analyzeBurpee(lm);
         break;
-      case 'lunge':
-        _analyzeLunge(lm);
-        break;
       case 'mountainclimber':
         _analyzeMountainClimber(lm);
         break;
@@ -1145,186 +1153,54 @@ class PoseDetectionService {
   }
 
   // ============================================================
-  // 深蹲：通过 hip-knee-ankle 角度 + 髋部高度变化双重验证
-  // 站立 ≈ 170-180°；标准深蹲 ≈ 90-110°（大腿平行地面）
+  // 深蹲 / 俯卧撑 / 弓步蹲：校准站姿 + ROM 有限状态机
+  // idle/setup → eccentric → bottom（必须达 ROM）→ concentric → lock
+  // 浅幅度只出口令、不计次。质量分走 _calcQualityScore。
   // ============================================================
-  double _squatHipMaxY = 0;
-  double _squatHipMinY = 999;
 
-  void _analyzeSquat(Map<PoseLandmarkType, Point3D> lm) {
-    final hip = lm[PoseLandmarkType.leftHip];
-    final knee = lm[PoseLandmarkType.leftKnee];
-    final ankle = lm[PoseLandmarkType.leftAnkle];
-    final hipR = lm[PoseLandmarkType.rightHip];
-    final kneeR = lm[PoseLandmarkType.rightKnee];
-    final ankleR = lm[PoseLandmarkType.rightAnkle];
-
-    final leftOk = hip != null && knee != null && ankle != null;
-    final rightOk = hipR != null && kneeR != null && ankleR != null;
-    if (!leftOk && !rightOk) {
-      onFeedback?.call('请确保全身入镜（侧身拍摄效果最佳）');
-      return;
-    }
-
-    final angleL = leftOk ? _angle(hip, knee, ankle) : 180.0;
-    final angleR = rightOk ? _angle(hipR, kneeR, ankleR) : 180.0;
-    final angle = (angleL + angleR) / 2;
-
-    // 髋部平均 Y 坐标，用于验证下蹲深度
-    final hipY = ((hip?.y ?? 0) + (hipR?.y ?? 0)) / 2;
-    if (angle > 170) {
-      // 站立姿态，更新髋部最高位置参考
-      _squatHipMaxY = hipY;
-    }
-
-    // 动态阈值：灵敏度越高，需要蹲得越深
-    // 默认灵敏度0.7 → 下蹲阈值约110°，站立阈值约150°
-    final downThreshold = 90.0 + (1.0 - _sensitivity) * 30.0;
-    final upThreshold = downThreshold + 40.0;
-
-    _updateMotionLevelByAngle(180.0 - angle, 90.0);
-
-    String newState = _motionState;
-    if (angle < downThreshold) {
-      newState = 'down';
-      // 记录最低位置
-      if (hipY > _squatHipMinY) {
-        _squatHipMinY = hipY;
-      }
-    } else if (angle > upThreshold) {
-      newState = 'up';
-    }
-
-    if (_motionState == 'down' && newState == 'up' && _debounceOk()) {
-      // 双重验证：髋部高度变化 > 站立高度的15%才算有效下蹲
-      final hipDrop = _squatHipMaxY > 0
-          ? (_squatHipMinY - _squatHipMaxY) / _squatHipMaxY
-          : 0.0;
-      final validDepth = hipDrop > 0.15;
-
-      if (validDepth || angle < downThreshold + 10) {
-        _repCount++;
-        _lastRepTime = DateTime.now();
-        onRepDetected?.call(_repCount, '深蹲');
-        _emitSquatFeedback(angle, hipDrop);
-      } else {
-        onFeedback?.call('幅度不够哦，再蹲低一点~');
-      }
-      // 重置
-      _squatHipMinY = 999;
-    }
-    _motionState = newState;
+  Map<String, LandmarkPoint> _toFsmLandmarks(
+    Map<PoseLandmarkType, Point3D> lm,
+  ) {
+    final out = <String, LandmarkPoint>{};
+    lm.forEach((k, v) {
+      out[k.name] = LandmarkPoint(v.x, v.y, v.z);
+    });
+    return out;
   }
 
-  void _emitSquatFeedback(double angle, double depthRatio) {
-    String msg;
-    if (angle < 90 && depthRatio > 0.25) {
-      msg = '🔥 $_repCount 个！标准深蹲，完美！';
-      onHighlightMoment?.call();
-    } else if (angle < 110) {
-      msg = '💪 $_repCount 个！不错，继续保持~';
-    } else if (angle < 130) {
-      msg = '👍 $_repCount 个！可以再蹲深一点';
-    } else {
-      msg = '😅 $_repCount 个！幅度有点浅哦';
+  void _tickRepFsm(Map<PoseLandmarkType, Point3D> lm) {
+    final fsm = _repFsm;
+    if (fsm == null) return;
+    final tick = fsm.tick(_toFsmLandmarks(lm), sensitivity: _sensitivity);
+    _motionState = tick.phase.name;
+    _updateMotionLevelByAngle(tick.motionLevel, 1.0);
+    if (tick.minKneeAngle != null) {
+      lastMinKneeAngle = tick.minKneeAngle;
+      final cur = sessionMinKneeAngle;
+      sessionMinKneeAngle =
+          cur == null ? tick.minKneeAngle : math.min(cur, tick.minKneeAngle!);
     }
-    onFeedback?.call(msg);
-  }
-
-  // ============================================================
-  // 俯卧撑：通过 shoulder-elbow-wrist 角度 + 身体直线度双重验证
-  // 撑起 ≈ 170-180°；标准俯卧撑 ≈ 80-100°（胸部接近地面）
-  // ============================================================
-  double _pushupShoulderMinY = 999;
-  double _pushupShoulderMaxY = 0;
-
-  void _analyzePushup(Map<PoseLandmarkType, Point3D> lm) {
-    final shoulder = lm[PoseLandmarkType.leftShoulder];
-    final elbow = lm[PoseLandmarkType.leftElbow];
-    final wrist = lm[PoseLandmarkType.leftWrist];
-    final shoulderR = lm[PoseLandmarkType.rightShoulder];
-    final elbowR = lm[PoseLandmarkType.rightElbow];
-    final wristR = lm[PoseLandmarkType.rightWrist];
-    final lHip = lm[PoseLandmarkType.leftHip];
-    final lAnkle = lm[PoseLandmarkType.leftAnkle];
-
-    final leftOk = shoulder != null && elbow != null && wrist != null;
-    final rightOk = shoulderR != null && elbowR != null && wristR != null;
-    if (!leftOk && !rightOk) {
-      onFeedback?.call('请确保上半身入镜（侧身拍摄效果最佳）');
-      return;
+    if (tick.cue != null && tick.cue!.isNotEmpty && !tick.counted) {
+      onFeedback?.call(tick.cue!);
     }
-
-    final angleL = leftOk ? _angle(shoulder, elbow, wrist) : 180.0;
-    final angleR = rightOk ? _angle(shoulderR, elbowR, wristR) : 180.0;
-    final angle = (angleL + angleR) / 2;
-
-    // 肩膀 Y 坐标变化 = 身体上下移动幅度（图像Y向下）
-    final shoulderY = ((shoulder?.y ?? 0) + (shoulderR?.y ?? 0)) / 2;
-    if (angle > 160) {
-      _pushupShoulderMaxY = shoulderY; // 撑起位置（较低Y=较高处）
+    if (!tick.counted) return;
+    _repCount++;
+    _lastRepTime = DateTime.now();
+    onRepDetected?.call(_repCount, tick.exerciseName);
+    _handleRepSuccess();
+    if (tick.qualityAngle != null) {
+      _calcQualityScore(
+        fsm.exerciseType,
+        tick.qualityAngle!,
+        tick.qualityDepth ?? 0.7,
+        tick.qualityBodyLine ?? 0.8,
+      );
     }
-
-    // 身体直线度：肩-髋-踝的角度，判断腰是否塌了
-    double bodyLineScore = 1.0;
-    if (shoulder != null && lHip != null && lAnkle != null) {
-      final bodyAngle = _angle(shoulder, lHip, lAnkle);
-      bodyLineScore = (180 - bodyAngle) / 30; // 越接近180°越好
-      bodyLineScore = bodyLineScore.clamp(0.0, 1.0);
-    }
-
-    // 动态阈值：灵敏度越高越容易计数
-    // 默认灵敏度0.7 → 下蹲阈值约100°
-    final downThreshold = 90.0 + (1.0 - _sensitivity) * 40.0;
-    final upThreshold = downThreshold + 35.0;
-
-    _updateMotionLevelByAngle(180.0 - angle, 100.0);
-
-    String newState = _motionState;
-    if (angle < downThreshold) {
-      newState = 'down';
-      if (shoulderY < _pushupShoulderMinY) {
-        _pushupShoulderMinY = shoulderY;
-      }
-    } else if (angle > upThreshold) {
-      newState = 'up';
-    }
-
-    if (_motionState == 'down' && newState == 'up' && _debounceOk()) {
-      // 验证：肩膀有明显上下移动（> 肩部高度的10%）
-      final dropRatio = _pushupShoulderMaxY > 0
-          ? (_pushupShoulderMaxY - _pushupShoulderMinY) / _pushupShoulderMaxY
-          : 0.0;
-
-      if (dropRatio > 0.08 || angle < downThreshold + 10) {
-        _repCount++;
-        _lastRepTime = DateTime.now();
-        onRepDetected?.call(_repCount, '俯卧撑');
-        _emitPushupFeedback(angle, bodyLineScore);
-      } else {
-        onFeedback?.call('幅度不够，再往下压一点~');
-      }
-      _pushupShoulderMinY = 999;
-    }
-    _motionState = newState;
-  }
-
-  void _emitPushupFeedback(double angle, double bodyLine) {
-    String msg;
-    if (angle < 80 && bodyLine > 0.7) {
-      msg = '🔥 $_repCount 个！标准动作，胸肌炸裂！';
-      onHighlightMoment?.call();
-    } else if (angle < 100) {
-      msg = '💪 $_repCount 个！节奏不错，继续！';
-    } else if (angle < 120) {
-      msg = '👍 $_repCount 个！再下压一点效果更好';
-    } else {
-      msg = '😅 $_repCount 个！幅度有点浅哦';
-    }
-    if (bodyLine < 0.4) {
-      msg += '（注意挺直腰）';
-    }
-    onFeedback?.call(msg);
+    if (tick.highlight) onHighlightMoment?.call();
+    final fb = tick.feedback;
+    onFeedback?.call(
+      fb == null || fb.isEmpty ? '$_repCount 个' : '$_repCount 个！$fb',
+    );
   }
 
   // ============================================================
@@ -1406,7 +1282,14 @@ class PoseDetectionService {
       _repCount++;
       _lastRepTime = DateTime.now();
       onRepDetected?.call(_repCount, '开合跳');
+      _handleRepSuccess();
       _emitJackFeedback(jumpHeight, feetSpread);
+      _calcQualityScore(
+        'jumping_jack',
+        (jumpHeight / 0.08).clamp(0.0, 1.0),
+        (feetSpread / 1.5).clamp(0.0, 1.0),
+        0.85,
+      );
       _jackNoseMinY = 999;
     }
     _motionState = newState;
@@ -1441,7 +1324,7 @@ class PoseDetectionService {
     final rShoulder = lm[PoseLandmarkType.rightShoulder];
 
     if (lHip == null || rHip == null || lKnee == null || rKnee == null) {
-      onFeedback?.call('请确保下半身入镜（侧身拍摄效果最佳）');
+      onFeedback?.call('请正对手机，下半身入镜');
       return;
     }
 
@@ -1476,11 +1359,6 @@ class PoseDetectionService {
 
     // up -> down 过渡计一次
     if (_highKneeState == 'up' && newState == 'down' && _debounceOk()) {
-      if (!_consumeStamina()) {
-        onFeedback?.call('体力不足，休息一下吧~');
-        _highKneeState = newState;
-        return;
-      }
       _repCount++;
       _lastRepTime = DateTime.now();
       onRepDetected?.call(_repCount, '高抬腿');
@@ -1525,7 +1403,7 @@ class PoseDetectionService {
     final rAnkle = lm[PoseLandmarkType.rightAnkle];
 
     if (lShoulder == null || rShoulder == null || lHip == null || rHip == null) {
-      onFeedback?.call('请确保全身入镜（侧身拍摄效果最佳）');
+      onFeedback?.call('请正对手机，全身入镜');
       _plankStartTime = null;
       return;
     }
@@ -1584,7 +1462,7 @@ class PoseDetectionService {
     } else {
       _plankStartTime = null;
       if (shoulderHipDiff >= shoulderHipThreshold) {
-        onFeedback?.call('保持身体平直，挺直腰背');
+        onFeedback?.call('腰往下塌了，收紧核心把髋抬平');
       }
     }
 
@@ -1629,7 +1507,7 @@ class PoseDetectionService {
     final anklesOk = lAnkle != null && rAnkle != null;
 
     if (!shouldersOk || !hipsOk || !kneesOk) {
-      onFeedback?.call('请确保全身入镜（侧身拍摄效果最佳）');
+      onFeedback?.call('请正对手机，全身入镜');
       return;
     }
 
@@ -1687,11 +1565,6 @@ class PoseDetectionService {
         if (avgKneeAngle > standThreshold) {
           // 完成跳跃，计数
           if (_debounceOk()) {
-            if (!_consumeStamina()) {
-              onFeedback?.call('体力不足，休息一下吧~');
-              _burpeePhase = 'stand';
-              return;
-            }
             _repCount++;
             _lastRepTime = DateTime.now();
             onRepDetected?.call(_repCount, '波比跳');
@@ -1721,96 +1594,10 @@ class PoseDetectionService {
     onFeedback?.call(msg);
   }
 
-  // ============================================================
-  // 弓步蹲：检测左右膝角度差异
-  // lunge 条件：angleDiff > 30 AND minKneeAngle < 120
-  // recovery 条件：maxKneeAngle > 160 AND angleDiff < 20
-  // 使用 hips, knees, ankles
-  // ============================================================
-  String _lungeState = 'recovered';
-
-  void _analyzeLunge(Map<PoseLandmarkType, Point3D> lm) {
-    final lHip = lm[PoseLandmarkType.leftHip];
-    final rHip = lm[PoseLandmarkType.rightHip];
-    final lKnee = lm[PoseLandmarkType.leftKnee];
-    final rKnee = lm[PoseLandmarkType.rightKnee];
-    final lAnkle = lm[PoseLandmarkType.leftAnkle];
-    final rAnkle = lm[PoseLandmarkType.rightAnkle];
-
-    final leftOk = lHip != null && lKnee != null && lAnkle != null;
-    final rightOk = rHip != null && rKnee != null && rAnkle != null;
-    if (!leftOk || !rightOk) {
-      onFeedback?.call('请确保全身入镜（侧身拍摄效果最佳）');
-      return;
-    }
-
-    // 左右膝角度
-    final angleL = _angle(lHip!, lKnee!, lAnkle!);
-    final angleR = _angle(rHip!, rKnee!, rAnkle!);
-    final angleDiff = (angleL - angleR).abs();
-    final minKneeAngle = math.min(angleL, angleR);
-    final maxKneeAngle = math.max(angleL, angleR);
-
-    // 动态阈值：灵敏度越高越容易检测到弓步
-    final diffThreshold = 30.0 * (1.0 - _sensitivity * 0.3);
-    final minAngleThreshold = 120.0 * (1.0 + (1.0 - _sensitivity) * 0.2);
-    final recoveryMaxAngle = 160.0 * (1.0 - (1.0 - _sensitivity) * 0.1);
-    final recoveryDiffThreshold = 20.0 * (1.0 + (1.0 - _sensitivity) * 0.3);
-
-    // 运动强度
-    final depth = ((180.0 - minKneeAngle) / 90.0).clamp(0.0, 1.0);
-    _updateMotionLevelByAngle(depth, 1.0);
-
-    // 检测弓步
-    final isLunging = angleDiff > diffThreshold && minKneeAngle < minAngleThreshold;
-    final isRecovered = maxKneeAngle > recoveryMaxAngle && angleDiff < recoveryDiffThreshold;
-
-    String newState = _lungeState;
-    if (isLunging) {
-      newState = 'lunging';
-    } else if (isRecovered) {
-      newState = 'recovered';
-    }
-
-    // lunging -> recovered 计一次
-    if (_lungeState == 'lunging' && newState == 'recovered' && _debounceOk()) {
-      if (!_consumeStamina()) {
-        onFeedback?.call('体力不足，休息一下吧~');
-        _lungeState = newState;
-        return;
-      }
-      _repCount++;
-      _lastRepTime = DateTime.now();
-      onRepDetected?.call(_repCount, '弓步蹲');
-      _handleRepSuccess();
-      _emitLungeFeedback(angleDiff, minKneeAngle, maxKneeAngle);
-      _calcQualityScore('lunge', (minKneeAngle < 90 ? 1.0 : (120 - minKneeAngle) / 30).clamp(0.0, 1.0),
-          (angleDiff / 40).clamp(0.0, 1.0), 0.8);
-    }
-
-    _lungeState = newState;
-  }
-
-  void _emitLungeFeedback(double angleDiff, double minAngle, double maxAngle) {
-    String msg;
-    if (minAngle < 90 && angleDiff > 35) {
-      msg = '🔥 $_repCount 个！标准弓步蹲，腿部力量炸裂！';
-      onHighlightMoment?.call();
-    } else if (minAngle < 110 && angleDiff > 25) {
-      msg = '💪 $_repCount 个！不错，继续保持~';
-    } else if (minAngle < 120) {
-      msg = '👍 $_repCount 个！可以再蹲深一点';
-    } else {
-      msg = '😅 $_repCount 个！幅度有点浅哦';
-    }
-    onFeedback?.call(msg);
-  }
+  // 弓步蹲由 ExerciseRepFsm 处理（见 _tickRepFsm）
 
   // ============================================================
-  // 登山者：前提是平板支撑形态，检测膝盖 X 轴交替前进
-  // leftKneeX > hipMidX + 0.03 -> 左膝在前
-  // rightKneeX < hipMidX - 0.03 -> 右膝在前
-  // 状态 left/right，left -> right 过渡计数一次
+  // 登山者：平板形态下用膝到肩距离判断收腿（不依赖画面 X 左右手性）
   // ============================================================
   String _mountainClimberState = 'left';
 
@@ -1826,7 +1613,7 @@ class PoseDetectionService {
 
     if (lShoulder == null || rShoulder == null || lHip == null || rHip == null ||
         lKnee == null || rKnee == null) {
-      onFeedback?.call('请确保全身入镜（侧身拍摄效果最佳）');
+      onFeedback?.call('请正对手机，全身入镜');
       return;
     }
 
@@ -1847,23 +1634,29 @@ class PoseDetectionService {
     final inPlank = shoulderHipDiff < shThreshold && hipAnkleDiff > haThreshold;
 
     if (!inPlank) {
-      onFeedback?.call('请保持平板支撑姿势');
+      if (shoulderHipDiff >= shThreshold) {
+        onFeedback?.call('腰往下塌了，收紧核心把髋抬平');
+      } else {
+        onFeedback?.call('请保持平板支撑姿势');
+      }
       _updateMotionLevelByAngle(0.1, 1.0);
       return;
     }
 
-    // 计算髋部中心 X 坐标
-    final hipMidX = (lHip.x + rHip.x) / 2;
+    // 膝到肩距离判断收腿，不依赖画面 X 左右手性（前置/镜像也可计次）
+    final midShoulder = Point3D(
+      (lShoulder.x + rShoulder.x) / 2,
+      (lShoulder.y + rShoulder.y) / 2,
+      0,
+    );
+    final leftTuck = _dist(lKnee, midShoulder);
+    final rightTuck = _dist(rKnee, midShoulder);
+    final tuckDelta = (leftTuck - rightTuck).abs();
+    final threshold = 0.04 * (1.0 + (1.0 - _sensitivity) * 0.5);
+    final leftForward = leftTuck + threshold < rightTuck;
+    final rightForward = rightTuck + threshold < leftTuck;
 
-    // 自适应膝盖前移阈值
-    final kneeForwardThreshold = 0.03 * (1.0 + (1.0 - _sensitivity) * 0.5);
-
-    // 检测哪条腿在前面
-    final leftForward = lKnee.x > hipMidX + kneeForwardThreshold;
-    final rightForward = rKnee.x < hipMidX - kneeForwardThreshold;
-
-    // 运动强度
-    final motion = (leftForward || rightForward) ? 0.8 : 0.3;
+    final motion = tuckDelta > threshold ? 0.8 : 0.3;
     _updateMotionLevelByAngle(motion, 1.0);
 
     String newState = _mountainClimberState;
@@ -1873,13 +1666,7 @@ class PoseDetectionService {
       newState = 'right';
     }
 
-    // left -> right 过渡计一次
     if (_mountainClimberState == 'left' && newState == 'right' && _debounceOk()) {
-      if (!_consumeStamina()) {
-        onFeedback?.call('体力不足，休息一下吧~');
-        _mountainClimberState = newState;
-        return;
-      }
       _repCount++;
       _lastRepTime = DateTime.now();
       onRepDetected?.call(_repCount, '登山者');
@@ -1943,6 +1730,12 @@ class PoseDetectionService {
     return math.acos(cosVal) * 180 / math.pi;
   }
 
+  double _dist(Point3D a, Point3D b) {
+    final dx = a.x - b.x;
+    final dy = a.y - b.y;
+    return math.sqrt(dx * dx + dy * dy);
+  }
+
   bool _debounceOk() {
     return DateTime.now().difference(_lastRepTime).inMilliseconds > _debounceMs;
   }
@@ -1995,17 +1788,6 @@ class PoseDetectionService {
   void _recoverStamina() {
     _stamina = (_stamina + _staminaRecoverPerFrame).clamp(0.0, 100.0);
     onStaminaUpdate?.call(_stamina);
-  }
-
-  /// 消耗体力，返回 true 表示体力充足，false 表示体力不足
-  bool _consumeStamina() {
-    if (_stamina < _staminaCostPerRep) {
-      onStaminaUpdate?.call(_stamina);
-      return false;
-    }
-    _stamina -= _staminaCostPerRep;
-    onStaminaUpdate?.call(_stamina);
-    return true;
   }
 
   // ============================================================
@@ -2163,10 +1945,6 @@ class PoseDetectionService {
     _repCount = 0;
     _motionState = _isJumpingExercise(_currentExercise) ? 'closed' : 'up';
     _lastRepTime = DateTime.now();
-    _squatHipMaxY = 0;
-    _squatHipMinY = 999;
-    _pushupShoulderMinY = 999;
-    _pushupShoulderMaxY = 0;
     _jackNoseMinY = 999;
     _jackNoseMaxY = 0;
     _lastJackRhythm = 0;
@@ -2176,13 +1954,15 @@ class PoseDetectionService {
     _plankAccumulatedSeconds = 0;
     _plankStartTime = null;
     _burpeePhase = 'stand';
-    _lungeState = 'recovered';
     _mountainClimberState = 'left';
 
     // 重置连击
     _comboCount = 0;
     _comboMultiplier = 1.0;
     _lastComboTime = DateTime.now();
+    _repFsm?.reset();
+    lastMinKneeAngle = null;
+    sessionMinKneeAngle = null;
   }
 
   /// 续训：恢复已累计次数/秒数（平板按秒）。
