@@ -77,6 +77,15 @@ class PoseCoachVoice {
     }
   }
 
+  /// 检测器已暴露的深度/幅度提示（深蹲、弓步）。
+  void announceDepthCue({String? exerciseType}) {
+    if (exerciseType == 'lunge') {
+      _speakTip('弓步再低一点，前膝大约九十度');
+    } else {
+      _speakTip('蹲再低一点，大腿尽量平行地面');
+    }
+  }
+
   /// 检测器实时反馈 → 语音（去表情符号，防抖）。
   void announceLiveCue(String feedback) {
     final cleaned = _stripDecorations(feedback);

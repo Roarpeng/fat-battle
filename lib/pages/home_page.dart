@@ -227,7 +227,10 @@ class _HomePageState extends ConsumerState<HomePage> {
     final dShield = next.monster.shield - prev.monster.shield;
     if (dHp > 0) {
       HapticFeedback.heavyImpact();
-      _showFloat('-$dHp', AppColors.ember);
+      final tag = prev.pendingAttack?.isCounter == true
+          ? ' 克制'
+          : (prev.pendingAttack?.isResisted == true ? ' 抵抗' : '');
+      _showFloat('-$dHp$tag', AppColors.ember);
       setState(() => _hitFlash = true);
       Future.delayed(const Duration(milliseconds: 160), () {
         if (mounted) setState(() => _hitFlash = false);
@@ -395,6 +398,17 @@ class _HomePageState extends ConsumerState<HomePage> {
         builder: (_) => const ExercisePage(showMonsterHeader: true),
       ),
     );
+    if (!mounted) return;
+    await _consumePendingAttack();
+  }
+
+  /// 教练课回城：舞台可见后再扣血，受击动效走 [_reactToCombat]。
+  Future<void> _consumePendingAttack() async {
+    final pending = ref.read(gameStateProvider).pendingAttack;
+    if (pending == null || pending.isOvereat || pending.damage <= 0) return;
+    await Future<void>.delayed(const Duration(milliseconds: 160));
+    if (!mounted) return;
+    await ref.read(gameStateProvider.notifier).attackMonster(pending.damage);
   }
 
   void _showHubBottomSheet(BuildContext context) {

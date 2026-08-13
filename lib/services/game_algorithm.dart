@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import '../models/game_models.dart';
 import '../constants/app_constants.dart';
 import '../core/barrel.dart' as core;
+import 'coach_lesson.dart';
 
 /// 游戏核心算法
 ///
@@ -230,6 +231,7 @@ class GameAlgorithm {
       level: level,
       isBoss: config.isBoss,
       healBonus: config.healBonus,
+      affinity: affinityForMonsterIndex(index),
     );
   }
   

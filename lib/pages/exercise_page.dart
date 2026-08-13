@@ -20,6 +20,11 @@ import '../services/pose_detection_service.dart';
 import '../services/tflite_motion_service.dart';
 import '../services/exercise_game_logic.dart';
 import '../services/exercise_prescription.dart';
+import '../services/coach_cues.dart';
+import '../services/coach_feel.dart';
+import '../services/coach_injury.dart';
+import '../services/coach_lesson.dart';
+import '../services/coach_settlement.dart';
 import '../services/pose_coach_diary.dart';
 import '../services/pose_coach_voice.dart';
 import '../services/training_session_store.dart';
@@ -72,6 +77,17 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
 
   /// 精彩瞬间截屏节流（避免连击时疯狂截图）
   DateTime _lastHighlightCapture = DateTime.fromMillisecondsSinceEpoch(0);
+
+  /// 本课累计（连训跨式）供结算
+  int _sessionCal = 0;
+  int _sessionReps = 0;
+  int _qualitySum = 0;
+  int _qualityCount = 0;
+  int _peakCombo = 0;
+  String _lastGrade = 'D';
+  String? _sessionExerciseType;
+  bool _returnToBattle = false;
+  final ValueNotifier<String> _qualityGradeN = ValueNotifier('');
 
   final ValueNotifier<int> _restCountdownN = ValueNotifier(0);
   final ValueNotifier<bool> _coachExternalCompleteN = ValueNotifier(false);
@@ -176,6 +192,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
     // 游戏逻辑回调
     _gameLogic.onComboChanged = (combo, multiplier) {
       _comboN.value = combo;
+      if (combo > _peakCombo) _peakCombo = combo;
       if (mounted) setState(() {});
     };
     _gameLogic.onStaminaChanged = (stamina, depleted) {
@@ -197,6 +214,10 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
       if (mounted) setState(() {});
     };
     _gameLogic.onQualityScored = (quality, grade) {
+      _qualitySum += quality;
+      _qualityCount += 1;
+      _lastGrade = grade;
+      _qualityGradeN.value = grade;
       if (mounted) {
         setState(() {
           _cameraFeedback = '⭐ $grade (${quality}分) $_cameraFeedback';
@@ -210,6 +231,9 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
     _refreshResumableSession();
     // ignore: discarded_futures
     _coachVoice.ensureReady();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _applyTodayLesson(silent: true);
+    });
   }
 
   void _syncCoachVoiceEnabled() {
@@ -288,7 +312,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
         _feedbackN.value = feedback;
       });
       // 远场：屏幕纠错必须同时播出口令
-      _coachVoice.announceLiveCue(feedback);
+      _speakDetectorCue(feedback);
     };
     detector.onMotionUpdate = (level) {
       if (mounted && _isActiveCamera(detector)) {
@@ -391,6 +415,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
   void _onHandsFreePose(Map<String, Map<String, double>>? landmarks) {
     if (!_cameraDetecting || _planTargetHit) return;
     if (_coachPhaseN.value == 'active') {
+      _watchActiveFraming(landmarks);
       // active 阶段降频记一条心跳，确认仍有关键点
       if (landmarks != null && landmarks.isNotEmpty) {
         PoseCoachDiary.instance.logPoseFrame(
@@ -627,6 +652,78 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
     _coachVoice.announceFormTip(tip);
   }
 
+  void _speakDetectorCue(String feedback) {
+    final type = _selectedExercise != null
+        ? Exercises.all[_selectedExercise!].type
+        : '';
+    final cue = resolveCoachCue(
+      liveFeedback: feedback,
+      exerciseType: type,
+    );
+    if (cue.kind == CoachCueKind.squatDepth) {
+      if (_lastFormTipForVoice == 'squat_depth') {
+        _coachVoice.announceLiveCue(feedback);
+        return;
+      }
+      _lastFormTipForVoice = 'squat_depth';
+      _coachVoice.announceDepthCue(exerciseType: type);
+      return;
+    }
+    if (cue.kind == CoachCueKind.outOfFrame) {
+      _announceFormTipOnce('out_of_frame');
+      return;
+    }
+    if (cue.kind == CoachCueKind.tooClose) {
+      _announceFormTipOnce('too_close');
+      return;
+    }
+    if (cue.kind == CoachCueKind.tooFar) {
+      _announceFormTipOnce('too_far');
+      return;
+    }
+    _coachVoice.announceLiveCue(feedback);
+  }
+
+  /// 开练后继续盯出画 / 过近，口令复用门控同一套。
+  void _watchActiveFraming(Map<String, Map<String, double>>? landmarks) {
+    if (landmarks == null || landmarks.isEmpty) {
+      _announceFormTipOnce('out_of_frame');
+      return;
+    }
+    if (_isPersonTooClose(landmarks)) {
+      _announceFormTipOnce('too_close');
+      return;
+    }
+    final isPortrait =
+        MediaQuery.maybeOf(context)?.orientation == Orientation.portrait;
+    final exerciseType = _selectedExercise != null
+        ? Exercises.all[_selectedExercise!].type
+        : 'squat';
+    final score = PoseCoachGuideMath.alignmentScore(
+      exerciseType: exerciseType,
+      landmarks: landmarks,
+      isPortrait: isPortrait ?? true,
+    );
+    if (score < 0.22) {
+      _announceFormTipOnce('out_of_frame');
+    } else if (_lastFormTipForVoice == 'out_of_frame' ||
+        _lastFormTipForVoice == 'too_close') {
+      _lastFormTipForVoice = null;
+    }
+  }
+
+  void _resetSessionStats({bool keepAccumulated = false}) {
+    if (keepAccumulated) return;
+    _sessionCal = 0;
+    _sessionReps = 0;
+    _qualitySum = 0;
+    _qualityCount = 0;
+    _peakCombo = 0;
+    _lastGrade = 'D';
+    _sessionExerciseType = null;
+    _qualityGradeN.value = '';
+  }
+
   int _currentBaseTarget() {
     if (_planSeqIndex >= 0) {
       return _recommendedPlan?.itemAt(_planSeqIndex)?.target ?? 0;
@@ -775,6 +872,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
     _coachPhaseN.dispose();
     _coachPhaseHintN.dispose();
     _coachCountdownN.dispose();
+    _qualityGradeN.dispose();
     _cameraDetector.dispose();
     _tfliteDetector.dispose();
     _restoreAppOrientation();
@@ -969,10 +1067,10 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
               icon: Icons.fitness_center_outlined,
               title: _exerciseMode == 'camera' ? '摄像头可识别动作' : '选择运动',
               trailing: TextButton.icon(
-                onPressed: () => _applyBodyPrescription(gameState.user),
+                onPressed: () => _applyTodayLesson(),
                 icon: const Icon(Icons.auto_awesome, size: 16),
                 label: Text(
-                  '生成组合',
+                  '今日克制课',
                   style: AppFonts.body(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
@@ -995,7 +1093,12 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
                     children: WorkoutFocus.values.map((f) {
                       final selected = _workoutFocus == f;
                       return ForgePressable(
-                        onTap: () => setState(() => _workoutFocus = f),
+                        onTap: () {
+                          setState(() => _workoutFocus = f);
+                          if (_planSeqIndex < 0) {
+                            _applyTodayLesson();
+                          }
+                        },
                         borderRadius: BorderRadius.circular(AppRadii.pill),
                         child: Container(
                           padding: const EdgeInsets.symmetric(
@@ -1032,6 +1135,34 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
                   Text(
                     _workoutFocus.hint,
                     style: _mutedStyle.copyWith(fontSize: 11),
+                  ),
+                  const SizedBox(height: AppSpace.sm),
+                  Text('伤病护身（可选）', style: _mutedStyle.copyWith(fontSize: 12)),
+                  const SizedBox(height: AppSpace.xs),
+                  Wrap(
+                    spacing: AppSpace.sm,
+                    children: [
+                      _injuryChip(
+                        label: '膝盖不适',
+                        selected: gameState.user.kneeIssue,
+                        onTap: () {
+                          gameNotifier.updateInjuryFlags(
+                            kneeIssue: !gameState.user.kneeIssue,
+                          );
+                          if (_planSeqIndex < 0) _applyTodayLesson();
+                        },
+                      ),
+                      _injuryChip(
+                        label: '腰腹不适',
+                        selected: gameState.user.waistIssue,
+                        onTap: () {
+                          gameNotifier.updateInjuryFlags(
+                            waistIssue: !gameState.user.waistIssue,
+                          );
+                          if (_planSeqIndex < 0) _applyTodayLesson();
+                        },
+                      ),
+                    ],
                   ),
                   if (_exerciseMode == 'camera') ...[
                     const SizedBox(height: AppSpace.sm),
@@ -2341,6 +2472,10 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
     });
 
     _gameLogic.reset();
+    if (_planSeqIndex < 0) {
+      _resetSessionStats();
+    }
+    _qualityGradeN.value = _lastGrade == 'D' && _qualityCount == 0 ? '' : _lastGrade;
     // 远场语音：同步开关 + 耳机/外放路由
     _syncCoachVoiceEnabled();
     // ignore: discarded_futures
@@ -2409,6 +2544,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
           prepareProgress: _prepareProgressN,
           onStop: () => _stopCameraDetection(abortSequence: _abortPlanOnStop),
           onPauseSave: _pauseAndSaveSession,
+          qualityGrade: _qualityGradeN,
           onFlipCamera: () async {
             final d = _activeCameraDetector;
             if (d is PoseDetectionService) {
@@ -2453,6 +2589,9 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
     if (_pendingPlanAdvance) {
       _pendingPlanAdvance = false;
       await _advancePlanSequence();
+    } else if (_returnToBattle) {
+      _returnToBattle = false;
+      await _promptFeelThenPop();
     }
     if (mounted) setState(() {});
   }
@@ -2494,6 +2633,8 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
     _planSeqIndex = 0;
     _planTargetHit = false;
     _pendingPlanAdvance = false;
+    _returnToBattle = false;
+    _resetSessionStats();
     setState(() => _selectedExercise = plan.items.first.exerciseIndex);
     final first = plan.items.first;
     _showToast(
@@ -2582,26 +2723,29 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
     }
   }
 
-  void _applyBodyPrescription(User user) {
+  void _applyTodayLesson({bool silent = false}) {
     final gs = ref.read(gameStateProvider);
-    // 今日待消耗 = 净摄入超出目标的部分（已含运动抵消）；
-    // 为 0 时处方会按渐进等级给基础燃脂目标
     final pendingBurn = math.max(0, gs.todayCalIn - gs.targetCal);
-    final plan = ExercisePrescription.recommendCombo(
-      user,
+    final plan = CoachLesson.recommendToday(
+      user: gs.user,
       focus: _workoutFocus,
+      monsterAffinity: gs.monster.resolvedAffinity,
+      injury: InjuryFlags(
+        kneeIssue: gs.user.kneeIssue,
+        waistIssue: gs.user.waistIssue,
+      ),
+      feelNudge: gs.coachFeelNudge,
       targetBurnCal: pendingBurn,
       streak: gs.streak,
     );
     if (plan.exerciseIndexes.isEmpty) {
-      _showToast('暂无可用的摄像头可识别动作');
+      if (!silent) _showToast('暂无可用的摄像头可识别动作');
       return;
     }
     setState(() {
       _recommendedPlan = plan;
       _selectedExercise = plan.exerciseIndexes.first;
       _exerciseMode = 'camera';
-      // 组合默认时长取估算分钟（夹到可选档）
       final opts = const [5, 10, 15, 20, 30];
       _selectedDuration = opts.reduce(
         (a, b) =>
@@ -2611,8 +2755,10 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
                 : b,
       );
     });
-    final names = plan.exercises.map((e) => e.name).join(' → ');
-    _showToast('${plan.title}：$names');
+    if (!silent) {
+      final names = plan.exercises.map((e) => e.name).join(' → ');
+      _showToast('${plan.title}：$names');
+    }
   }
 
   /// 摄像头模式只展示可识别动作；手动/IMU 展示全部（跑步等仅此可用）。
@@ -2623,8 +2769,42 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
     }
     return all;
   }
+
+  Widget _injuryChip({
+    required String label,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return ForgePressable(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(AppRadii.pill),
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpace.md,
+          vertical: AppSpace.xs + 3,
+        ),
+        decoration: BoxDecoration(
+          color: selected
+              ? AppColors.ember.withValues(alpha: 0.14)
+              : AppColors.bg2,
+          borderRadius: BorderRadius.circular(AppRadii.pill),
+          border: Border.all(
+            color: selected ? AppColors.ember : AppColors.border,
+          ),
+        ),
+        child: Text(
+          label,
+          style: AppFonts.body(
+            fontSize: 12,
+            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+            color: selected ? AppColors.ember : AppColors.text2,
+          ),
+        ),
+      ),
+    );
+  }
   
-  /// 完成摄像头检测并保存记录
+  /// 完成摄像头检测并保存记录；连训跨式累计，结束时挂 pendingAttack。
   Future<void> _finishCameraDetection(GameStateNotifier gameNotifier) async {
     if (_selectedExercise == null || _cameraStartTime == null) return;
     
@@ -2656,35 +2836,54 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
       }
     }
     final elapsedMinutes = elapsed.inSeconds / 60.0;
-    final calPerMin = exercise.calPerMin;
-    final calPerRep = calPerMin / 30.0;
-    final cal = ((calPerMin * elapsedMinutes * 0.3) + (calPerRep * repCount)).round();
-    final modeLabel = _cameraEngine == 'tflite' ? 'camera_tflite' : 'camera';
-    final damageResult = GameAlgorithm.exerciseImpactOnMonster(
-      cal,
-      modeLabel,
-      gameNotifier.state.monster.hp,
-      gameNotifier.state.monster.maxHp,
-      gameNotifier.state.monster.shield,
+    final baseCal = cameraBaseCalories(
+      calPerMin: exercise.calPerMin,
+      elapsedMinutes: elapsedMinutes,
+      reps: repCount,
     );
-    
+    _sessionCal += baseCal;
+    _sessionReps += repCount;
+    _sessionExerciseType ??= exercise.type;
+    if (_gameLogic.comboCount > _peakCombo) {
+      _peakCombo = _gameLogic.comboCount;
+    }
+    if (_gameLogic.lastRepGrade.isNotEmpty && _qualityCount == 0) {
+      _lastGrade = _gameLogic.lastRepGrade;
+    }
+
+    final gs = ref.read(gameStateProvider);
+    final avgGrade = _qualityCount > 0
+        ? _gradeFromAverage((_qualitySum / _qualityCount).round())
+        : _lastGrade;
+    final settlement = settleCoachSession(
+      CoachSettlementInput(
+        baseCalories: _sessionCal,
+        reps: _sessionReps,
+        grade: avgGrade,
+        qualityScore:
+            _qualityCount > 0 ? (_qualitySum / _qualityCount).round() : null,
+        peakCombo: _peakCombo,
+        stamina: _gameLogic.stamina,
+        exerciseType: _sessionExerciseType ?? exercise.type,
+        todayCalIn: gs.todayCalIn,
+        difficulty: gs.difficulty,
+        monsterAffinity: gs.monster.resolvedAffinity,
+      ),
+    );
+
+    final modeLabel = _cameraEngine == 'tflite' ? 'camera_tflite' : 'camera';
     final record = ExerciseRecord(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       date: DateTime.now().toDateString(),
       name: exercise.name,
       emoji: exercise.emoji,
       duration: durationMinutes,
-      cal: cal,
-      damage: damageResult.damage,
+      cal: baseCal,
+      damage: 0,
       mode: modeLabel,
     );
-    
-    gameNotifier.addExercise(record);
-    _showToast(
-      '${exercise.name}完成！'
-      '${durationMinutes}分钟，$repCount次，消耗${cal}千卡，'
-      '造成${damageResult.damage}点伤害！',
-    );
+
+    await gameNotifier.addExercise(record, applyCombat: false);
 
     setState(() {
       _cameraStartTime = null;
@@ -2692,7 +2891,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
       _cameraFeedback = '准备开始';
     });
 
-    // 连续训练：标记待推进，等教练页关闭后再休息/开练
+    var sessionEnded = true;
     if (_planSeqIndex >= 0 && _recommendedPlan != null) {
       final plan = _recommendedPlan!;
       final next = _planSeqIndex + 1;
@@ -2700,6 +2899,10 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
         _planSeqIndex = next;
         setState(() => _selectedExercise = plan.items[next].exerciseIndex);
         _pendingPlanAdvance = true;
+        sessionEnded = false;
+        _showToast(
+          '${exercise.name}完成 · $repCount${_getCountUnit(exercise.type)}，继续下一式',
+        );
       } else {
         _planSeqIndex = -1;
         _coachVoice.announcePlanComplete(planTitle: plan.title);
@@ -2707,8 +2910,92 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
         _sessionStore.clearSession();
         _resumableSession = null;
         _sessionBonusSeconds = 0;
-        _showToast('🎉 恭喜完成今日全部训练！');
+        _showToast('🎉 ${plan.title}全部完成！待攻 ${settlement.damage}');
       }
+    } else {
+      _showToast(
+        '${exercise.name}完成！'
+        '$repCount${_getCountUnit(exercise.type)}，'
+        '${settlement.grade}级 · 待攻 ${settlement.damage}',
+      );
+    }
+
+    if (sessionEnded) {
+      await gameNotifier.setPendingAttack(settlement.pendingAttack);
+      _returnToBattle = true;
+      _resetSessionStats();
+    }
+  }
+
+  String _gradeFromAverage(int score) {
+    if (score >= 90) return 'S';
+    if (score >= 80) return 'A';
+    if (score >= 70) return 'B';
+    if (score >= 60) return 'C';
+    return 'D';
+  }
+
+  Future<void> _promptFeelThenPop() async {
+    if (!mounted) return;
+    CoachFeel? picked;
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppColors.card,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+      ),
+      builder: (ctx) {
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                '课后手感',
+                style: AppFonts.display(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.text,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                '这炉火候如何？会微调明天的克制课。',
+                style: AppFonts.body(fontSize: 13, color: AppColors.text2),
+              ),
+              const SizedBox(height: 16),
+              ...CoachFeel.values.map((f) {
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: OutlinedButton(
+                    onPressed: () {
+                      picked = f;
+                      Navigator.of(ctx).pop();
+                    },
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.copper,
+                      side: const BorderSide(color: AppColors.copper),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                    child: Text(
+                      '${f.label} · ${f.hint}',
+                      style: AppFonts.body(fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                );
+              }),
+            ],
+          ),
+        );
+      },
+    );
+    if (!mounted) return;
+    await ref
+        .read(gameStateProvider.notifier)
+        .recordCoachFeel(picked ?? CoachFeel.justRight);
+    if (mounted && Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
     }
   }
 

@@ -4,9 +4,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/game_models.dart';
 import '../constants/app_constants.dart';
+import '../core/barrel.dart' as core;
 import '../services/game_algorithm.dart';
 import '../services/notification_service.dart';
 import '../services/voice_service.dart';
+import '../services/coach_feel.dart';
 
 /// 游戏状态Provider
 ///
@@ -164,6 +166,8 @@ class GameStateNotifier extends StateNotifier<GameState> {
         lastDate: today,
         weekData: weekData,
         waterCups: 0, // 每日重置饮水杯数
+        pendingAttack: null,
+        clearPendingAttack: true,
       );
 
       // 生成新怪物
@@ -298,13 +302,27 @@ class GameStateNotifier extends StateNotifier<GameState> {
   }
   
   /// 添加锻炼记录
-  Future<void> addExercise(ExerciseRecord exercise) async {
+  ///
+  /// [applyCombat] 为 false 时只记账消耗，不立刻扣怪血（留给 pendingAttack → attackMonster）。
+  Future<void> addExercise(ExerciseRecord exercise, {bool applyCombat = true}) async {
     final exercises = List<ExerciseRecord>.from(state.exercises);
     exercises.add(exercise);
     
+    if (!applyCombat) {
+      state = state.copyWith(
+        exercises: exercises,
+        todayCalExercise: state.todayCalExercise + exercise.cal,
+        user: state.user.copyWith(
+          totalExercise: state.user.totalExercise + exercise.cal,
+        ),
+      );
+      await _saveGame();
+      return;
+    }
+
     // 获取当前赛季配置
     final season = Seasons.getCurrentSeason();
-    
+
     // 计算伤害（先破盾再掉血），传入赛季加成
     final result = GameAlgorithm.exerciseImpactOnMonster(
       exercise.cal,
@@ -514,6 +532,95 @@ class GameStateNotifier extends StateNotifier<GameState> {
     state = state.copyWith(reminderFrequency: frequency);
     await _saveGame();
   }
+
+  /// 膝盖 / 腰腹伤病标记（默认全部动作可用）。
+  Future<void> updateInjuryFlags({bool? kneeIssue, bool? waistIssue}) async {
+    state = state.copyWith(
+      user: state.user.copyWith(
+        kneeIssue: kneeIssue ?? state.user.kneeIssue,
+        waistIssue: waistIssue ?? state.user.waistIssue,
+      ),
+    );
+    await _saveGame();
+  }
+
+  /// 教练课后手感：微调明天训练量，顶档时轻推难度。
+  Future<void> recordCoachFeel(CoachFeel feel) async {
+    final adj = applyCoachFeel(
+      feel: feel,
+      currentNudge: state.coachFeelNudge,
+      difficulty: state.difficulty,
+    );
+    var next = state.copyWith(coachFeelNudge: adj.volumeNudge);
+    if (adj.difficultyChanged && adj.difficulty != state.difficulty) {
+      final targetCal = GameAlgorithm.calcTargetCal(state.user.weight, adj.difficulty);
+      next = next.copyWith(
+        difficulty: adj.difficulty,
+        targetCal: targetCal,
+        user: next.user.copyWith(difficulty: adj.difficulty),
+      );
+    }
+    state = next;
+    await _saveGame();
+  }
+
+  Future<void> setPendingAttack(PendingAttack? attack) async {
+    state = state.copyWith(
+      pendingAttack: attack,
+      clearPendingAttack: attack == null,
+    );
+    await _saveGame();
+  }
+
+  /// 回城播放 VFX 后扣血。伤害已由教练结算算好。
+  Future<void> attackMonster(int damage) async {
+    if (damage <= 0 || state.monster.hp <= 0) {
+      await setPendingAttack(null);
+      return;
+    }
+    final before = core.MonsterState(
+      hp: state.monster.hp,
+      maxHp: state.monster.maxHp,
+      level: state.monster.level,
+      name: state.monster.name,
+      emoji: state.monster.emoji,
+      defId: 'compat',
+      tier: core.MonsterTier.minion,
+      weakness: core.ExerciseCategory.cardio,
+      affinity: state.monster.resolvedAffinity,
+      baseAttack: 0,
+      description: '',
+      enrageThreshold: 0.2,
+      enrageMultiplier: 1.3,
+      coinMultiplier: 1,
+      phaseIndex: 0,
+      phaseName: '',
+      phaseEmoji: '',
+      isEnraged: false,
+      hpMultiplier: 1,
+      isPhantom: false,
+      shield: state.monster.shield,
+      maxShield: state.monster.shield > state.monster.maxHp
+          ? state.monster.shield
+          : state.monster.maxHp,
+      shieldReductionRate: 0.15,
+    );
+    final after = core.applyDamageToMonster(before, damage);
+    state = state.copyWith(
+      monster: state.monster.copyWith(hp: after.hp, shield: after.shield),
+      todayDamage: state.todayDamage + damage,
+      user: state.user.copyWith(
+        totalDamage: state.user.totalDamage + damage,
+      ),
+      pendingAttack: null,
+      clearPendingAttack: true,
+    );
+    if (after.hp == 0) {
+      await _onMonsterDefeated();
+    }
+    await _checkAchievements();
+    await _saveGame();
+  }
   
   /// 检查成就
   Future<void> _checkAchievements() async {
@@ -696,6 +803,12 @@ class GameState {
   // 身体变化相册
   final List<ProgressPhoto> progressPhotos;
 
+  /// 教练课结算后的待攻（回舞台再扣血）。
+  final PendingAttack? pendingAttack;
+
+  /// 课后手感训练量档位，-2～+2。
+  final int coachFeelNudge;
+
   const GameState({
     this.user = const User(),
     this.monster = const Monster(),
@@ -730,6 +843,8 @@ class GameState {
     this.waterCups = 0,
     this.waterGoal = 8,
     this.progressPhotos = const [],
+    this.pendingAttack,
+    this.coachFeelNudge = 0,
   });
   
   GameState copyWith({
@@ -766,6 +881,9 @@ class GameState {
     int? waterCups,
     int? waterGoal,
     List<ProgressPhoto>? progressPhotos,
+    PendingAttack? pendingAttack,
+    bool clearPendingAttack = false,
+    int? coachFeelNudge,
   }) {
     return GameState(
       user: user ?? this.user,
@@ -801,6 +919,9 @@ class GameState {
       waterCups: waterCups ?? this.waterCups,
       waterGoal: waterGoal ?? this.waterGoal,
       progressPhotos: progressPhotos ?? this.progressPhotos,
+      pendingAttack:
+          clearPendingAttack ? null : (pendingAttack ?? this.pendingAttack),
+      coachFeelNudge: coachFeelNudge ?? this.coachFeelNudge,
     );
   }
   
@@ -817,6 +938,7 @@ class GameState {
         'isBoss': monster.isBoss,
         'healBonus': monster.healBonus,
         'shield': monster.shield,
+        'affinity': monster.resolvedAffinity.name,
       },
       'playerMaxHp': playerMaxHp,
       'playerHp': playerHp,
@@ -873,6 +995,8 @@ class GameState {
       'waterCups': waterCups,
       'waterGoal': waterGoal,
       'progressPhotos': progressPhotos.map((p) => p.toJson()).toList(),
+      'pendingAttack': pendingAttack?.toJson(),
+      'coachFeelNudge': coachFeelNudge,
     };
   }
   
@@ -904,6 +1028,7 @@ class GameState {
         isBoss: json['monster']?['isBoss'] ?? false,
         healBonus: (json['monster']?['healBonus'] ?? 0).toDouble(),
         shield: json['monster']?['shield'] ?? 0,
+        affinity: _parseAffinity(json['monster']?['affinity']),
       ),
       playerMaxHp: json['playerMaxHp'] ?? 100,
       playerHp: json['playerHp'] ?? 100,
@@ -957,12 +1082,34 @@ class GameState {
       progressPhotos: (json['progressPhotos'] as List?)
           ?.map((p) => ProgressPhoto.fromJson(p as Map<String, dynamic>))
           .toList() ?? [],
+      pendingAttack: json['pendingAttack'] is Map
+          ? PendingAttack.fromJson(
+              Map<String, dynamic>.from(json['pendingAttack'] as Map),
+            )
+          : null,
+      coachFeelNudge: (json['coachFeelNudge'] ?? 0) is int
+          ? (json['coachFeelNudge'] ?? 0) as int
+          : 0,
     );
   }
   
   bool get hasGame => lastDate.isNotEmpty;
   
   int get remainingCal => targetCal - todayCalIn + todayCalExercise;
+}
+
+core.ExerciseCategory? _parseAffinity(dynamic raw) {
+  if (raw is! String) return null;
+  switch (raw) {
+    case 'cardio':
+      return core.ExerciseCategory.cardio;
+    case 'strength':
+      return core.ExerciseCategory.strength;
+    case 'core':
+      return core.ExerciseCategory.core;
+    default:
+      return null;
+  }
 }
 
 /// DateTime扩展

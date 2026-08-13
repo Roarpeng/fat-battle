@@ -174,12 +174,18 @@ class ExercisePrescription {
   /// - [targetBurnCal]：今日还需要消耗的卡路里（>0 时按它反推训练时长；
   ///   为 0 时按渐进等级给基础目标）。
   /// - [streak]：连续打卡天数，用于推导渐进等级。
+  /// - [excludeTypes]：伤病等需要剔除的动作 type。
+  /// - [preferTypes]：克制课优先插入的动作 type（保序）。
+  /// - [volumeScale]：课后手感量档，目标次数/秒数倍率。
   static WorkoutPlan recommendCombo(
     User user, {
     WorkoutFocus focus = WorkoutFocus.mixed,
     int maxItems = 5,
     int targetBurnCal = 0,
     int streak = 0,
+    Set<String> excludeTypes = const {},
+    List<String> preferTypes = const [],
+    double volumeScale = 1.0,
   }) {
     final bmi = _bmiOf(user);
     final toLose = user.weight - user.targetWeight; // >0 需减重
@@ -191,10 +197,13 @@ class ExercisePrescription {
       user: user,
       toLose: toLose,
       level: level,
+      preferTypes: preferTypes,
+      excludeTypes: excludeTypes,
     );
 
     var picked = <int>[];
     for (final type in pool) {
+      if (excludeTypes.contains(type)) continue;
       final idx = indexOfType(type);
       if (idx == null) continue;
       if (picked.contains(idx)) continue;
@@ -202,11 +211,22 @@ class ExercisePrescription {
       if (picked.length >= itemCount) break;
     }
 
-    // 保底：至少塞满可识别基础三项
+    // 保底：至少塞满可识别基础三项（同样尊重伤病剔除）
     for (final fallback in const ['squat', 'pushup', 'plank', 'lunge']) {
       if (picked.length >= itemCount.clamp(3, 5)) break;
+      if (excludeTypes.contains(fallback)) continue;
       final idx = indexOfType(fallback);
       if (idx != null && !picked.contains(idx)) picked.add(idx);
+    }
+
+    // 伤病把基础三项都滤掉时，从剩余摄像头动作补齐
+    if (picked.length < 3) {
+      for (final idx in cameraExerciseIndexes()) {
+        if (picked.length >= itemCount.clamp(3, 5)) break;
+        final type = Exercises.all[idx].type;
+        if (excludeTypes.contains(type)) continue;
+        if (!picked.contains(idx)) picked.add(idx);
+      }
     }
 
     // 选完后按肌群交替重排：激活 → 力量 → 核心 → 力量/有氧
@@ -239,12 +259,14 @@ class ExercisePrescription {
     final perExerciseSec =
         picked.isEmpty ? 60 : (workSeconds / picked.length).round();
 
+    final scale = volumeScale.clamp(0.8, 1.2);
     final items = picked
         .map(
           (idx) => _buildItem(
             exerciseIndex: idx,
             secondsBudget: perExerciseSec,
             level: level,
+            volumeScale: scale,
           ),
         )
         .toList(growable: false);
@@ -383,12 +405,14 @@ class ExercisePrescription {
     required int exerciseIndex,
     required int secondsBudget,
     required int level,
+    double volumeScale = 1.0,
   }) {
     final ex = Exercises.all[exerciseIndex];
     final timed = ex.type == 'plank';
-    final target = timed
+    final raw = timed
         ? _plankSeconds(secondsBudget, level)
         : _repTarget(ex.type, secondsBudget, level);
+    final target = (raw * volumeScale).round().clamp(6, 80);
     return WorkoutPlanItem(
       exerciseIndex: exerciseIndex,
       target: target,
@@ -427,6 +451,8 @@ class ExercisePrescription {
     required User user,
     required double toLose,
     int level = 1,
+    List<String> preferTypes = const [],
+    Set<String> excludeTypes = const {},
   }) {
     // 偏好主池
     final focusPool = switch (focus) {
@@ -503,10 +529,11 @@ class ExercisePrescription {
         break;
     }
 
-    // 合并：boost 在前，再 focus 池，去重保序
+    // 合并：克制优先 → boost → focus 池，去重保序
     final seen = <String>{};
     final ordered = <String>[];
-    for (final t in [...boost, ...focusPool]) {
+    for (final t in [...preferTypes, ...boost, ...focusPool]) {
+      if (excludeTypes.contains(t)) continue;
       if (seen.add(t)) ordered.add(t);
     }
 

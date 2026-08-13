@@ -178,6 +178,34 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                         activeColor: AppColors.green,
                       ),
                     ),
+                    const Divider(color: AppColors.border),
+                    _buildSettingItem(
+                      icon: '🦵',
+                      title: '膝盖不适',
+                      subtitle: '克制课避开深蹲 / 弓步',
+                      trailing: Switch(
+                        value: gameState.user.kneeIssue,
+                        onChanged: (v) {
+                          gameNotifier.updateInjuryFlags(kneeIssue: v);
+                          _showToast(v ? '已避开屈膝动作' : '已恢复屈膝动作');
+                        },
+                        activeColor: AppColors.green,
+                      ),
+                    ),
+                    const Divider(color: AppColors.border),
+                    _buildSettingItem(
+                      icon: '🧘',
+                      title: '腰腹不适',
+                      subtitle: '克制课避开平板 / 登山跑',
+                      trailing: Switch(
+                        value: gameState.user.waistIssue,
+                        onChanged: (v) {
+                          gameNotifier.updateInjuryFlags(waistIssue: v);
+                          _showToast(v ? '已避开腰腹屈曲' : '已恢复核心动作');
+                        },
+                        activeColor: AppColors.green,
+                      ),
+                    ),
                   ],
                 ),
             ),
