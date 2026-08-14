@@ -468,6 +468,13 @@ class GameStateNotifier extends StateNotifier<GameState> {
     );
     
     await _saveGame();
+    unawaited(ProgressSyncService.instance.postEvent('meal', {
+      'name': food.name,
+      'grams': food.grams,
+      'calories': food.totalCal,
+      'mealSlot': food.meal.name,
+      'source': 'manual',
+    }));
   }
   
   /// 移除食物记录
@@ -518,6 +525,7 @@ class GameStateNotifier extends StateNotifier<GameState> {
         ),
       );
       await _saveGame();
+      _postExerciseEvent(exercise, settled: false);
       return;
     }
 
@@ -570,6 +578,24 @@ class GameStateNotifier extends StateNotifier<GameState> {
     
     await _checkAchievements();
     await _saveGame();
+    _postExerciseEvent(exercise, settled: true);
+  }
+
+  void _postExerciseEvent(ExerciseRecord exercise, {required bool settled}) {
+    final mode = exercise.mode == 'auto'
+        ? 'imu'
+        : (exercise.mode.startsWith('camera') ? 'camera' : 'manual');
+    unawaited(ProgressSyncService.instance.postEvent(
+      'exercise',
+      {
+        'lessonName': exercise.name,
+        'mode': mode,
+        'caloriesBurned': exercise.cal,
+        'damageDealt': exercise.damage,
+        'settled': settled,
+      },
+      clientId: exercise.id,
+    ));
   }
   
   /// 添加自动锻炼记录（来自IMU被动采集）

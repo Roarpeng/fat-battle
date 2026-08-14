@@ -6,13 +6,13 @@
 <title>塑身工坊 · 管理后台</title>
 <style>
   :root {
-    --bg: #14110E;          /* 炭黑 */
-    --bg-2: #1C1814;        /* 炭黑浅一档 */
-    --panel: #221D17;       /* 面板 */
+    --bg: #14110E;
+    --bg-2: #1C1814;
+    --panel: #221D17;
     --border: #3A322A;
-    --gold: #C4A574;        /* 铜金 */
+    --gold: #C4A574;
     --gold-dim: #8A7450;
-    --fire: #E85D4C;        /* 炉火红 */
+    --fire: #E85D4C;
     --fire-hover: #C94A3C;
     --text: #EDE4D5;
     --text-dim: #A99E8D;
@@ -37,26 +37,26 @@
   header .user a { color: var(--fire); cursor: pointer; margin-left: 12px; }
   .tabs {
     display: flex; gap: 4px; padding: 10px 24px 0;
-    border-bottom: 1px solid var(--border);
+    border-bottom: 1px solid var(--border); flex-wrap: wrap;
   }
   .tabs button {
     background: transparent; border: 1px solid transparent; border-bottom: none;
-    color: var(--text-dim); padding: 10px 18px; cursor: pointer; font-size: 14px;
+    color: var(--text-dim); padding: 10px 16px; cursor: pointer; font-size: 14px;
     border-radius: 8px 8px 0 0;
   }
   .tabs button.active { color: var(--gold); background: var(--panel); border-color: var(--border); }
-  main { padding: 20px 24px 40px; max-width: 1100px; margin: 0 auto; }
+  main { padding: 20px 24px 40px; max-width: 1200px; margin: 0 auto; }
   .panel {
     background: var(--panel); border: 1px solid var(--border);
     border-radius: 10px; padding: 18px; margin-bottom: 16px;
   }
   .panel h3 { color: var(--gold); font-size: 15px; margin-bottom: 14px; font-weight: 600; }
-  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; }
   .card {
     background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
     padding: 18px; text-align: center;
   }
-  .card .num { font-size: 30px; font-weight: 700; color: var(--gold); }
+  .card .num { font-size: 28px; font-weight: 700; color: var(--gold); }
   .card .label { font-size: 13px; color: var(--text-dim); margin-top: 6px; }
   .card .badge { display: inline-block; margin-top: 8px; font-size: 12px; padding: 2px 10px; border-radius: 20px; }
   .badge.ok { background: rgba(111,191,115,.15); color: var(--ok); }
@@ -77,13 +77,14 @@
   input:focus, select:focus, textarea:focus { outline: none; border-color: var(--gold); }
   label { display: block; font-size: 12px; color: var(--text-dim); margin: 10px 0 4px; }
   .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
-  .row input.flex { flex: 1; min-width: 200px; }
-  .row .search-w { flex: 1; min-width: 200px; }
+  .row input.flex { flex: 1; min-width: 160px; }
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
   th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--border); }
   th { color: var(--gold-dim); font-weight: 500; font-size: 12px; }
   td .actions { display: flex; gap: 6px; flex-wrap: wrap; }
   td .actions button { padding: 4px 10px; font-size: 12px; }
+  tr.clickable { cursor: pointer; }
+  tr.clickable:hover td { background: rgba(196,165,116,.06); }
   .pager { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; font-size: 13px; color: var(--text-dim); }
   .empty { color: var(--text-dim); text-align: center; padding: 30px 0; font-size: 13px; }
   .msg { font-size: 12px; margin-top: 8px; }
@@ -102,10 +103,15 @@
   .login-box button { width: 100%; margin-top: 16px; padding: 10px; }
   .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
   .form-grid .full { grid-column: 1 / -1; }
-  .form-actions { display: flex; gap: 10px; margin-top: 16px; }
+  .form-actions { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
   .spin { display: inline-block; width: 12px; height: 12px; border: 2px solid rgba(255,255,255,.3);
           border-top-color: #fff; border-radius: 50%; animation: rot .7s linear infinite; vertical-align: -2px; margin-right: 6px; }
   @keyframes rot { to { transform: rotate(360deg); } }
+  .split { display: grid; grid-template-columns: 1fr 1.2fr; gap: 16px; }
+  @media (max-width: 900px) { .split { grid-template-columns: 1fr; } .form-grid { grid-template-columns: 1fr; } }
+  .meta { font-size: 12px; color: var(--text-dim); line-height: 1.7; }
+  .hint { font-size: 12px; color: var(--text-dim); margin-bottom: 10px; }
+  a.link { color: var(--gold); cursor: pointer; text-decoration: underline; }
 </style>
 </head>
 <body>
@@ -133,43 +139,200 @@
 
 <div id="appView" style="display:none">
   <div class="tabs">
-    <button id="tab-dashboard" class="active" onclick="switchTab('dashboard')">仪表盘</button>
-    <button id="tab-users" onclick="switchTab('users')">用户管理</button>
-    <button id="tab-llm" onclick="switchTab('llm')">LLM 配置</button>
+    <button id="tab-dashboard" class="active" onclick="switchTab('dashboard')">总览</button>
+    <button id="tab-users" onclick="switchTab('users')">用户</button>
+    <button id="tab-progress" onclick="switchTab('progress')">进度</button>
+    <button id="tab-sessions" onclick="switchTab('sessions')">锻炼</button>
+    <button id="tab-meals" onclick="switchTab('meals')">饮食</button>
+    <button id="tab-config" onclick="switchTab('config')">配置</button>
   </div>
   <main>
-    <!-- 仪表盘 -->
     <section id="view-dashboard">
       <div class="cards">
         <div class="card"><div class="num" id="stUsers">-</div><div class="label">注册用户</div></div>
+        <div class="card"><div class="num" id="stDau">-</div><div class="label">近 24h 活跃</div></div>
+        <div class="card"><div class="num" id="stSess">-</div><div class="label">今日锻炼课</div></div>
+        <div class="card"><div class="num" id="stMeals">-</div><div class="label">今日饮食</div></div>
         <div class="card"><div class="num" id="stLlm">-</div><div class="label">LLM 配置</div></div>
-        <div class="card"><div class="num" id="stDb">-</div><div class="label">数据库状态</div><div class="badge ok" id="stDbBadge">正常</div></div>
+        <div class="card"><div class="num" id="stDb">-</div><div class="label">数据库</div><div class="badge ok" id="stDbBadge">正常</div></div>
+      </div>
+      <div class="panel" style="margin-top:16px">
+        <h3>最近审计</h3>
+        <table>
+          <thead><tr><th>时间</th><th>操作人</th><th>动作</th><th>目标用户</th></tr></thead>
+          <tbody id="auditRows"></tbody>
+        </table>
+        <div class="empty" id="auditEmpty">暂无审计记录</div>
       </div>
     </section>
 
-    <!-- 用户管理 -->
     <section id="view-users" style="display:none">
+      <div class="split">
+        <div class="panel">
+          <h3>用户列表</h3>
+          <div class="row">
+            <input id="userQ" class="flex" placeholder="搜索邮箱或昵称…" onkeydown="if(event.key==='Enter')loadUsers(1)">
+            <button onclick="loadUsers(1)">搜索</button>
+          </div>
+          <table>
+            <thead><tr><th>ID</th><th>邮箱</th><th>昵称</th><th>状态</th></tr></thead>
+            <tbody id="userRows"></tbody>
+          </table>
+          <div class="empty" id="userEmpty" style="display:none">暂无用户</div>
+          <div class="pager">
+            <span id="userPageInfo"></span>
+            <span><button class="ghost" onclick="loadUsers(page-1)">上一页</button>
+                  <button class="ghost" onclick="loadUsers(page+1)">下一页</button></span>
+          </div>
+        </div>
+        <div class="panel" id="dossierPanel">
+          <h3>用户卷宗 <span id="dossierTitle" style="color:var(--text-dim);font-weight:400"></span></h3>
+          <div class="empty" id="dossierEmpty">点击左侧用户查看档案</div>
+          <div id="dossierBody" style="display:none">
+            <div class="meta" id="dossierMeta"></div>
+            <div class="form-grid">
+              <div><label>昵称</label><input id="pfNickname"></div>
+              <div><label>头像</label><input id="pfAvatar"></div>
+              <div><label>年龄</label><input id="pfAge" type="number"></div>
+              <div><label>性别</label>
+                <select id="pfGender">
+                  <option value="">（空）</option>
+                  <option value="male">男</option>
+                  <option value="female">女</option>
+                  <option value="other">其他</option>
+                </select>
+              </div>
+              <div><label>身高 cm</label><input id="pfHeight" type="number" step="0.1"></div>
+              <div><label>体重 kg</label><input id="pfWeight" type="number" step="0.1"></div>
+              <div><label>目标体重 kg</label><input id="pfTargetW" type="number" step="0.1"></div>
+              <div><label>BMI</label><input id="pfBmi" type="number" step="0.1"></div>
+              <div><label>睡眠</label><input id="pfSleep" placeholder="early / normal / night"></div>
+              <div><label>工作</label><input id="pfWork" placeholder="sedentary / sometimes / active"></div>
+              <div><label>锻炼时段</label><input id="pfExTime"></div>
+              <div><label>人设</label><input id="pfChar"></div>
+              <div><label>难度</label><input id="pfDiff"></div>
+              <div><label>体能</label><input id="pfFit"></div>
+              <div><label>俯卧撑</label><input id="pfPush" type="number"></div>
+              <div><label>跑步分钟</label><input id="pfRun" type="number"></div>
+              <div><label>每周频次</label><input id="pfFreq" type="number"></div>
+              <div><label>视觉主题</label>
+                <select id="pfTheme"><option value="">（空）</option><option value="forge">forge 熔炉</option><option value="sketch">sketch 手账</option><option value="ink">ink 墨稿</option></select>
+              </div>
+              <div><label>雕塑线</label>
+                <select id="pfLine"><option value="">（空）</option><option value="david">david 大卫</option><option value="venus">venus 维纳斯</option></select>
+              </div>
+              <div><label>目标热量</label><input id="pfTcal" type="number"></div>
+              <div><label>热量下限</label><input id="pfFloor" type="number"></div>
+              <div><label>膝盖不适</label><select id="pfKnee"><option value="false">否</option><option value="true">是</option></select></div>
+              <div><label>腰腹不适</label><select id="pfWaist"><option value="false">否</option><option value="true">是</option></select></div>
+            </div>
+            <div class="form-actions">
+              <button onclick="saveProfile()">保存档案</button>
+              <button class="ghost" id="btnDisable" onclick="toggleDisable()">禁用</button>
+              <button class="ghost" onclick="resetPw()">重置密码</button>
+            </div>
+            <div class="msg" id="pfMsg"></div>
+            <h3 style="margin-top:18px">雕塑 / 快照</h3>
+            <div class="meta" id="sculptMeta"></div>
+            <h3 style="margin-top:14px">体测（按日）</h3>
+            <table><thead><tr><th>日期</th><th>体重 kg</th><th>腰围 cm</th><th>来源</th></tr></thead><tbody id="metricRows"></tbody></table>
+            <h3 style="margin-top:14px">近期锻炼</h3>
+            <table><thead><tr><th>时间</th><th>课</th><th>模式</th><th>千卡</th></tr></thead><tbody id="sessMini"></tbody></table>
+            <h3 style="margin-top:14px">近期饮食</h3>
+            <table><thead><tr><th>时间</th><th>名称</th><th>餐次</th><th>千卡</th></tr></thead><tbody id="mealMini"></tbody></table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="view-progress" style="display:none">
       <div class="panel">
-        <h3>用户列表</h3>
+        <h3>修改游戏进度（写入快照 + 规范化表，并记审计）</h3>
+        <p class="hint">先填用户 ID（或从「用户」卷宗点过来）。确认后会覆盖云端存档对应字段，App 下次拉取即生效。</p>
+        <div class="form-grid">
+          <div><label>用户 ID *</label><input id="pgUid" type="number"></div>
+          <div><label>体重 kg</label><input id="pgWeight" type="number" step="0.1" placeholder="不改请留空"></div>
+          <div><label>目标体重 kg</label><input id="pgTargetW" type="number" step="0.1"></div>
+          <div><label>目标热量</label><input id="pgTcal" type="number"></div>
+          <div><label>连续天数 streak</label><input id="pgStreak" type="number"></div>
+          <div><label>雕塑阶段 0–7</label>
+            <select id="pgStage">
+              <option value="">不改</option>
+              <option value="0">0 粘土</option><option value="1">1 石块</option>
+              <option value="2">2 粗坯</option><option value="3">3 成形</option>
+              <option value="4">4 杰作</option><option value="5">5 保养</option>
+              <option value="6">6 蒙尘</option><option value="7">7 回潮</option>
+            </select>
+          </div>
+          <div><label>雕塑线</label>
+            <select id="pgLine"><option value="">不改</option><option value="david">大卫</option><option value="venus">维纳斯</option></select>
+          </div>
+          <div><label>视觉主题</label>
+            <select id="pgTheme"><option value="">不改</option><option value="forge">熔炉</option><option value="sketch">手账</option><option value="ink">墨稿</option></select>
+          </div>
+        </div>
+        <div class="form-actions">
+          <button class="ghost" onclick="loadProgressPreview()">读取当前值</button>
+          <button onclick="confirmPatchProgress()">确认修改并审计</button>
+        </div>
+        <div class="msg" id="pgMsg"></div>
+        <div class="meta" id="pgPreview" style="margin-top:10px"></div>
+      </div>
+    </section>
+
+    <section id="view-sessions" style="display:none">
+      <div class="panel">
+        <h3>锻炼课</h3>
         <div class="row">
-          <input id="userQ" class="flex" placeholder="搜索邮箱或昵称…" onkeydown="if(event.key==='Enter')loadUsers(1)">
-          <button onclick="loadUsers(1)">搜索</button>
+          <input id="sessUid" class="flex" placeholder="用户 ID（可空）" type="number">
+          <input id="sessFrom" type="date" style="width:auto">
+          <input id="sessTo" type="date" style="width:auto">
+          <button onclick="loadSessions()">筛选</button>
         </div>
         <table>
-          <thead><tr><th>ID</th><th>邮箱</th><th>昵称</th><th>注册时间</th><th>状态</th><th>操作</th></tr></thead>
-          <tbody id="userRows"></tbody>
+          <thead><tr><th>ID</th><th>用户</th><th>课名</th><th>模式</th><th>次数</th><th>千卡</th><th>伤害</th><th>手感</th><th>结算</th><th>时间</th></tr></thead>
+          <tbody id="sessRows"></tbody>
         </table>
-        <div class="empty" id="userEmpty" style="display:none">暂无用户</div>
-        <div class="pager">
-          <span id="userPageInfo"></span>
-          <span><button class="ghost" onclick="loadUsers(page-1)">上一页</button>
-                <button class="ghost" onclick="loadUsers(page+1)">下一页</button></span>
-        </div>
+        <div class="empty" id="sessEmpty">暂无记录</div>
       </div>
     </section>
 
-    <!-- LLM 配置 -->
-    <section id="view-llm" style="display:none">
+    <section id="view-meals" style="display:none">
+      <div class="panel">
+        <h3>饮食记录</h3>
+        <div class="row">
+          <input id="mealUid" class="flex" placeholder="用户 ID（可空）" type="number">
+          <input id="mealFrom" type="date" style="width:auto">
+          <input id="mealTo" type="date" style="width:auto">
+          <button onclick="loadMeals()">筛选</button>
+        </div>
+        <table>
+          <thead><tr><th>ID</th><th>用户</th><th>名称</th><th>克数</th><th>千卡</th><th>餐次</th><th>来源</th><th>时间</th></tr></thead>
+          <tbody id="mealRows"></tbody>
+        </table>
+        <div class="empty" id="mealEmpty">暂无记录</div>
+      </div>
+    </section>
+
+    <section id="view-config" style="display:none">
+      <div class="panel">
+        <h3>运营配置 app_settings</h3>
+        <p class="hint">热量下限与日赤字上限会通过 <code>/api/v1/config/public</code> 下发给 App（不含任何密钥）。</p>
+        <div class="form-grid">
+          <div><label>calorie_floor 热量下限</label><input id="stFloor" type="number"></div>
+          <div><label>max_daily_deficit 日赤字上限</label><input id="stDeficit" type="number"></div>
+          <div><label>coach_enabled 营养教练</label>
+            <select id="stCoach"><option value="true">开启</option><option value="false">关闭</option></select></div>
+          <div><label>food_recognize_enabled 食物识别</label>
+            <select id="stFood"><option value="true">开启</option><option value="false">关闭</option></select></div>
+          <div><label>default_visual_theme</label>
+            <select id="stTheme"><option value="forge">forge</option><option value="sketch">sketch</option><option value="ink">ink</option></select></div>
+          <div><label>sculpt_session_thresholds（JSON 数组）</label><input id="stThresh" placeholder="[3,10,21,30]"></div>
+        </div>
+        <div class="form-actions"><button onclick="saveSettings()">保存运营配置</button></div>
+        <div class="msg" id="stMsg"></div>
+      </div>
+
       <div class="panel">
         <h3>新增 LLM 配置</h3>
         <div class="form-grid">
@@ -197,7 +360,7 @@
       </div>
 
       <div class="panel">
-        <h3>配置列表</h3>
+        <h3>LLM 配置列表</h3>
         <table>
           <thead><tr><th>ID</th><th>名称</th><th>Provider</th><th>模型(视觉/文本)</th><th>优先级</th><th>状态</th><th>操作</th></tr></thead>
           <tbody id="llmRows"></tbody>
@@ -211,16 +374,22 @@
 
 <script>
 const API = '/api/admin';
+const TABS = ['dashboard','users','progress','sessions','meals','config'];
 let token = localStorage.getItem('adminToken') || '';
 let page = 1, pageSize = 20;
 let editingLlmId = 0;
+let currentUser = null;
 
 function api(path, opts = {}) {
   opts.headers = Object.assign({ 'Content-Type': 'application/json' }, opts.headers || {});
   if (token) opts.headers['Authorization'] = 'Bearer ' + token;
-  return fetch(API + path, opts).then(r => {
-    if (r.status === 401) { token = ''; localStorage.removeItem('adminToken'); showLogin(); throw new Error('未登录'); }
-    return r.json();
+  return fetch(API + path, opts).then(async r => {
+    const d = await r.json().catch(() => ({}));
+    if (r.status === 401 && path !== '/login') {
+      token = ''; localStorage.removeItem('adminToken'); showLogin(); throw new Error('未登录');
+    }
+    if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+    return d;
   });
 }
 
@@ -245,8 +414,9 @@ function doLogin() {
     .then(d => {
       if (!d.token) throw new Error(d.error || '登录失败');
       token = d.token; localStorage.setItem('adminToken', token);
+      localStorage.setItem('adminName', d.username || '');
       document.getElementById('userName').textContent = d.username;
-      showApp(); loadStats();
+      showApp();
     })
     .catch(e => { errEl.textContent = e.message || '网络错误'; });
 }
@@ -257,19 +427,23 @@ function logout() {
 }
 
 function switchTab(name) {
-  ['dashboard', 'users', 'llm'].forEach(t => {
+  TABS.forEach(t => {
     document.getElementById('tab-' + t).classList.toggle('active', t === name);
     document.getElementById('view-' + t).style.display = t === name ? 'block' : 'none';
   });
+  if (name === 'dashboard') { loadStats(); loadAudit(); }
   if (name === 'users') loadUsers(1);
-  if (name === 'llm') { loadLlm(); }
-  if (name === 'dashboard') loadStats();
+  if (name === 'sessions') loadSessions();
+  if (name === 'meals') loadMeals();
+  if (name === 'config') { loadSettings(); loadLlm(); }
 }
 
-/* ---- 仪表盘 ---- */
 function loadStats() {
   api('/stats').then(d => {
     document.getElementById('stUsers').textContent = d.users ?? '-';
+    document.getElementById('stDau').textContent = d.dau ?? '-';
+    document.getElementById('stSess').textContent = d.sessionsToday ?? '-';
+    document.getElementById('stMeals').textContent = d.mealsToday ?? '-';
     document.getElementById('stLlm').textContent = d.llmConfigs ?? '-';
     const ok = !!d.dbOk;
     document.getElementById('stDb').textContent = ok ? '正常' : '不可用';
@@ -279,7 +453,21 @@ function loadStats() {
   }).catch(() => {});
 }
 
-/* ---- 用户管理 ---- */
+function loadAudit() {
+  api('/audit?limit=15').then(d => {
+    const rows = document.getElementById('auditRows');
+    rows.innerHTML = '';
+    const items = d.items || [];
+    document.getElementById('auditEmpty').style.display = items.length ? 'none' : 'block';
+    items.forEach(a => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${esc(fmtTime(a.createdAt))}</td><td>${esc(a.actorUsername)}</td>
+        <td>${esc(a.action)}</td><td>${a.targetUserId ?? '-'}</td>`;
+      rows.appendChild(tr);
+    });
+  }).catch(() => {});
+}
+
 function loadUsers(p) {
   if (!p || p < 1) p = 1;
   page = p;
@@ -291,34 +479,229 @@ function loadUsers(p) {
       document.getElementById('userEmpty').style.display = d.items.length ? 'none' : 'block';
       d.items.forEach(u => {
         const tr = document.createElement('tr');
-        const stateTag = u.isDisabled
-          ? '<span class="tag off">已禁用</span>'
-          : '<span class="tag on">正常</span>';
-        const actions = u.isDisabled
-          ? `<button class="ghost" onclick="setDisabled(${u.id},false)">启用</button>`
-          : `<button class="ghost" onclick="setDisabled(${u.id},true)">禁用</button>`;
-        tr.innerHTML = `<td>${u.id}</td><td>${esc(u.email)}</td><td>${esc(u.nickname)}</td>
-          <td>${esc(fmtTime(u.createdAt))}</td><td>${stateTag}</td>
-          <td><div class="actions">${actions}<button onclick="resetPw(${u.id})">重置密码</button></div></td>`;
+        tr.className = 'clickable';
+        tr.onclick = () => openDossier(u.id);
+        const stateTag = u.isDisabled ? '<span class="tag off">已禁用</span>' : '<span class="tag on">正常</span>';
+        tr.innerHTML = `<td>${u.id}</td><td>${esc(u.email)}</td><td>${esc(u.nickname)}</td><td>${stateTag}</td>`;
         rows.appendChild(tr);
       });
       document.getElementById('userPageInfo').textContent = `共 ${d.total} 人 · 第 ${page} 页`;
     }).catch(() => {});
 }
 
-function setDisabled(id, disabled) {
-  api(`/users/${id}/${disabled ? 'disable' : 'enable'}`, { method: 'POST' })
-    .then(() => loadUsers(page)).catch(e => alert(e.message));
+function setVal(id, v) { document.getElementById(id).value = v == null ? '' : v; }
+function numOrNull(id) {
+  const s = document.getElementById(id).value.trim();
+  if (s === '') return undefined;
+  const n = Number(s);
+  return Number.isFinite(n) ? n : undefined;
 }
-function resetPw(id) {
+function strOrNull(id) {
+  const s = document.getElementById(id).value.trim();
+  return s === '' ? undefined : s;
+}
+
+function openDossier(id) {
+  currentUser = { id };
+  Promise.all([
+    api('/users/' + id),
+    api('/users/' + id + '/metrics?limit=30'),
+    api('/users/' + id + '/sessions?limit=8'),
+    api('/users/' + id + '/meals?limit=8'),
+  ]).then(([d, metrics, sess, meals]) => {
+    currentUser = Object.assign({ id }, d.user || {});
+    document.getElementById('dossierEmpty').style.display = 'none';
+    document.getElementById('dossierBody').style.display = 'block';
+    document.getElementById('dossierTitle').textContent = '· #' + id + ' ' + (d.user && d.user.email || '');
+    const pf = d.profile || {};
+    const sc = d.sculpt || {};
+    const snap = d.snapshot || {};
+    document.getElementById('dossierMeta').innerHTML =
+      `注册 ${esc(fmtTime(d.user && d.user.createdAt))} · 快照 ${snap.hasState ? ('rev ' + snap.revision + ' @ ' + fmtTime(snap.updatedAt)) : '无'} · last_seen ${esc(fmtTime(pf.lastSeenAt))}`;
+    setVal('pfNickname', pf.nickname); setVal('pfAvatar', pf.avatar);
+    setVal('pfAge', pf.age); setVal('pfGender', pf.gender);
+    setVal('pfHeight', pf.heightCm); setVal('pfWeight', pf.weightKg);
+    setVal('pfTargetW', pf.targetWeightKg); setVal('pfBmi', pf.bmi);
+    setVal('pfSleep', pf.sleepType); setVal('pfWork', pf.workType);
+    setVal('pfExTime', pf.exerciseTime); setVal('pfChar', pf.characterStyle);
+    setVal('pfDiff', pf.difficulty); setVal('pfFit', pf.fitnessLevel);
+    setVal('pfPush', pf.pushupCount); setVal('pfRun', pf.runDurationMin);
+    setVal('pfFreq', pf.weeklyFreq); setVal('pfTheme', pf.visualTheme);
+    setVal('pfLine', pf.sculptLine); setVal('pfTcal', pf.targetCal);
+    setVal('pfFloor', pf.calorieFloor);
+    document.getElementById('pfKnee').value = pf.kneeIssue ? 'true' : 'false';
+    document.getElementById('pfWaist').value = pf.waistIssue ? 'true' : 'false';
+    const btn = document.getElementById('btnDisable');
+    btn.textContent = currentUser.isDisabled ? '启用账号' : '禁用账号';
+    const maint = { none:'无', polish:'保养', dust:'蒙尘', rebound:'回潮' };
+    document.getElementById('sculptMeta').innerHTML =
+      `阶段 ${sc.stage ?? '-'} / 进度 ${sc.progress ?? '-'} / 线 ${esc(sc.line || '-')} / 结算次数 ${sc.sessionsCount ?? 0} / 维护 ${maint[sc.maintenance] || sc.maintenance || '无'}`;
+    fillSimpleTable('metricRows', metrics.items || [], m =>
+      `<td>${esc(m.recordedOn)}</td><td>${m.weightKg ?? ''}</td><td>${m.waistCm ?? ''}</td><td>${esc(m.source)}</td>`);
+    fillSimpleTable('sessMini', sess.items || [], s =>
+      `<td>${esc(fmtTime(s.endedAt || s.startedAt || s.createdAt))}</td><td>${esc(s.lessonName)}</td><td>${esc(s.mode)}</td><td>${s.caloriesBurned ?? ''}</td>`);
+    fillSimpleTable('mealMini', meals.items || [], m =>
+      `<td>${esc(fmtTime(m.eatenAt))}</td><td>${esc(m.name)}</td><td>${esc(m.mealSlot)}</td><td>${m.calories ?? ''}</td>`);
+    document.getElementById('pgUid').value = id;
+  }).catch(e => alert(e.message));
+}
+
+function fillSimpleTable(id, items, rowFn) {
+  const tb = document.getElementById(id);
+  tb.innerHTML = items.length ? items.map(x => '<tr>' + rowFn(x) + '</tr>').join('') :
+    '<tr><td colspan="4" class="empty">暂无</td></tr>';
+}
+
+function saveProfile() {
+  if (!currentUser) return;
+  const body = {
+    nickname: strOrNull('pfNickname'), avatar: strOrNull('pfAvatar'),
+    age: numOrNull('pfAge'), gender: strOrNull('pfGender'),
+    heightCm: numOrNull('pfHeight'), weightKg: numOrNull('pfWeight'),
+    targetWeightKg: numOrNull('pfTargetW'), bmi: numOrNull('pfBmi'),
+    sleepType: strOrNull('pfSleep'), workType: strOrNull('pfWork'),
+    exerciseTime: strOrNull('pfExTime'), characterStyle: strOrNull('pfChar'),
+    difficulty: strOrNull('pfDiff'), fitnessLevel: strOrNull('pfFit'),
+    pushupCount: numOrNull('pfPush'), runDurationMin: numOrNull('pfRun'),
+    weeklyFreq: numOrNull('pfFreq'), visualTheme: strOrNull('pfTheme'),
+    sculptLine: strOrNull('pfLine'), targetCal: numOrNull('pfTcal'),
+    calorieFloor: numOrNull('pfFloor'),
+    kneeIssue: document.getElementById('pfKnee').value === 'true',
+    waistIssue: document.getElementById('pfWaist').value === 'true',
+  };
+  Object.keys(body).forEach(k => { if (body[k] === undefined) delete body[k]; });
+  const msg = document.getElementById('pfMsg');
+  api('/users/' + currentUser.id, { method: 'PATCH', body: JSON.stringify(body) })
+    .then(() => { msg.className = 'msg okc'; msg.textContent = '档案已保存（已审计）'; openDossier(currentUser.id); })
+    .catch(e => { msg.className = 'msg err'; msg.textContent = e.message; });
+}
+
+function toggleDisable() {
+  if (!currentUser) return;
+  const disable = !currentUser.isDisabled;
+  api(`/users/${currentUser.id}/${disable ? 'disable' : 'enable'}`, { method: 'POST' })
+    .then(() => { loadUsers(page); openDossier(currentUser.id); })
+    .catch(e => alert(e.message));
+}
+function resetPw() {
+  if (!currentUser) return;
   const pw = prompt('请输入新密码（至少 6 位）：');
   if (!pw) return;
   if (pw.length < 6) { alert('密码至少 6 位'); return; }
-  api(`/users/${id}/reset-password`, { method: 'POST', body: JSON.stringify({ password: pw }) })
-    .then(() => alert('密码已重置')).catch(e => alert(e.message));
+  api(`/users/${currentUser.id}/reset-password`, { method: 'POST', body: JSON.stringify({ password: pw }) })
+    .then(() => alert('密码已重置（已审计）')).catch(e => alert(e.message));
 }
 
-/* ---- LLM 配置 ---- */
+function loadProgressPreview() {
+  const id = document.getElementById('pgUid').value.trim();
+  if (!id) { alert('请填写用户 ID'); return; }
+  api('/users/' + id).then(d => {
+    const pf = d.profile || {}, sc = d.sculpt || {};
+    document.getElementById('pgPreview').innerHTML =
+      `当前：体重 ${pf.weightKg ?? '-'} / 目标体重 ${pf.targetWeightKg ?? '-'} / 目标热量 ${pf.targetCal ?? '-'} / streak ${pf.streak ?? 0}<br>
+       雕塑阶段 ${sc.stage ?? '-'} · 线 ${esc(sc.line || '-')} · 主题 ${esc(pf.visualTheme || '-')}`;
+    document.getElementById('pgMsg').textContent = '';
+  }).catch(e => { document.getElementById('pgMsg').className = 'msg err'; document.getElementById('pgMsg').textContent = e.message; });
+}
+
+function confirmPatchProgress() {
+  const id = document.getElementById('pgUid').value.trim();
+  if (!id) { alert('请填写用户 ID'); return; }
+  const body = {};
+  const w = numOrNull('pgWeight'); if (w !== undefined) body.weight = w;
+  const tw = numOrNull('pgTargetW'); if (tw !== undefined) body.targetWeight = tw;
+  const tc = numOrNull('pgTcal'); if (tc !== undefined) body.targetCal = tc;
+  const st = numOrNull('pgStreak'); if (st !== undefined) body.streak = st;
+  const stage = document.getElementById('pgStage').value;
+  if (stage !== '') body.sculptStage = parseInt(stage, 10);
+  const line = document.getElementById('pgLine').value;
+  if (line) body.sculptLine = line;
+  const theme = document.getElementById('pgTheme').value;
+  if (theme) body.visualTheme = theme;
+  if (Object.keys(body).length === 0) { alert('没有要改的字段'); return; }
+  const summary = JSON.stringify(body);
+  if (!confirm('确认修改用户 #' + id + ' 的进度？\n' + summary + '\n此操作会写入审计日志。')) return;
+  const msg = document.getElementById('pgMsg');
+  api('/users/' + id + '/progress', { method: 'PATCH', body: JSON.stringify(body) })
+    .then(() => { msg.className = 'msg okc'; msg.textContent = '已更新并审计'; loadProgressPreview(); })
+    .catch(e => { msg.className = 'msg err'; msg.textContent = e.message; });
+}
+
+function dateQuery(fromId, toId) {
+  let q = '';
+  const f = document.getElementById(fromId).value;
+  const t = document.getElementById(toId).value;
+  if (f) q += '&from=' + encodeURIComponent(f + 'T00:00:00Z');
+  if (t) q += '&to=' + encodeURIComponent(t + 'T23:59:59Z');
+  return q;
+}
+
+function loadSessions() {
+  const uid = document.getElementById('sessUid').value.trim();
+  let path = '/sessions?limit=80' + dateQuery('sessFrom', 'sessTo');
+  if (uid) path += '&userId=' + encodeURIComponent(uid);
+  api(path).then(d => {
+    const items = d.items || [];
+    document.getElementById('sessEmpty').style.display = items.length ? 'none' : 'block';
+    const tb = document.getElementById('sessRows');
+    tb.innerHTML = '';
+    items.forEach(s => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${s.id}</td><td>${s.userId}</td><td>${esc(s.lessonName)}</td><td>${esc(s.mode)}</td>
+        <td>${s.totalReps ?? ''}</td><td>${s.caloriesBurned ?? ''}</td><td>${s.damageDealt ?? ''}</td>
+        <td>${esc(s.feel)}</td><td>${s.settled ? '是' : '否'}</td><td>${esc(fmtTime(s.endedAt || s.createdAt))}</td>`;
+      tb.appendChild(tr);
+    });
+  }).catch(() => {});
+}
+
+function loadMeals() {
+  const uid = document.getElementById('mealUid').value.trim();
+  let path = '/meals?limit=80' + dateQuery('mealFrom', 'mealTo');
+  if (uid) path += '&userId=' + encodeURIComponent(uid);
+  api(path).then(d => {
+    const items = d.items || [];
+    document.getElementById('mealEmpty').style.display = items.length ? 'none' : 'block';
+    const tb = document.getElementById('mealRows');
+    tb.innerHTML = '';
+    items.forEach(m => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${m.id}</td><td>${m.userId}</td><td>${esc(m.name)}</td><td>${m.grams ?? ''}</td>
+        <td>${m.calories ?? ''}</td><td>${esc(m.mealSlot)}</td><td>${esc(m.source)}</td><td>${esc(fmtTime(m.eatenAt))}</td>`;
+      tb.appendChild(tr);
+    });
+  }).catch(() => {});
+}
+
+function loadSettings() {
+  api('/settings').then(d => {
+    const it = d.items || {};
+    document.getElementById('stFloor').value = it.calorie_floor ?? 1500;
+    document.getElementById('stDeficit').value = it.max_daily_deficit ?? 750;
+    document.getElementById('stCoach').value = String(it.coach_enabled !== false);
+    document.getElementById('stFood').value = String(it.food_recognize_enabled !== false);
+    document.getElementById('stTheme').value = it.default_visual_theme || 'forge';
+    document.getElementById('stThresh').value = JSON.stringify(it.sculpt_session_thresholds || [3,10,21,30]);
+  }).catch(() => {});
+}
+
+function saveSettings() {
+  let thresh;
+  try { thresh = JSON.parse(document.getElementById('stThresh').value || '[3,10,21,30]'); }
+  catch (e) { document.getElementById('stMsg').className = 'msg err'; document.getElementById('stMsg').textContent = '阈值须为 JSON 数组'; return; }
+  const body = {
+    calorie_floor: Number(document.getElementById('stFloor').value),
+    max_daily_deficit: Number(document.getElementById('stDeficit').value),
+    coach_enabled: document.getElementById('stCoach').value === 'true',
+    food_recognize_enabled: document.getElementById('stFood').value === 'true',
+    default_visual_theme: document.getElementById('stTheme').value,
+    sculpt_session_thresholds: thresh,
+  };
+  api('/settings', { method: 'PUT', body: JSON.stringify(body) })
+    .then(() => { const m = document.getElementById('stMsg'); m.className = 'msg okc'; m.textContent = '已保存（已审计）'; })
+    .catch(e => { const m = document.getElementById('stMsg'); m.className = 'msg err'; m.textContent = e.message; });
+}
+
 const PROVIDER_DEFAULTS = {
   'zhipu': { baseUrl: 'https://open.bigmodel.cn', vision: 'glm-4.6v-flash', text: 'glm-4-flash' },
   'qwen': { baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode', vision: 'qwen-vl-plus', text: 'qwen-turbo' },
@@ -364,17 +747,11 @@ function createLlm() {
   };
   const errEl = document.getElementById('cfErr');
   errEl.textContent = '';
-  if (!body.name || !body.apiKey) { errEl.textContent = '配置名与 API Key 为必填'; return; }
-  if (editingLlmId) {
-    body.apiKey = body.apiKey; // 脱敏值不更新由后端处理
-    api('/llm/' + editingLlmId, { method: 'PUT', body: JSON.stringify(body) })
-      .then(() => { resetLlmForm(); loadLlm(); })
-      .catch(e => { errEl.textContent = e.message; });
-  } else {
-    api('/llm', { method: 'POST', body: JSON.stringify(body) })
-      .then(() => { resetLlmForm(); loadLlm(); })
-      .catch(e => { errEl.textContent = e.message; });
-  }
+  if (!body.name || (!editingLlmId && !body.apiKey)) { errEl.textContent = '配置名与 API Key 为必填'; return; }
+  const req = editingLlmId
+    ? api('/llm/' + editingLlmId, { method: 'PUT', body: JSON.stringify(body) })
+    : api('/llm', { method: 'POST', body: JSON.stringify(body) });
+  req.then(() => { resetLlmForm(); loadLlm(); }).catch(e => { errEl.textContent = e.message; });
 }
 
 function editLlm(id) {
@@ -384,13 +761,10 @@ function editLlm(id) {
     editingLlmId = id;
     document.getElementById('cfName').value = c.name;
     const provSel = document.getElementById('cfProvider');
-    if ([...provSel.options].some(o => o.value === c.provider)) {
-      provSel.value = c.provider;
-    } else {
-      provSel.value = 'openai-compatible';
-    }
+    if ([...provSel.options].some(o => o.value === c.provider)) provSel.value = c.provider;
+    else provSel.value = 'openai-compatible';
     document.getElementById('cfBaseUrl').value = c.baseUrl;
-    document.getElementById('cfApiKey').value = c.apiKey; // 脱敏值，提交不更新
+    document.getElementById('cfApiKey').value = c.apiKey;
     document.getElementById('cfApiKey').placeholder = '留空或脱敏值 = 不修改';
     document.getElementById('cfVision').value = c.visionModel;
     document.getElementById('cfText').value = c.textModel;
@@ -435,16 +809,14 @@ function delLlm(id) {
     .then(() => loadLlm()).catch(e => alert(e.message));
 }
 
-/* ---- 工具 ---- */
 function v(id) { return document.getElementById(id).value.trim(); }
 function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-function fmtTime(s) { return s ? s.replace('T', ' ').slice(0, 16) : ''; }
+function fmtTime(s) { return s ? String(s).replace('T', ' ').slice(0, 16) : ''; }
 
-/* ---- 初始化 ---- */
 if (token) {
   api('/stats').then(d => {
     document.getElementById('userName').textContent = localStorage.getItem('adminName') || 'admin';
-    showApp(); loadStats();
+    showApp();
   }).catch(() => showLogin());
 } else {
   showLogin();

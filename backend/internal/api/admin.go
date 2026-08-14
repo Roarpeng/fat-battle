@@ -15,6 +15,7 @@ import (
 
 	"fatbattle/backend/internal/adminui"
 	"fatbattle/backend/internal/middleware"
+	"fatbattle/backend/internal/repo"
 )
 
 // ---------- 登录 ----------
@@ -136,13 +137,28 @@ func adminUserDisableHandler(pool *pgxpool.Pool, disable bool) gin.HandlerFunc {
 			jsonError(c, http.StatusBadRequest, "用户 ID 无效")
 			return
 		}
-		_, err = pool.Exec(c.Request.Context(),
+		var beforeDisabled bool
+		_ = pool.QueryRow(c.Request.Context(),
+			`SELECT is_disabled FROM users WHERE id = $1 AND deleted_at IS NULL`, id).Scan(&beforeDisabled)
+		tag, err := pool.Exec(c.Request.Context(),
 			`UPDATE users SET is_disabled = $1 WHERE id = $2 AND deleted_at IS NULL`,
 			disable, id)
 		if err != nil {
 			jsonError(c, http.StatusInternalServerError, "操作失败: "+err.Error())
 			return
 		}
+		if tag.RowsAffected() == 0 {
+			jsonError(c, http.StatusNotFound, "用户不存在")
+			return
+		}
+		aid, aname := adminActor(c, pool)
+		tid := id
+		action := "user.enable"
+		if disable {
+			action = "user.disable"
+		}
+		repo.WriteAudit(c.Request.Context(), pool, aid, aname, action, &tid,
+			gin.H{"isDisabled": beforeDisabled}, gin.H{"isDisabled": disable})
 		c.JSON(http.StatusOK, gin.H{"ok": true, "id": id, "disabled": disable})
 	}
 }
@@ -178,6 +194,10 @@ func adminUserResetPasswordHandler(pool *pgxpool.Pool) gin.HandlerFunc {
 			jsonError(c, http.StatusInternalServerError, "重置失败: "+err.Error())
 			return
 		}
+		aid, aname := adminActor(c, pool)
+		tid := id
+		repo.WriteAudit(c.Request.Context(), pool, aid, aname, "user.reset_password", &tid,
+			gin.H{"password": "***"}, gin.H{"password": "reset"})
 		c.JSON(http.StatusOK, gin.H{"ok": true, "id": id})
 	}
 }
@@ -293,6 +313,9 @@ func adminLLMCreateHandler(pool *pgxpool.Pool) gin.HandlerFunc {
 			jsonError(c, http.StatusInternalServerError, "创建失败: "+err.Error())
 			return
 		}
+		aid, aname := adminActor(c, pool)
+		repo.WriteAudit(c.Request.Context(), pool, aid, aname, "llm.create", nil,
+			nil, gin.H{"id": id, "name": req.Name, "provider": def(req.Provider, "zhipu")})
 		c.JSON(http.StatusOK, gin.H{"ok": true, "id": id})
 	}
 }
@@ -309,14 +332,14 @@ func adminLLMUpdateHandler(pool *pgxpool.Pool) gin.HandlerFunc {
 			return
 		}
 		var req struct {
-			Name        string `json:"name"`
-			Provider    string `json:"provider"`
-			BaseURL     string `json:"baseUrl"`
-			APIKey      string `json:"apiKey"` // 空或脱敏值 = 不修改
-			VisionModel string `json:"visionModel"`
-			TextModel   string `json:"textModel"`
-			Enabled     *bool  `json:"enabled"`
-			Priority    *int   `json:"priority"`
+			Name        string  `json:"name"`
+			Provider    string  `json:"provider"`
+			BaseURL     string  `json:"baseUrl"`
+			APIKey      string  `json:"apiKey"` // 空或脱敏值 = 不修改
+			VisionModel string  `json:"visionModel"`
+			TextModel   string  `json:"textModel"`
+			Enabled     *bool   `json:"enabled"`
+			Priority    *int    `json:"priority"`
 			Remark      *string `json:"remark"`
 		}
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -369,6 +392,9 @@ func adminLLMUpdateHandler(pool *pgxpool.Pool) gin.HandlerFunc {
 			jsonError(c, http.StatusInternalServerError, "更新失败: "+err.Error())
 			return
 		}
+		aid, aname := adminActor(c, pool)
+		repo.WriteAudit(c.Request.Context(), pool, aid, aname, "llm.update", nil,
+			nil, gin.H{"id": id, "fields": set})
 		c.JSON(http.StatusOK, gin.H{"ok": true, "id": id})
 	}
 }
@@ -388,6 +414,9 @@ func adminLLMDeleteHandler(pool *pgxpool.Pool) gin.HandlerFunc {
 			jsonError(c, http.StatusInternalServerError, "删除失败: "+err.Error())
 			return
 		}
+		aid, aname := adminActor(c, pool)
+		repo.WriteAudit(c.Request.Context(), pool, aid, aname, "llm.delete", nil,
+			gin.H{"id": id}, nil)
 		c.JSON(http.StatusOK, gin.H{"ok": true, "id": id})
 	}
 }
@@ -440,16 +469,7 @@ func adminLLMTestHandler(pool *pgxpool.Pool) gin.HandlerFunc {
 
 func adminStatsHandler(pool *pgxpool.Pool) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		stats := gin.H{"dbOk": pool != nil}
-		if pool != nil {
-			var users, llmConfigs int
-			_ = pool.QueryRow(c.Request.Context(),
-				`SELECT COUNT(*) FROM users WHERE deleted_at IS NULL`).Scan(&users)
-			_ = pool.QueryRow(c.Request.Context(), `SELECT COUNT(*) FROM llm_configs`).Scan(&llmConfigs)
-			stats["users"] = users
-			stats["llmConfigs"] = llmConfigs
-		}
-		c.JSON(http.StatusOK, stats)
+		c.JSON(http.StatusOK, repo.GetOpsStats(c.Request.Context(), pool))
 	}
 }
 

@@ -78,7 +78,7 @@ func main() {
 	}
 
 	go func() {
-		log.Printf("塑身工坊后端启动: http://0.0.0.0:%s", port)
+		log.Printf("塑身工坊后端启动: http://0.0.0.0:%s  管理后台 /admin", port)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("[fatal] 服务启动失败: %v", err)
 		}
