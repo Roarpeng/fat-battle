@@ -27,6 +27,7 @@ import '../providers/inventory_provider.dart';
 import '../widgets/forge_pressable.dart';
 import '../widgets/home/forge_background.dart';
 import '../widgets/meta/shop_item_card.dart';
+import '../widgets/settings/visual_theme_picker.dart';
 
 /// 设置页面
 class SettingsPage extends ConsumerStatefulWidget {
@@ -40,6 +41,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   AuthUser? _me;
   String? _localAccount;
   bool? _gatewayReachable; // null = 探测中 / 未开始
+
+  ForgePalette get _c => ForgeColors.of(context);
 
   @override
   void initState() {
@@ -103,7 +106,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         appBar: AppBar(
           title: Text(
             '工坊设置',
-            style: AppFonts.display(fontWeight: FontWeight.w600),
+            style: AppFonts.displayOf(context, fontWeight: FontWeight.w600),
           ),
           centerTitle: true,
         ),
@@ -112,6 +115,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            const VisualThemePicker(),
+            const SizedBox(height: AppSpace.lg),
             // 游戏设置
             ForgeStagger(
               index: 0,
@@ -134,7 +139,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                         underline: Container(),
                       ),
                     ),
-                    const Divider(color: AppColors.border),
+                    Divider(color: _c.border),
                     
                     // 勿扰模式
                     _buildSettingItem(
@@ -146,7 +151,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                         onChanged: (v) {
                           gameNotifier.updateDndMode(v, gameState.dndStart, gameState.dndEnd);
                         },
-                        activeColor: AppColors.green,
+                        activeColor: _c.green,
                       ),
                     ),
                     
@@ -184,7 +189,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                           ],
                         ),
                       ),
-                    const Divider(color: AppColors.border),
+                    Divider(color: _c.border),
                     
                     // 通知开关
                     _buildSettingItem(
@@ -197,10 +202,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                           gameNotifier.updateNotificationEnabled(v);
                           _showToast(v ? '通知已开启' : '通知已关闭');
                         },
-                        activeColor: AppColors.green,
+                        activeColor: _c.green,
                       ),
                     ),
-                    const Divider(color: AppColors.border),
+                    Divider(color: _c.border),
                     
                     // 提醒频率
                     _buildSettingItem(
@@ -223,7 +228,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                         underline: Container(),
                       ),
                     ),
-                    const Divider(color: AppColors.border),
+                    Divider(color: _c.border),
                     
                     // 语音播报
                     _buildSettingItem(
@@ -237,10 +242,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                           gameNotifier.updateVoiceEnabled(v);
                           _showToast(v ? '语音已开启' : '语音已关闭');
                         },
-                        activeColor: AppColors.green,
+                        activeColor: _c.green,
                       ),
                     ),
-                    const Divider(color: AppColors.border),
+                    Divider(color: _c.border),
                     _buildSettingItem(
                       icon: '🦵',
                       title: '膝盖不适',
@@ -251,10 +256,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                           gameNotifier.updateInjuryFlags(kneeIssue: v);
                           _showToast(v ? '已避开屈膝动作' : '已恢复屈膝动作');
                         },
-                        activeColor: AppColors.green,
+                        activeColor: _c.green,
                       ),
                     ),
-                    const Divider(color: AppColors.border),
+                    Divider(color: _c.border),
                     _buildSettingItem(
                       icon: '🧘',
                       title: '腰腹不适',
@@ -265,7 +270,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                           gameNotifier.updateInjuryFlags(waistIssue: v);
                           _showToast(v ? '已避开腰腹屈曲' : '已恢复核心动作');
                         },
-                        activeColor: AppColors.green,
+                        activeColor: _c.green,
                       ),
                     ),
                   ],
@@ -287,8 +292,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   padding: const EdgeInsets.symmetric(vertical: AppSpace.sm),
                   child: Row(
                     children: [
-                      const Icon(Icons.chat_bubble_outline_rounded,
-                          color: AppColors.copper, size: 22),
+                      Icon(Icons.chat_bubble_outline_rounded,
+                          color: _c.copper, size: 22),
                       const SizedBox(width: AppSpace.md),
                       Expanded(
                         child: Column(
@@ -299,17 +304,17 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                               style: AppFonts.body(
                                 fontSize: 14,
                                 fontWeight: FontWeight.w600,
-                                color: AppColors.text,
+                                color: _c.text,
                               ),
                             ),
                             Text(
                               '按今日饮食与预算问怎么吃，不会改目标也不会偷偷记账',
-                              style: AppFonts.body(fontSize: 12, color: AppColors.text2),
+                              style: AppFonts.body(fontSize: 12, color: _c.text2),
                             ),
                           ],
                         ),
                       ),
-                      const Icon(Icons.chevron_right, color: AppColors.text2, size: 20),
+                      Icon(Icons.chevron_right, color: _c.text2, size: 20),
                     ],
                   ),
                 ),
@@ -352,13 +357,13 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                                 padding: const EdgeInsets.symmetric(vertical: AppSpace.md - 2),
                                 decoration: BoxDecoration(
                                   color: isSelected
-                                      ? AppColors.purple.withValues(alpha: 0.25)
-                                      : AppColors.surface,
+                                      ? _c.purple.withValues(alpha: 0.25)
+                                      : _c.surface,
                                   borderRadius: AppRadii.smAll,
                                   border: Border.all(
                                     color: isSelected
-                                        ? AppColors.purple
-                                        : AppColors.border,
+                                        ? _c.purple
+                                        : _c.border,
                                     width: isSelected ? 1.5 : 1.0,
                                   ),
                                 ),
@@ -368,7 +373,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                                     Icon(
                                       AppIcons.characterStyle(style),
                                       size: 20,
-                                      color: isSelected ? AppColors.purple : AppColors.text2,
+                                      color: isSelected ? _c.purple : _c.text2,
                                     ),
                                     const SizedBox(height: AppSpace.xs),
                                     Text(
@@ -376,7 +381,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                                       style: AppFonts.body(
                                         fontSize: 12,
                                         fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                                        color: isSelected ? AppColors.purple : AppColors.text,
+                                        color: isSelected ? _c.purple : _c.text,
                                       ),
                                     ),
                                   ],
@@ -412,7 +417,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                       );
                     },
                   ),
-                  const Divider(height: 1, color: AppColors.border),
+                  Divider(height: 1, color: _c.border),
                   _navRow(
                     icon: Icons.emoji_events_outlined,
                     title: '成就',
@@ -424,7 +429,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                       );
                     },
                   ),
-                  const Divider(height: 1, color: AppColors.border),
+                  Divider(height: 1, color: _c.border),
                   _navRow(
                     icon: Icons.storefront_outlined,
                     title: '锻造商店',
@@ -438,18 +443,19 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                             vertical: AppSpace.xs,
                           ),
                           borderRadius: BorderRadius.circular(AppRadii.pill),
-                          color: AppColors.copper.withValues(alpha: 0.12),
-                          borderColor: AppColors.copper.withValues(alpha: 0.35),
+                          color: _c.copper.withValues(alpha: 0.12),
+                          borderColor: _c.copper.withValues(alpha: 0.35),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              const Icon(Icons.monetization_on_outlined,
-                                  color: AppColors.copper, size: 14),
+                              Icon(Icons.monetization_on_outlined,
+                                  color: _c.copper, size: 14),
                               const SizedBox(width: AppSpace.xs),
                               Text(
                                 '${gameState.coins}',
-                                style: AppFonts.display(
-                                  color: AppColors.copper,
+                                style: AppFonts.displayOf(
+                                  context,
+                                  color: _c.copper,
                                   fontWeight: FontWeight.w600,
                                   fontSize: 13,
                                 ),
@@ -457,7 +463,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                             ],
                           ),
                         ),
-                        const Icon(Icons.chevron_right, color: AppColors.copper),
+                        Icon(Icons.chevron_right, color: _c.copper),
                       ],
                     ),
                     onTap: () {
@@ -489,7 +495,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                         icon: const Icon(Icons.share, size: 18),
                         label: const Text('分享成就卡片'),
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.gold,
+                          backgroundColor: _c.gold,
                           foregroundColor: Colors.black,
                         ),
                       ),
@@ -526,7 +532,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                             icon: const Icon(Icons.file_download, size: 18),
                             label: const Text('导出备份'),
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: AppColors.green,
+                              backgroundColor: _c.green,
                               foregroundColor: Colors.white,
                             ),
                           ),
@@ -538,8 +544,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                             icon: const Icon(Icons.file_upload, size: 18),
                             label: const Text('导入备份'),
                             style: OutlinedButton.styleFrom(
-                              foregroundColor: AppColors.purple,
-                              side: const BorderSide(color: AppColors.purple),
+                              foregroundColor: _c.purple,
+                              side: BorderSide(color: _c.purple),
                             ),
                           ),
                         ),
@@ -564,11 +570,11 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                       subtitle: _accountSubtitle,
                       trailing: Icon(
                         Icons.badge_outlined,
-                        color: AppColors.copper,
+                        color: _c.copper,
                         size: 20,
                       ),
                     ),
-                    const Divider(color: AppColors.border),
+                    Divider(color: _c.border),
 
                     // 后端 API 网关：绑定 ApiConfig + healthz
                     _buildSettingItem(
@@ -591,14 +597,14 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                                     : Icons.hourglass_empty,
                         color: !ApiConfig.isBackendEnabled ||
                                 _gatewayReachable == false
-                            ? AppColors.red
+                            ? _c.red
                             : _gatewayReachable == true
-                                ? AppColors.green
-                                : AppColors.text2,
+                                ? _c.green
+                                : _c.text2,
                         size: 20,
                       ),
                     ),
-                    const Divider(color: AppColors.border),
+                    Divider(color: _c.border),
 
                     _buildSettingItem(
                       icon: '☁️',
@@ -610,10 +616,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                           gameNotifier.updatePrivacyFlags(cloudSyncEnabled: v);
                           _showToast(v ? '已允许云端同步' : '已关闭云端同步');
                         },
-                        activeColor: AppColors.green,
+                        activeColor: _c.green,
                       ),
                     ),
-                    const Divider(color: AppColors.border),
+                    Divider(color: _c.border),
                     _buildSettingItem(
                       icon: '📷',
                       title: '食物视觉识别',
@@ -624,10 +630,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                           gameNotifier.updatePrivacyFlags(foodVisionEnabled: v);
                           _showToast(v ? '已允许食物识别' : '已关闭食物识别');
                         },
-                        activeColor: AppColors.green,
+                        activeColor: _c.green,
                       ),
                     ),
-                    const Divider(color: AppColors.border),
+                    Divider(color: _c.border),
                     _buildSettingItem(
                       icon: '🤸',
                       title: '摄像头姿态检测',
@@ -638,10 +644,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                           gameNotifier.updatePrivacyFlags(cameraPoseEnabled: v);
                           _showToast(v ? '已允许姿态检测' : '已关闭姿态检测');
                         },
-                        activeColor: AppColors.green,
+                        activeColor: _c.green,
                       ),
                     ),
-                    const Divider(color: AppColors.border),
+                    Divider(color: _c.border),
 
                     // 隐私政策入口（商店上架合规）
                     ForgePressable(
@@ -652,7 +658,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                         padding: const EdgeInsets.symmetric(vertical: AppSpace.md),
                         child: Row(
                           children: [
-                            const Icon(Icons.policy_outlined, color: AppColors.copper, size: 20),
+                            Icon(Icons.policy_outlined, color: _c.copper, size: 20),
                             const SizedBox(width: AppSpace.md),
                             Expanded(
                               child: Column(
@@ -663,22 +669,22 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                                     style: AppFonts.body(
                                       fontSize: 14,
                                       fontWeight: FontWeight.w600,
-                                      color: AppColors.text,
+                                      color: _c.text,
                                     ),
                                   ),
                                   Text(
                                     '信息收集、权限用途与注销说明',
-                                    style: AppFonts.body(fontSize: 12, color: AppColors.text2),
+                                    style: AppFonts.body(fontSize: 12, color: _c.text2),
                                   ),
                                 ],
                               ),
                             ),
-                            const Icon(Icons.chevron_right, color: AppColors.text2, size: 20),
+                            Icon(Icons.chevron_right, color: _c.text2, size: 20),
                           ],
                         ),
                       ),
                     ),
-                    const Divider(color: AppColors.border),
+                    Divider(color: _c.border),
 
                     // 退出当前账号按钮
                     SizedBox(
@@ -700,8 +706,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                           }
                         },
                         style: OutlinedButton.styleFrom(
-                          foregroundColor: AppColors.copper,
-                          side: BorderSide(color: AppColors.copper.withValues(alpha: 0.5)),
+                          foregroundColor: _c.copper,
+                          side: BorderSide(color: _c.copper.withValues(alpha: 0.5)),
                         ),
                       ),
                     ),
@@ -743,7 +749,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                                     );
                                     _showToast('账号已注销。云端数据将在 30 天后清除');
                                   },
-                                  style: ElevatedButton.styleFrom(backgroundColor: AppColors.red),
+                                  style: ElevatedButton.styleFrom(backgroundColor: _c.red),
                                   child: const Text('确认彻底注销'),
                                 ),
                               ],
@@ -751,9 +757,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                           );
                         },
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.red.withValues(alpha: 0.15),
-                          foregroundColor: AppColors.red,
-                          side: BorderSide(color: AppColors.red.withValues(alpha: 0.3)),
+                          backgroundColor: _c.red.withValues(alpha: 0.15),
+                          foregroundColor: _c.red,
+                          side: BorderSide(color: _c.red.withValues(alpha: 0.3)),
                         ),
                       ),
                     ),
@@ -776,12 +782,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [AppColors.bg2, AppColors.bg3],
+          colors: [_c.bg2, _c.bg3],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.gold.withOpacity(0.3)),
+        border: Border.all(color: _c.gold.withOpacity(0.3)),
       ),
       child: Column(
         children: [
@@ -797,7 +803,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               const Expanded(
                 child: Text('塑身工坊', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
               ),
-              Text('第${gs.day}天', style: TextStyle(color: AppColors.text2, fontSize: 11)),
+              Text('第${gs.day}天', style: TextStyle(color: _c.text2, fontSize: 11)),
             ],
           ),
           const SizedBox(height: 4),
@@ -808,14 +814,14 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           const SizedBox(height: 8),
           Text(
             '🏆 $unlocked/$total 成就解锁',
-            style: TextStyle(color: AppColors.gold, fontWeight: FontWeight.bold, fontSize: 16),
+            style: TextStyle(color: _c.gold, fontWeight: FontWeight.bold, fontSize: 16),
           ),
           const SizedBox(height: 4),
           if (unlocked.isNotEmpty)
             Wrap(
               spacing: 4,
               children: unlocked.take(6).map((a) =>
-                Icon(AppIcons.achievement(a.id), size: 16, color: AppColors.gold),
+                Icon(AppIcons.achievement(a.id), size: 16, color: _c.gold),
               ).toList(),
             ),
           const SizedBox(height: 6),
@@ -840,7 +846,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       children: [
         Text(emoji, style: const TextStyle(fontSize: 11)),
         const SizedBox(width: 2),
-        Text(text, style: TextStyle(color: AppColors.text, fontSize: 11, fontWeight: FontWeight.w600)),
+        Text(text, style: TextStyle(color: _c.text, fontSize: 11, fontWeight: FontWeight.w600)),
       ],
     );
   }
@@ -950,7 +956,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         ),
         child: Row(
           children: [
-            Icon(icon, color: AppColors.copper, size: 24),
+            Icon(icon, color: _c.copper, size: 24),
             const SizedBox(width: AppSpace.md),
             Expanded(
               child: Column(
@@ -962,13 +968,13 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   ),
                   Text(
                     subtitle,
-                    style: AppFonts.body(color: AppColors.text2, fontSize: 12),
+                    style: AppFonts.body(color: _c.text2, fontSize: 12),
                   ),
                 ],
               ),
             ),
             trailing ??
-                const Icon(Icons.chevron_right, color: AppColors.copper),
+                Icon(Icons.chevron_right, color: _c.copper),
           ],
         ),
       ),
@@ -985,7 +991,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     return ListTile(
       leading: Text(icon, style: const TextStyle(fontSize: 20)),
       title: Text(title),
-      subtitle: Text(subtitle, style: TextStyle(color: AppColors.text2, fontSize: 12)),
+      subtitle: Text(subtitle, style: TextStyle(color: _c.text2, fontSize: 12)),
       trailing: trailing,
       contentPadding: EdgeInsets.zero,
     );
@@ -996,7 +1002,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
-        backgroundColor: AppColors.card,
+        backgroundColor: _c.card,
         behavior: SnackBarBehavior.floating,
       ),
     );
@@ -1015,6 +1021,7 @@ class ShopPage extends ConsumerStatefulWidget {
 }
 
 class _ShopPageState extends ConsumerState<ShopPage> {
+  ForgePalette get _c => ForgeColors.of(context);
   @override
   void initState() {
     super.initState();
@@ -1038,7 +1045,7 @@ class _ShopPageState extends ConsumerState<ShopPage> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('购买成功！${item.name}（拥有 ×$qty）'),
-        backgroundColor: AppColors.ember.withValues(alpha: 0.9),
+        backgroundColor: _c.ember.withValues(alpha: 0.9),
         behavior: SnackBarBehavior.floating,
       ),
     );
@@ -1048,11 +1055,11 @@ class _ShopPageState extends ConsumerState<ShopPage> {
   Widget build(BuildContext context) {
     final gameState = ref.watch(gameStateProvider);
     final inventory = ref.watch(inventoryProvider);
-    final display = AppFonts.display(
+    final display = AppFonts.displayOf(
+      context,
       fontWeight: FontWeight.w600,
-      color: AppColors.text,
     );
-    final body = AppFonts.body(color: AppColors.text);
+    final body = AppFonts.bodyOf(context);
 
     return ForgeBackground(
       child: Scaffold(
@@ -1070,18 +1077,18 @@ class _ShopPageState extends ConsumerState<ShopPage> {
                     vertical: AppSpace.xs,
                   ),
                   borderRadius: BorderRadius.circular(AppRadii.pill),
-                  color: AppColors.copper.withValues(alpha: 0.12),
-                  borderColor: AppColors.copper.withValues(alpha: 0.35),
+                  color: _c.copper.withValues(alpha: 0.12),
+                  borderColor: _c.copper.withValues(alpha: 0.35),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.monetization_on_outlined,
-                          color: AppColors.copper, size: 16),
+                      Icon(Icons.monetization_on_outlined,
+                          color: _c.copper, size: 16),
                       const SizedBox(width: AppSpace.xs),
                       Text(
                         '${gameState.coins}',
                         style: display.copyWith(
-                          color: AppColors.copper,
+                          color: _c.copper,
                           fontSize: 14,
                         ),
                       ),
@@ -1096,12 +1103,12 @@ class _ShopPageState extends ConsumerState<ShopPage> {
           padding: AppSpace.page.copyWith(bottom: AppSpace.xxl),
           children: [
             ForgeSurface(
-              color: AppColors.surface,
+              color: _c.surface,
               borderRadius: AppRadii.smAll,
               padding: AppSpace.card,
               child: Text(
                 '购买后金币从主存档扣除；物品栏数量写入本地 inventory 存档。',
-                style: body.copyWith(color: AppColors.text2, fontSize: 11),
+                style: body.copyWith(color: _c.text2, fontSize: 11),
               ),
             ),
             const SizedBox(height: AppSpace.md),

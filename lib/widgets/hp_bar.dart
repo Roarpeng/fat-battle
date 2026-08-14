@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../constants/app_constants.dart';
+import '../theme/forge_palette.dart';
 import '../theme/motion.dart';
 
 /// 拥有扣血残影条（Ghost Damage Bar）与护盾微光的血条组件
@@ -68,14 +69,15 @@ class _HpBarState extends State<HpBar> with SingleTickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
+    final c = ForgeColors.of(context);
     final shieldPercent = (widget.shield / widget.max).clamp(0.0, 1.0);
 
     return Container(
       height: widget.height,
       decoration: BoxDecoration(
-        color: AppColors.bg,
+        color: c.bg,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: AppColors.border, width: 1),
+        border: Border.all(color: c.border, width: 1),
       ),
       child: Stack(
         children: [
@@ -90,7 +92,7 @@ class _HpBarState extends State<HpBar> with SingleTickerProviderStateMixin {
               widthFactor: _ghostPercent,
               child: Container(
                 decoration: BoxDecoration(
-                  color: AppColors.ghostBar,
+                  color: c.ghostBar,
                   borderRadius: BorderRadius.circular(10),
                 ),
               ),
@@ -185,10 +187,11 @@ class ProgressBar extends StatelessWidget {
   
   @override
   Widget build(BuildContext context) {
+    final c = ForgeColors.of(context);
     return Container(
       height: 24,
       decoration: BoxDecoration(
-        color: AppColors.bg,
+        color: c.bg,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Stack(
@@ -202,7 +205,7 @@ class ProgressBar extends StatelessWidget {
               child: Container(
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
-                    colors: [AppColors.copper, AppColors.ember],
+                    colors: [c.copper, c.ember],
                   ),
                   borderRadius: BorderRadius.circular(12),
                 ),

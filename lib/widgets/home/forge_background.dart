@@ -2,7 +2,8 @@ import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import '../../constants/app_constants.dart';
+import '../../theme/app_visual_theme.dart';
+import '../../theme/forge_palette.dart';
 
 /// 锻造工坊氛围背景：径向炉火光 + 暗角 + 漂浮火星粒子
 ///
@@ -65,16 +66,28 @@ class _ForgeBackgroundState extends State<ForgeBackground>
 
   @override
   Widget build(BuildContext context) {
+    final palette = ForgeColors.of(context);
+    switch (palette.visualTheme) {
+      case AppVisualTheme.sketch:
+        return _paperBackdrop(palette, child: widget.child, ink: false);
+      case AppVisualTheme.ink:
+        return _paperBackdrop(palette, child: widget.child, ink: true);
+      case AppVisualTheme.forge:
+        return _forgeBackdrop(palette);
+    }
+  }
+
+  Widget _forgeBackdrop(ForgePalette palette) {
     return Container(
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         gradient: RadialGradient(
-          center: Alignment(0, -0.42),
+          center: const Alignment(0, -0.42),
           radius: 1.05,
           colors: [
-            Color(0xFF1A1410),
-            AppColors.bg,
+            const Color(0xFF1A1410),
+            palette.bg,
           ],
-          stops: [0.0, 0.68],
+          stops: const [0.0, 0.68],
         ),
       ),
       child: Stack(
@@ -87,15 +100,14 @@ class _ForgeBackgroundState extends State<ForgeBackground>
                   end: Alignment.bottomCenter,
                   colors: [
                     Colors.transparent,
-                    AppColors.bg.withValues(alpha: 0.55),
-                    AppColors.bg,
+                    palette.bg.withValues(alpha: 0.55),
+                    palette.bg,
                   ],
                   stops: const [0.45, 0.82, 1],
                 ),
               ),
             ),
           ),
-          // 炉口底部余烬微光
           Positioned.fill(
             child: IgnorePointer(
               child: DecoratedBox(
@@ -104,7 +116,7 @@ class _ForgeBackgroundState extends State<ForgeBackground>
                     center: const Alignment(0, 0.95),
                     radius: 1.4,
                     colors: [
-                      AppColors.ember.withValues(alpha: 0.10),
+                      palette.ember.withValues(alpha: 0.10),
                       Colors.transparent,
                     ],
                     stops: const [0.0, 0.55],
@@ -113,13 +125,11 @@ class _ForgeBackgroundState extends State<ForgeBackground>
               ),
             ),
           ),
-          // 细微横纹纹理感
           Positioned.fill(
             child: IgnorePointer(
-              child: CustomPaint(painter: _ForgeGrainPainter()),
+              child: CustomPaint(painter: _ForgeGrainPainter(color: palette.copper)),
             ),
           ),
-          // 漂浮火星粒子
           if (widget.particleDensity > 0)
             Positioned.fill(
               child: IgnorePointer(
@@ -129,12 +139,74 @@ class _ForgeBackgroundState extends State<ForgeBackground>
                     painter: _SparkPainter(
                       sparks: _sparks,
                       t: _controller.value,
+                      glow: palette.forgeGlow,
                     ),
                   ),
                 ),
               ),
             ),
           widget.child,
+        ],
+      ),
+    );
+  }
+
+  Widget _paperBackdrop(ForgePalette palette, {required Widget child, required bool ink}) {
+    return Container(
+      color: palette.paper,
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: IgnorePointer(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: RadialGradient(
+                    center: ink ? const Alignment(0, -0.35) : const Alignment(0, -0.55),
+                    radius: 1.15,
+                    colors: ink
+                        ? [
+                            palette.ember.withValues(alpha: 0.08),
+                            palette.paper,
+                          ]
+                        : [
+                            const Color(0xFFFFFBF3),
+                            palette.paper,
+                          ],
+                    stops: const [0.0, 0.72],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          if (ink)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.transparent,
+                        palette.bg.withValues(alpha: 0.45),
+                      ],
+                      stops: const [0.55, 1],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          Positioned.fill(
+            child: IgnorePointer(
+              child: CustomPaint(
+                painter: _PaperGrainPainter(
+                  stroke: palette.copper.withValues(alpha: ink ? 0.05 : 0.06),
+                  speckle: palette.border.withValues(alpha: ink ? 0.12 : 0.07),
+                ),
+              ),
+            ),
+          ),
+          child,
         ],
       ),
     );
@@ -163,8 +235,13 @@ class _Spark {
 class _SparkPainter extends CustomPainter {
   final List<_Spark> sparks;
   final double t;
+  final Color glow;
 
-  const _SparkPainter({required this.sparks, required this.t});
+  const _SparkPainter({
+    required this.sparks,
+    required this.t,
+    required this.glow,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -182,7 +259,7 @@ class _SparkPainter extends CustomPainter {
       if (alpha <= 0.02) continue;
 
       final paint = Paint()
-        ..color = AppColors.forgeGlow.withValues(alpha: alpha)
+        ..color = glow.withValues(alpha: alpha)
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 1.5);
       canvas.drawCircle(
         Offset(x, y),
@@ -194,14 +271,20 @@ class _SparkPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _SparkPainter oldDelegate) =>
-      oldDelegate.t != t || oldDelegate.sparks != sparks;
+      oldDelegate.t != t ||
+      oldDelegate.sparks != sparks ||
+      oldDelegate.glow != glow;
 }
 
 class _ForgeGrainPainter extends CustomPainter {
+  final Color color;
+
+  const _ForgeGrainPainter({required this.color});
+
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = AppColors.copper.withValues(alpha: 0.03)
+      ..color = color.withValues(alpha: 0.03)
       ..strokeWidth = 1;
     for (double y = 0; y < size.height; y += 6) {
       canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
@@ -209,5 +292,37 @@ class _ForgeGrainPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  bool shouldRepaint(covariant _ForgeGrainPainter oldDelegate) =>
+      oldDelegate.color != color;
+}
+
+class _PaperGrainPainter extends CustomPainter {
+  final Color stroke;
+  final Color speckle;
+
+  const _PaperGrainPainter({required this.stroke, required this.speckle});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final line = Paint()
+      ..color = stroke
+      ..strokeWidth = 1;
+    for (double y = 0; y < size.height; y += 7) {
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), line);
+    }
+    final rng = math.Random(11);
+    final dot = Paint()..color = speckle;
+    final count = (size.width * size.height / 2800).round().clamp(24, 120);
+    for (var i = 0; i < count; i++) {
+      canvas.drawCircle(
+        Offset(rng.nextDouble() * size.width, rng.nextDouble() * size.height),
+        rng.nextDouble() * 0.9 + 0.3,
+        dot,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _PaperGrainPainter oldDelegate) =>
+      oldDelegate.stroke != stroke || oldDelegate.speckle != speckle;
 }

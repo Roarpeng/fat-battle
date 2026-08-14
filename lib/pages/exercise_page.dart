@@ -148,15 +148,17 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
   static const int _countdownSec = 3;
   static const double _alignThreshold = 0.62;
 
-  TextStyle get _displayStyle => AppFonts.display(
+  TextStyle get _displayStyle => AppFonts.displayOf(
+        context,
         fontWeight: FontWeight.w600,
-        color: AppColors.text,
       );
 
-  TextStyle get _bodyStyle => AppFonts.body(color: AppColors.text);
+  TextStyle get _bodyStyle => AppFonts.bodyOf(context);
 
   TextStyle get _mutedStyle =>
-      AppFonts.body(color: AppColors.text2, fontSize: 13);
+      AppFonts.bodyOf(context, color: ForgeColors.of(context).text2, fontSize: 13);
+
+  ForgePalette get _c => ForgeColors.of(context);
   
   @override
   void initState() {
@@ -1035,9 +1037,9 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
                 width: double.infinity,
                 padding: AppSpace.card,
                 decoration: BoxDecoration(
-                  color: AppColors.bg,
+                  color: _c.bg,
                   borderRadius: AppRadii.smAll,
-                  border: Border.all(color: AppColors.border),
+                  border: Border.all(color: _c.border),
                 ),
                 child: Text(
                   '💡 当前为纯 IMU（BLE）识别。摄像头+IMU 融合为可选功能，'
@@ -3546,18 +3548,18 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
           foregroundColor: WidgetStateProperty.resolveWith((states) {
             if (states.contains(WidgetState.selected)) {
-              return const Color(0xFFFFF8F5);
+              return _c.onEmber;
             }
-            return AppColors.text2;
+            return _c.text2;
           }),
           backgroundColor: WidgetStateProperty.resolveWith((states) {
             if (states.contains(WidgetState.selected)) {
-              return AppColors.copper;
+              return _c.copper;
             }
-            return AppColors.bg2;
+            return _c.bg2;
           }),
           side: WidgetStateProperty.all(
-            const BorderSide(color: AppColors.border),
+            BorderSide(color: _c.border),
           ),
           shape: WidgetStateProperty.all(
             RoundedRectangleBorder(borderRadius: AppRadii.smAll),
@@ -3584,7 +3586,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
           children: [
             Row(
               children: [
-                Icon(icon, color: AppColors.copper, size: 20),
+                Icon(icon, color: _c.copper, size: 20),
                 const SizedBox(width: AppSpace.sm),
                 Expanded(
                   child: Text(
@@ -3616,18 +3618,18 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: selected
-              ? AppColors.copper.withValues(alpha: 0.15)
-              : AppColors.bg2,
+              ? _c.copper.withValues(alpha: 0.15)
+              : _c.bg2,
           borderRadius: AppRadii.smAll,
           border: Border.all(
-            color: selected ? AppColors.copper : AppColors.border,
+            color: selected ? _c.copper : _c.border,
             width: selected ? 1.5 : 1,
           ),
         ),
         child: Text(
           label,
           style: AppFonts.body(
-            color: selected ? AppColors.copper : AppColors.text2,
+            color: selected ? _c.copper : _c.text2,
             fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
             fontSize: 13,
           ),
@@ -3641,7 +3643,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message, style: AppFonts.body()),
-        backgroundColor: AppColors.bg3,
+        backgroundColor: _c.bg3,
         behavior: SnackBarBehavior.floating,
       ),
     );

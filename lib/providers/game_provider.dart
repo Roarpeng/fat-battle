@@ -12,6 +12,7 @@ import '../services/progress_sync_service.dart';
 import '../services/voice_service.dart';
 import '../services/coach_feel.dart';
 import '../services/sculpt_icon_channel.dart';
+import '../theme/app_visual_theme.dart';
 import '../theme/sculpt_progress.dart';
 
 /// 游戏状态Provider
@@ -82,7 +83,13 @@ class GameStateNotifier extends StateNotifier<GameState> {
     }
 
     final saved = this.prefs!.getString('fat_battle_game');
+    final storedTheme = AppVisualTheme.fromId(
+      prefs!.getString(kAppVisualThemePrefKey),
+    );
     if (saved == null || saved.isEmpty) {
+      if (storedTheme != AppVisualTheme.forge) {
+        state = state.copyWith(visualTheme: storedTheme);
+      }
       debugPrint('[塑身工坊] 📭 未找到存档，尝试云端恢复');
       unawaited(_restoreFromCloudIfEmpty());
       return;
@@ -94,7 +101,11 @@ class GameStateNotifier extends StateNotifier<GameState> {
         debugPrint('[塑身工坊] 📭 存档为空 JSON，使用默认状态');
         return;
       }
-      final loaded = GameState.fromJson(json);
+      var loaded = GameState.fromJson(json);
+      if (json['visualTheme'] == null &&
+          prefs!.getString(kAppVisualThemePrefKey) != null) {
+        loaded = loaded.copyWith(visualTheme: storedTheme);
+      }
       state = loaded;
       debugPrint('[塑身工坊] ✅ 存档加载成功: 第${loaded.day}天, ${loaded.kills}杀, ${loaded.streak}连, 🪙${loaded.coins}');
       _syncSculptLauncher();
@@ -113,6 +124,7 @@ class GameStateNotifier extends StateNotifier<GameState> {
 
     await prefs!.setString('fat_battle_game', jsonEncode(state.toJson()));
     await _writeSculptPrefs();
+    await prefs!.setString(kAppVisualThemePrefKey, state.visualTheme.name);
     unawaited(ProgressSyncService.instance.onLocalSaved(state.toJson()));
   }
 
@@ -124,6 +136,7 @@ class GameStateNotifier extends StateNotifier<GameState> {
     try {
       prefs!.setString('fat_battle_game', jsonEncode(state.toJson()));
       _writeSculptPrefsSync();
+      prefs!.setString(kAppVisualThemePrefKey, state.visualTheme.name);
       unawaited(ProgressSyncService.instance.onLocalSaved(state.toJson()));
     } catch (e) {
       debugPrint('[塑身工坊] ❌ 同步保存失败: $e');
@@ -136,6 +149,7 @@ class GameStateNotifier extends StateNotifier<GameState> {
     if (prefs == null) return;
     await prefs!.setString('fat_battle_game', jsonEncode(state.toJson()));
     await _writeSculptPrefs();
+    await prefs!.setString(kAppVisualThemePrefKey, state.visualTheme.name);
     _syncSculptLauncher();
   }
 
@@ -145,7 +159,11 @@ class GameStateNotifier extends StateNotifier<GameState> {
     final json = await ProgressSyncService.instance.pullIfLocalEmpty();
     if (json == null || state.hasGame) return;
     if (!snapshotLooksLikeGame(json)) return;
+    final keepTheme = state.visualTheme;
     state = GameState.fromJson(json);
+    if (json['visualTheme'] == null) {
+      state = state.copyWith(visualTheme: keepTheme);
+    }
     debugPrint('[塑身工坊] ☁️ 已从云端恢复存档: 第${state.day}天');
     _syncSculptLauncher();
   }
@@ -309,6 +327,7 @@ class GameStateNotifier extends StateNotifier<GameState> {
       sculptMaintenance: onboard.maintenance,
       sculptLastSettledDate: onboard.maintenance ? today : '',
       sculptOvereatSinceSettle: 0,
+      visualTheme: state.visualTheme,
     );
     
     await _saveGame();
@@ -752,6 +771,12 @@ class GameStateNotifier extends StateNotifier<GameState> {
     await _saveGame();
   }
 
+  /// 切换工坊视觉风格（立即写入存档，重启后仍在）。
+  Future<void> updateVisualTheme(AppVisualTheme theme) async {
+    state = state.copyWith(visualTheme: theme);
+    await _saveGame();
+  }
+
   /// 更新 PIPL 本地同意开关（云同步 / 食物视觉 / 摄像头姿态）
   Future<void> updatePrivacyFlags({
     bool? cloudSyncEnabled,
@@ -1026,13 +1051,15 @@ class GameStateNotifier extends StateNotifier<GameState> {
 
   /// 重置游戏
   Future<void> resetGame() async {
-    state = GameState();
+    final theme = state.visualTheme;
+    state = GameState(visualTheme: theme);
     if (prefs != null) {
       await prefs!.remove('fat_battle_game');
       await prefs!.remove('sculpt_progress');
       await prefs!.remove('sculpt_settled_count');
       await prefs!.remove('sculpt_stage');
       await prefs!.remove('sculpt_line');
+      await prefs!.setString(kAppVisualThemePrefKey, theme.name);
     }
     _syncSculptLauncher();
   }
@@ -1117,6 +1144,9 @@ class GameState {
   /// 自上次结算以来的暴食次数（≥2 触发回潮）。
   final int sculptOvereatSinceSettle;
 
+  /// 工坊视觉风格（熔炉 / 铅笔手账 / 墨稿）。
+  final AppVisualTheme visualTheme;
+
   const GameState({
     this.user = const User(),
     this.monster = const Monster(),
@@ -1166,6 +1196,7 @@ class GameState {
     this.sculptMaintenance = false,
     this.sculptLastSettledDate = '',
     this.sculptOvereatSinceSettle = 0,
+    this.visualTheme = AppVisualTheme.forge,
   });
   
   GameState copyWith({
@@ -1218,6 +1249,7 @@ class GameState {
     bool? sculptMaintenance,
     String? sculptLastSettledDate,
     int? sculptOvereatSinceSettle,
+    AppVisualTheme? visualTheme,
   }) {
     return GameState(
       user: user ?? this.user,
@@ -1272,6 +1304,7 @@ class GameState {
           sculptLastSettledDate ?? this.sculptLastSettledDate,
       sculptOvereatSinceSettle:
           sculptOvereatSinceSettle ?? this.sculptOvereatSinceSettle,
+      visualTheme: visualTheme ?? this.visualTheme,
     );
   }
   
@@ -1361,6 +1394,7 @@ class GameState {
       'sculptMaintenance': sculptMaintenance,
       'sculptLastSettledDate': sculptLastSettledDate,
       'sculptOvereatSinceSettle': sculptOvereatSinceSettle,
+      'visualTheme': visualTheme.name,
     };
   }
   
@@ -1472,6 +1506,7 @@ class GameState {
       sculptLastSettledDate: json['sculptLastSettledDate'] as String? ?? '',
       sculptOvereatSinceSettle:
           (json['sculptOvereatSinceSettle'] as num?)?.toInt() ?? 0,
+      visualTheme: AppVisualTheme.fromId(json['visualTheme'] as String?),
     );
   }
   

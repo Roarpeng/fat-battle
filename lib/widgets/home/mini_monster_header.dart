@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../theme/forge_theme.dart';
 import '../../theme/tokens.dart';
 
-import '../../constants/app_constants.dart';
 import '../../providers/game_provider.dart';
 import '../battle/forge_monster_art.dart';
 import '../hp_bar.dart';
@@ -15,6 +14,7 @@ class MiniMonsterHeader extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final gs = ref.watch(gameStateProvider);
+    final c = ForgeColors.of(context);
     if (!gs.hasGame) return const SizedBox.shrink();
 
     return Container(
@@ -26,9 +26,9 @@ class MiniMonsterHeader extends ConsumerWidget {
         AppSpace.md,
       ),
       decoration: BoxDecoration(
-        color: AppColors.surface.withValues(alpha: 0.94),
-        border: const Border(
-          bottom: BorderSide(color: AppColors.border),
+        color: c.surface.withValues(alpha: 0.94),
+        border: Border(
+          bottom: BorderSide(color: c.border),
         ),
       ),
       child: Row(
@@ -38,11 +38,11 @@ class MiniMonsterHeader extends ConsumerWidget {
             height: 44,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: AppColors.elevated,
+              color: c.elevated,
               border: Border.all(
                 color: gs.monster.hasShield
-                    ? AppColors.shield
-                    : AppColors.copper.withValues(alpha: 0.5),
+                    ? c.shield
+                    : c.copper.withValues(alpha: 0.5),
               ),
             ),
             alignment: Alignment.center,
@@ -61,19 +61,19 @@ class MiniMonsterHeader extends ConsumerWidget {
               children: [
                 Text(
                   gs.monster.name,
-                  style: AppFonts.body(
+                  style: AppFonts.bodyOf(
+                    context,
                     fontWeight: FontWeight.w700,
                     fontSize: 14,
-                    color: AppColors.text,
                   ),
                 ),
                 const SizedBox(height: AppSpace.sm),
                 HpBar(
                   current: gs.monster.hp,
                   max: gs.monster.maxHp,
-                  color: AppColors.ember,
+                  color: c.ember,
                   shield: gs.monster.shield,
-                  shieldColor: AppColors.shield,
+                  shieldColor: c.shield,
                   height: 10,
                   showText: false,
                 ),
@@ -83,9 +83,10 @@ class MiniMonsterHeader extends ConsumerWidget {
           const SizedBox(width: AppSpace.sm),
           Text(
             '${gs.monster.hp}/${gs.monster.maxHp}',
-            style: AppFonts.body(
+            style: AppFonts.bodyOf(
+              context,
               fontSize: 11,
-              color: AppColors.text2,
+              color: c.text2,
               fontWeight: FontWeight.w600,
             ),
           ),

@@ -25,12 +25,14 @@ class BattlePage extends ConsumerStatefulWidget {
 }
 
 class _BattlePageState extends ConsumerState<BattlePage> {
-  TextStyle get _displayStyle => AppFonts.display(
+  ForgePalette get _c => ForgeColors.of(context);
+
+  TextStyle get _displayStyle => AppFonts.displayOf(
+        context,
         fontWeight: FontWeight.w600,
-        color: AppColors.text,
       );
 
-  TextStyle get _bodyStyle => AppFonts.body(color: AppColors.text);
+  TextStyle get _bodyStyle => AppFonts.bodyOf(context);
 
   DamageEvent? _lastDamage;
   int _prevMonsterHp = 0;
@@ -123,9 +125,9 @@ class _BattlePageState extends ConsumerState<BattlePage> {
   }
 
   Color _getCalorieColor(GameState gs) {
-    if (gs.remainingCal >= 500) return AppColors.green;
-    if (gs.remainingCal >= 0) return AppColors.copper;
-    return AppColors.shield;
+    if (gs.remainingCal >= 500) return _c.green;
+    if (gs.remainingCal >= 0) return _c.copper;
+    return _c.shield;
   }
 
   String _getTierName(Monster monster) {
@@ -134,8 +136,8 @@ class _BattlePageState extends ConsumerState<BattlePage> {
   }
 
   Color _getTierColor(Monster monster) {
-    if (monster.isBoss) return AppColors.ember;
-    return AppColors.bg3;
+    if (monster.isBoss) return _c.ember;
+    return _c.bg3;
   }
 
   void _switchTabOrPop(int index) {
@@ -266,19 +268,19 @@ class _BattlePageState extends ConsumerState<BattlePage> {
         const Spacer(),
         Text(
           '第 ${gs.day} 天',
-          style: _bodyStyle.copyWith(color: AppColors.text2, fontSize: 13),
+          style: _bodyStyle.copyWith(color: _c.text2, fontSize: 13),
         ),
         const SizedBox(width: 16),
         Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(Icons.monetization_on_outlined,
-                color: AppColors.copper, size: 14),
+                color: _c.copper, size: 14),
             const SizedBox(width: 4),
             Text(
               '${gs.coins}',
               style: _displayStyle.copyWith(
-                color: AppColors.copper,
+                color: _c.copper,
                 fontSize: 13,
               ),
             ),
@@ -293,9 +295,9 @@ class _BattlePageState extends ConsumerState<BattlePage> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: AppColors.card.withValues(alpha: 0.6),
+        color: _c.card.withValues(alpha: 0.6),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.border.withValues(alpha: 0.5)),
+        border: Border.all(color: _c.border.withValues(alpha: 0.5)),
       ),
       child: Row(
         children: [
@@ -304,9 +306,9 @@ class _BattlePageState extends ConsumerState<BattlePage> {
               children: [
                 const Text('摄入', style: TextStyle(fontSize: 12)),
                 const SizedBox(width: 4),
-                const Text(
+                Text(
                   'kcal',
-                  style: TextStyle(color: AppColors.text2, fontSize: 12),
+                  style: TextStyle(color: _c.text2, fontSize: 12),
                 ),
                 const SizedBox(width: 4),
                 Text(
@@ -318,7 +320,7 @@ class _BattlePageState extends ConsumerState<BattlePage> {
                 ),
                 Text(
                   ' / ${gs.targetCal}',
-                  style: const TextStyle(color: AppColors.text2, fontSize: 12),
+                  style: TextStyle(color: _c.text2, fontSize: 12),
                 ),
               ],
             ),
@@ -326,7 +328,7 @@ class _BattlePageState extends ConsumerState<BattlePage> {
           Container(
             width: 1,
             height: 12,
-            color: AppColors.border,
+            color: _c.border,
           ),
           Expanded(
             child: Row(
@@ -334,9 +336,9 @@ class _BattlePageState extends ConsumerState<BattlePage> {
               children: [
                 const Text('消耗', style: TextStyle(fontSize: 12)),
                 const SizedBox(width: 4),
-                const Text(
+                Text(
                   'kcal',
-                  style: TextStyle(color: AppColors.text2, fontSize: 12),
+                  style: TextStyle(color: _c.text2, fontSize: 12),
                 ),
                 const SizedBox(width: 4),
                 Text(
@@ -353,13 +355,13 @@ class _BattlePageState extends ConsumerState<BattlePage> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
               decoration: BoxDecoration(
-                color: AppColors.shield.withValues(alpha: 0.2),
+                color: _c.shield.withValues(alpha: 0.2),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Text(
                 '护盾 +${-gs.remainingCal}',
-                style: const TextStyle(
-                  color: AppColors.shield,
+                style: TextStyle(
+                  color: _c.shield,
                   fontSize: 11,
                   fontWeight: FontWeight.bold,
                 ),
@@ -379,9 +381,9 @@ class _BattlePageState extends ConsumerState<BattlePage> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.card.withValues(alpha: 0.3),
+        color: _c.card.withValues(alpha: 0.3),
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: AppColors.border.withValues(alpha: 0.5)),
+        border: Border.all(color: _c.border.withValues(alpha: 0.5)),
       ),
       child: Column(
         children: [
@@ -449,7 +451,7 @@ class _BattlePageState extends ConsumerState<BattlePage> {
           const SizedBox(height: 16),
           Text(
             greeting,
-            style: _bodyStyle.copyWith(fontSize: 14, color: AppColors.text2),
+            style: _bodyStyle.copyWith(fontSize: 14, color: _c.text2),
           ),
           const SizedBox(height: 4),
           Text(
@@ -462,7 +464,7 @@ class _BattlePageState extends ConsumerState<BattlePage> {
           const SizedBox(height: 8),
           Text(
             _getStatusMessage(gameState),
-            style: _bodyStyle.copyWith(color: AppColors.text2, fontSize: 13),
+            style: _bodyStyle.copyWith(color: _c.text2, fontSize: 13),
             textAlign: TextAlign.center,
           ),
         ],
@@ -507,15 +509,15 @@ class _BattlePageState extends ConsumerState<BattlePage> {
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 16),
           decoration: BoxDecoration(
-            color: isPrimary ? AppColors.ember : AppColors.card,
+            color: isPrimary ? _c.ember : _c.card,
             borderRadius: BorderRadius.circular(16),
             border: isPrimary
-                ? Border.all(color: AppColors.ember.withValues(alpha: 0.5))
-                : Border.all(color: AppColors.border),
+                ? Border.all(color: _c.ember.withValues(alpha: 0.5))
+                : Border.all(color: _c.border),
             boxShadow: isPrimary
                 ? [
                     BoxShadow(
-                      color: AppColors.ember.withValues(alpha: 0.3),
+                      color: _c.ember.withValues(alpha: 0.3),
                       blurRadius: 16,
                       offset: const Offset(0, 6),
                     ),
@@ -531,7 +533,7 @@ class _BattlePageState extends ConsumerState<BattlePage> {
                 style: _bodyStyle.copyWith(
                   fontSize: 13,
                   fontWeight: FontWeight.w500,
-                  color: isPrimary ? const Color(0xFFFFF8F5) : AppColors.text,
+                  color: isPrimary ? _c.onEmber : _c.text,
                 ),
               ),
             ],
@@ -545,15 +547,15 @@ class _BattlePageState extends ConsumerState<BattlePage> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       decoration: BoxDecoration(
-        color: AppColors.green.withValues(alpha: 0.15),
+        color: _c.green.withValues(alpha: 0.15),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.green.withValues(alpha: 0.4)),
+        border: Border.all(color: _c.green.withValues(alpha: 0.4)),
       ),
       child: Row(
         children: [
           const Text('🎉', style: TextStyle(fontSize: 20)),
           const SizedBox(width: 10),
-          const Expanded(
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -562,12 +564,12 @@ class _BattlePageState extends ConsumerState<BattlePage> {
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.bold,
-                    color: AppColors.green,
+                    color: _c.green,
                   ),
                 ),
                 Text(
                   '炉火温着，明日再战',
-                  style: TextStyle(color: AppColors.text2, fontSize: 12),
+                  style: TextStyle(color: _c.text2, fontSize: 12),
                 ),
               ],
             ),
@@ -585,9 +587,9 @@ class _BattlePageState extends ConsumerState<BattlePage> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       decoration: BoxDecoration(
-        color: AppColors.copper.withValues(alpha: 0.1),
+        color: _c.copper.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.copper.withValues(alpha: 0.35)),
+        border: Border.all(color: _c.copper.withValues(alpha: 0.35)),
       ),
       child: Row(
         children: [
@@ -601,12 +603,12 @@ class _BattlePageState extends ConsumerState<BattlePage> {
                   '今日精力耗尽',
                   style: _displayStyle.copyWith(
                     fontSize: 14,
-                    color: AppColors.copper,
+                    color: _c.copper,
                   ),
                 ),
                 Text(
                   '好好休养，明天满血归来',
-                  style: _bodyStyle.copyWith(color: AppColors.text2, fontSize: 12),
+                  style: _bodyStyle.copyWith(color: _c.text2, fontSize: 12),
                 ),
               ],
             ),
