@@ -1,6 +1,8 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../../constants/app_constants.dart';
+import '../../theme/motion.dart';
+import 'clay_fx.dart';
 
 /// 胜利奖励信息
 class VictoryReward {
@@ -79,38 +81,11 @@ class _VictoryEffectState extends State<VictoryEffect>
   late final Animation<double> _cardOpacity;
   late final Animation<double> _cardY;
 
-  //  金币雨（持续�
-  late final AnimationController _coinController;
-
-  // 星爆（持续循环）
-  late final AnimationController _starController;
-
-  //  金币雨数�
-  final List<_CoinData> _coins = [];
-  // 星爆数据
-  final List<_StarData> _stars = [];
-  final _rng = math.Random();
+  late final AnimationController _sparkController;
 
   @override
   void initState() {
     super.initState();
-
-    // 初始化金币雨数据
-    for (var i = 0; i < 30; i++) {
-      _coins.add(_CoinData(
-        leftPercent: _rng.nextDouble() * 100,
-        delaySeconds: _rng.nextDouble() * 2,
-        durationSeconds: 2 + _rng.nextDouble() * 2,
-        size: 20 + _rng.nextDouble() * 16,
-      ));
-    }
-    //  初始化星爆数�
-    for (var i = 0; i < 12; i++) {
-      _stars.add(_StarData(
-        angle: (i * 30) * (math.pi / 180),
-        delay: i * 0.1,
-      ));
-    }
 
     _fadeController = AnimationController(
       duration: const Duration(milliseconds: 300),
@@ -161,19 +136,15 @@ class _VictoryEffectState extends State<VictoryEffect>
       CurvedAnimation(parent: _cardController, curve: Curves.easeOut),
     );
 
-    _coinController = AnimationController(
-      duration: const Duration(seconds: 4),
+    _sparkController = AnimationController(
+      duration: AppMotion.spark,
       vsync: this,
-    )..repeat();
+    );
 
-    _starController = AnimationController(
-      duration: const Duration(milliseconds: 1500),
-      vsync: this,
-    )..repeat();
-
-    // 启动时序
-    Future.delayed(const Duration(milliseconds: 100), () {
-      if (mounted) _trophyController.forward();
+    Future.delayed(const Duration(milliseconds: 80), () {
+      if (!mounted) return;
+      _trophyController.forward();
+      _sparkController.forward();
     });
     Future.delayed(const Duration(milliseconds: 500), () {
       if (mounted) _textController.forward();
@@ -190,8 +161,7 @@ class _VictoryEffectState extends State<VictoryEffect>
     _swingController.dispose();
     _textController.dispose();
     _cardController.dispose();
-    _coinController.dispose();
-    _starController.dispose();
+    _sparkController.dispose();
     super.dispose();
   }
 
@@ -210,12 +180,8 @@ class _VictoryEffectState extends State<VictoryEffect>
         body: Stack(
           alignment: Alignment.center,
           children: [
-            // 背景径向渐变光晕
             _buildBackgroundGlow(),
-            // 金币�?            _buildCoinRain(),
-            // 星爆
-            _buildStarBurst(),
-            // 中央内容
+            _buildChiselSpark(),
             _buildCenterContent(),
           ],
         ),
@@ -247,93 +213,25 @@ class _VictoryEffectState extends State<VictoryEffect>
     );
   }
 
-  ///  金币�
-  Widget _buildCoinRain() {
+  Widget _buildChiselSpark() {
+    final scheme = Theme.of(context).colorScheme;
     return Positioned.fill(
       child: IgnorePointer(
         child: AnimatedBuilder(
-          animation: _coinController,
+          animation: _sparkController,
           builder: (context, _) {
-            return Stack(
-              children: _coins.map((coin) {
-                //  每个 coin �?_coinController �?value + delay 算位�
-                final progress =
-                    ((_coinController.value + coin.delaySeconds / 4) % 1.0);
-                // 从顶�?(-10%) 到底�?(110%)
-                final top = -10 + progress * 120;
-                // 旋转
-                final rotation = progress * 4 * math.pi;
-                return Positioned(
-                  left: null,
-                  top: MediaQuery.of(context).size.height * top / 100,
-                  child: Align(
-                    alignment: Alignment(
-                      (coin.leftPercent - 50) / 50,
-                      0,
-                    ),
-                    child: Transform.rotate(
-                      angle: rotation,
-                      child: Opacity(
-                        opacity: progress < 0.1
-                            ? progress * 10
-                            : (progress > 0.9 ? (1 - progress) * 10 : 1),
-                        child: Text(
-                          '🪙',
-                          style: TextStyle(
-                            fontSize: coin.size,
-                            decoration: TextDecoration.none,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                );
-              }).toList(),
+            if (AppMotion.reduceMotion(context)) {
+              return const SizedBox.shrink();
+            }
+            return CustomPaint(
+              painter: ChiselSparkPainter(
+                progress: _sparkController.value,
+                spark: AppColors.hitSpark,
+                clay: scheme.secondary,
+              ),
             );
           },
         ),
-      ),
-    );
-  }
-
-  /// 星爆�?2 颗星星向 12 个方向发散）
-  Widget _buildStarBurst() {
-    return IgnorePointer(
-      child: AnimatedBuilder(
-        animation: _starController,
-        builder: (context, _) {
-          return Stack(
-            alignment: Alignment.center,
-            children: _stars.map((star) {
-              //  t �?0..1 之间循环（带 delay�
-              final t = (_starController.value + star.delay) % 1.0;
-              // scale: 0 -> 1.5 -> 0
-              final scale = t < 0.5 ? t * 3 : (1 - t) * 3;
-              // opacity: 0 -> 1 -> 0
-              final opacity = t < 0.5 ? t * 2 : (1 - t) * 2;
-              // 位置
-              final distance = 150 + t * 100;
-              final dx = math.cos(star.angle) * distance;
-              final dy = math.sin(star.angle) * distance;
-              return Transform.translate(
-                offset: Offset(dx, dy),
-                child: Transform.scale(
-                  scale: scale,
-                  child: Opacity(
-                    opacity: opacity.clamp(0.0, 1.0),
-                    child: const Text(
-                      '*',
-                      style: TextStyle(
-                        fontSize: 24,
-                        decoration: TextDecoration.none,
-                      ),
-                    ),
-                  ),
-                ),
-              );
-            }).toList(),
-          );
-        },
       ),
     );
   }
@@ -348,8 +246,6 @@ class _VictoryEffectState extends State<VictoryEffect>
           _buildTrophy(),
           const SizedBox(height: 16),
           _buildVictoryText(),
-          const SizedBox(height: 8),
-          _buildCelebrationEmoji(),
           if (widget.showRewardCard && widget.reward != null) ...[
             const SizedBox(height: 24),
             _buildRewardCard(),
@@ -410,25 +306,6 @@ class _VictoryEffectState extends State<VictoryEffect>
                   decoration: TextDecoration.none,
                 ),
               ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  /// 庆祝 emoji（脉动）
-  Widget _buildCelebrationEmoji() {
-    return AnimatedBuilder(
-      animation: _swingController,
-      builder: (context, _) {
-        return Transform.scale(
-          scale: 1.0 + _swingAnimation.value.abs() * 0.2,
-          child: const Text(
-            '🎉',
-            style: TextStyle(
-              fontSize: 56,
-              decoration: TextDecoration.none,
             ),
           ),
         );
@@ -550,27 +427,4 @@ class _VictoryEffectState extends State<VictoryEffect>
       },
     );
   }
-}
-
-///  金币雨单条数�
-class _CoinData {
-  final double leftPercent; // 0..100
-  final double delaySeconds;
-  final double durationSeconds;
-  final double size;
-
-  const _CoinData({
-    required this.leftPercent,
-    required this.delaySeconds,
-    required this.durationSeconds,
-    required this.size,
-  });
-}
-
-/// 星爆单条数据
-class _StarData {
-  final double angle;
-  final double delay;
-
-  const _StarData({required this.angle, required this.delay});
 }

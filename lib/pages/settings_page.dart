@@ -7,6 +7,8 @@ import '../theme/forge_theme.dart';
 import '../theme/app_icons.dart';
 import '../theme/forge_routes.dart';
 import '../theme/tokens.dart';
+import '../theme/motion.dart';
+import '../widgets/sculpt_icon.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -116,7 +118,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             const VisualThemePicker(),
             const SizedBox(height: AppSpace.lg),
             // 游戏设置
-            ForgeSurface(
+            ForgeStagger(
+              index: 0,
+              child: ForgeSurface(
               child: Column(
                   children: [
                     // 游戏难度
@@ -272,9 +276,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   ],
                 ),
             ),
+            ),
             const SizedBox(height: AppSpace.lg),
 
-            ForgeSurface(
+            ForgeStagger(
+              index: 1,
+              child: ForgeSurface(
               child: ForgePressable(
                 onTap: () {
                   Navigator.of(context).push(
@@ -313,10 +320,13 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 ),
               ),
             ),
+            ),
             const SizedBox(height: AppSpace.lg),
             
             // 角色风格选择
-            ForgeSurface(
+            ForgeStagger(
+              index: 2,
+              child: ForgeSurface(
               child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -384,6 +394,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     ),
                   ],
                 ),
+            ),
             ),
             const SizedBox(height: AppSpace.lg),
 
@@ -782,10 +793,23 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         children: [
           Row(
             children: [
-              const Text('🔨 塑身工坊', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-              const Spacer(),
+              SculptIcon(
+                stage: gs.sculptStage,
+                line: gs.user.sculptLine,
+                sculptProgress: gs.sculptProgress,
+                size: 36,
+              ),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text('塑身工坊', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+              ),
               Text('第${gs.day}天', style: TextStyle(color: _c.text2, fontSize: 11)),
             ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '桌面图标随雕刻进度更换；部分启动器会缓存，长按主屏或重启后刷新。',
+            style: TextStyle(color: AppColors.text2, fontSize: 10),
           ),
           const SizedBox(height: 8),
           Text(

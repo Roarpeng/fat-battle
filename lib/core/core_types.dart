@@ -11,7 +11,7 @@ import '../constants/app_constants.dart';
 
 /// 性别（BMR 计算用）。
 /// 对应 web/src/store/game-types.ts 中的 `Gender`。
-enum Gender { male, female }
+enum Gender { male, female, other }
 
 // ========== 运动克制系统 ==========
 

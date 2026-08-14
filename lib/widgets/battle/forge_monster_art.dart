@@ -35,19 +35,26 @@ class ForgeMonsterArt extends StatelessWidget {
   final double size;
   /// 狂暴：红眼 + 火焰眼眶
   final bool isEnraged;
+  /// 肚腹炉芯脉动 0..1（由外层控制器驱动）
+  final double emberPulse;
 
   const ForgeMonsterArt({
     super.key,
     required this.kind,
     this.size = 96,
     this.isEnraged = false,
+    this.emberPulse = 0.55,
   });
 
   @override
   Widget build(BuildContext context) {
     return CustomPaint(
       size: Size.square(size),
-      painter: _MonsterArtPainter(kind: kind, isEnraged: isEnraged),
+      painter: _MonsterArtPainter(
+        kind: kind,
+        isEnraged: isEnraged,
+        emberPulse: emberPulse,
+      ),
     );
   }
 }
@@ -55,8 +62,13 @@ class ForgeMonsterArt extends StatelessWidget {
 class _MonsterArtPainter extends CustomPainter {
   final MonsterKind kind;
   final bool isEnraged;
+  final double emberPulse;
 
-  const _MonsterArtPainter({required this.kind, required this.isEnraged});
+  const _MonsterArtPainter({
+    required this.kind,
+    required this.isEnraged,
+    required this.emberPulse,
+  });
 
   // ---------- 工具 ----------
   static Color _muted(Color c) => c.withValues(alpha: 0.55);
@@ -101,6 +113,29 @@ class _MonsterArtPainter extends CustomPainter {
       color ?? const Color(0xFF8A6A4B),
       (color ?? const Color(0xFF8A6A4B)).withValues(alpha: 0.85),
     ]));
+  }
+
+  void _emberCore(Canvas canvas, Offset c, {double w = 14, double h = 11}) {
+    final pulse = emberPulse.clamp(0.0, 1.0);
+    final glow = isEnraged ? 0.55 + pulse * 0.45 : 0.28 + pulse * 0.4;
+    final opening = Path()
+      ..addOval(Rect.fromCenter(center: c, width: w, height: h));
+    canvas.drawPath(opening, Paint()..color = const Color(0xFF2A1810));
+    canvas.drawOval(
+      Rect.fromCenter(center: c, width: w * 0.72, height: h * 0.62),
+      Paint()
+        ..color = Color.lerp(
+          const Color(0xFFE85D4C),
+          const Color(0xFFFFE082),
+          pulse,
+        )!
+            .withValues(alpha: 0.55 + glow * 0.4),
+    );
+    canvas.drawCircle(
+      c + Offset(0, -h * 0.08),
+      math.min(w, h) * (0.16 + pulse * 0.08),
+      Paint()..color = const Color(0xFFFFF3C4).withValues(alpha: 0.7 + pulse * 0.25),
+    );
   }
 
   void _fang(Canvas canvas, Offset c, bool up) {
@@ -158,6 +193,7 @@ class _MonsterArtPainter extends CustomPainter {
     // 嘴（O 型）
     canvas.drawOval(Rect.fromCenter(center: const Offset(50, 58), width: 12, height: 9),
         Paint()..color = const Color(0xFF3A5C38));
+    _emberCore(canvas, const Offset(50, 56), w: 11, h: 8);
     // 口水
     canvas.drawCircle(const Offset(58, 63), 2.2, Paint()..color = _muted(const Color(0xFFB8D9B4)));
   }
@@ -217,6 +253,7 @@ class _MonsterArtPainter extends CustomPainter {
           ..strokeWidth = 3);
     _fang(canvas, const Offset(42, 55), true);
     _fang(canvas, const Offset(58, 55), true);
+    _emberCore(canvas, const Offset(50, 60), w: 12, h: 8);
   }
 
   void _paintGhost(Canvas canvas) {
@@ -254,6 +291,7 @@ class _MonsterArtPainter extends CustomPainter {
     // 腮红
     canvas.drawCircle(const Offset(34, 50), 4, Paint()..color = const Color(0xFFE8A0B4).withValues(alpha: 0.5));
     canvas.drawCircle(const Offset(66, 50), 4, Paint()..color = const Color(0xFFE8A0B4).withValues(alpha: 0.5));
+    _emberCore(canvas, const Offset(50, 58), w: 10, h: 7);
   }
 
   void _paintOgre(Canvas canvas) {
@@ -310,6 +348,7 @@ class _MonsterArtPainter extends CustomPainter {
           ..strokeWidth = 2,
       );
     }
+    _emberCore(canvas, const Offset(50, 56), w: 13, h: 9);
   }
 
   void _paintDemon(Canvas canvas) {
@@ -356,6 +395,7 @@ class _MonsterArtPainter extends CustomPainter {
       ..strokeCap = StrokeCap.round);
     _fang(canvas, const Offset(44, 52), true);
     _fang(canvas, const Offset(56, 52), true);
+    _emberCore(canvas, const Offset(50, 58), w: 12, h: 9);
 
     // 火焰尾尖（右下）
     final tail = Path()
@@ -401,6 +441,7 @@ class _MonsterArtPainter extends CustomPainter {
         0, math.pi, false, scalePaint,
       );
     }
+    _emberCore(canvas, const Offset(50, 58), w: 14, h: 9);
 
     // 龙眼（竖瞳）
     canvas.drawCircle(const Offset(41, 38), 6.4, Paint()..color = const Color(0xFFFFF3D6));
@@ -463,5 +504,7 @@ class _MonsterArtPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _MonsterArtPainter oldDelegate) =>
-      oldDelegate.kind != kind || oldDelegate.isEnraged != isEnraged;
+      oldDelegate.kind != kind ||
+      oldDelegate.isEnraged != isEnraged ||
+      oldDelegate.emberPulse != emberPulse;
 }

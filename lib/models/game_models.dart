@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import '../constants/app_constants.dart';
 import '../core/core_types.dart' show Gender, ExerciseCategory;
+import '../theme/sculpt_progress.dart' show SculptLine, sculptLineFor, sculptLineFromName;
 
 // 用户模型
 class User {
@@ -15,6 +16,7 @@ class User {
   final double bmi;
   final int age;
   final Gender gender;
+  final SculptLine sculptLine;
   final double? waistCm;
   
   // 生活习惯
@@ -65,6 +67,7 @@ class User {
     this.bmi = 0,
     this.age = 30,
     this.gender = Gender.female,
+    this.sculptLine = SculptLine.venus,
     this.waistCm,
     this.sleepType = SleepType.normal,
     this.workType = WorkType.sedentary,
@@ -102,6 +105,7 @@ class User {
     double? bmi,
     int? age,
     Gender? gender,
+    SculptLine? sculptLine,
     double? waistCm,
     SleepType? sleepType,
     WorkType? workType,
@@ -138,6 +142,7 @@ class User {
       bmi: bmi ?? this.bmi,
       age: age ?? this.age,
       gender: gender ?? this.gender,
+      sculptLine: sculptLine ?? this.sculptLine,
       waistCm: waistCm ?? this.waistCm,
       sleepType: sleepType ?? this.sleepType,
       workType: workType ?? this.workType,
@@ -177,6 +182,7 @@ class User {
       'bmi': bmi,
       'age': age,
       'gender': gender.name,
+      'sculptLine': sculptLine.name,
       'waistCm': waistCm,
       'sleepType': sleepType.index,
       'workType': workType.index,
@@ -216,6 +222,7 @@ class User {
       bmi: (json['bmi'] ?? 0).toDouble(),
       age: json['age'] ?? 30,
       gender: _genderFromJson(json['gender']),
+      sculptLine: _sculptLineFromJson(json['sculptLine'], _genderFromJson(json['gender'])),
       waistCm: json['waistCm'] == null ? null : (json['waistCm'] as num).toDouble(),
       sleepType: SleepType.values[json['sleepType'] ?? 1],
       workType: WorkType.values[json['workType'] ?? 0],
@@ -247,7 +254,14 @@ class User {
 
 Gender _genderFromJson(dynamic value) {
   if (value == 'male' || value == 0) return Gender.male;
+  if (value == 'other' || value == 2) return Gender.other;
   return Gender.female;
+}
+
+SculptLine _sculptLineFromJson(dynamic value, Gender gender) {
+  if (value == 'david' || value == 1) return SculptLine.david;
+  if (value == 'venus' || value == 0) return SculptLine.venus;
+  return sculptLineFor(gender: gender, chosen: sculptLineFromName(value?.toString()));
 }
 
 // 怪物模型

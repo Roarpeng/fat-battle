@@ -1,6 +1,8 @@
 package com.fatbattle.fat_battle
 
+import android.content.ComponentName
 import android.content.Context
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.ImageFormat
@@ -22,6 +24,7 @@ import java.io.ByteArrayOutputStream
 class MainActivity : FlutterActivity() {
     private val mlkitChannelName = "fat_battle/mlkit_frame"
     private val audioChannelName = "fat_battle/audio_route"
+    private val sculptChannelName = "fat_battle/sculpt_icon"
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -71,6 +74,66 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, sculptChannelName)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "setSculptStage" -> {
+                        val parsed = parseSculptArgs(call.arguments)
+                        if (parsed == null) {
+                            result.error("SCULPT", "stage missing", null)
+                            return@setMethodCallHandler
+                        }
+                        try {
+                            setSculptIcon(parsed.first, parsed.second)
+                            result.success(null)
+                        } catch (e: Exception) {
+                            result.error("SCULPT", e.message, null)
+                        }
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+    }
+
+    /**
+     * 启用对应雕刻阶段+雕塑线的 activity-alias，关闭其余。
+     * 部分启动器会缓存图标，需长按主屏或重启后才刷新。
+     */
+    private fun parseSculptArgs(args: Any?): Pair<Int, String>? {
+        when (args) {
+            is Int -> return Pair(args, "venus")
+            is Number -> return Pair(args.toInt(), "venus")
+            is Map<*, *> -> {
+                val stage = (args["stage"] as? Number)?.toInt() ?: return null
+                val line = (args["line"] as? String) ?: "venus"
+                return Pair(stage, line)
+            }
+        }
+        return null
+    }
+
+    private fun setSculptIcon(stage: Int, line: String) {
+        val next = stage.coerceIn(0, 7)
+        val lineName = if (line == "david") "David" else "Venus"
+        val target = "$packageName.Sculpt$lineName$next"
+        val pm = packageManager
+        pm.setComponentEnabledSetting(
+            ComponentName(this, target),
+            PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
+            PackageManager.DONT_KILL_APP,
+        )
+        for (ln in arrayOf("Venus", "David")) {
+            for (i in 0..7) {
+                val name = "$packageName.Sculpt$ln$i"
+                if (name == target) continue
+                pm.setComponentEnabledSetting(
+                    ComponentName(this, name),
+                    PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                    PackageManager.DONT_KILL_APP,
+                )
+            }
+        }
     }
 
     private fun audioManager(): AudioManager =

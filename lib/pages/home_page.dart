@@ -16,6 +16,7 @@ import '../widgets/home/forge_background.dart';
 import '../widgets/home/monster_stage_avatar.dart';
 import '../widgets/home/stage_action_button.dart';
 import '../widgets/hp_bar.dart';
+import '../widgets/sculpt_icon.dart';
 import '../widgets/hub_status_dot.dart';
 import '../widgets/medical_disclaimer.dart';
 import 'exercise_page.dart';
@@ -117,83 +118,107 @@ class _HomePageState extends ConsumerState<HomePage> {
                 child: Column(
                   children: [
                     const Spacer(flex: 2),
-                    Text(
-                      gameState.monster.name,
-                      style: AppFonts.displayOf(
-                        context,
-                        fontSize: 30,
-                        fontWeight: FontWeight.w600,
-                        height: 1.08,
-                      ),
-                    ),
-                    const SizedBox(height: AppSpace.sm),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: AppSpace.xxl),
-                      child: Text(
-                        _statusLine(gameState),
-                        textAlign: TextAlign.center,
-                        style: AppFonts.bodyOf(
-                          context,
-                          fontSize: 13,
-                          color: _c.text2,
-                          height: 1.4,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: AppSpace.xl),
-                    Stack(
-                      alignment: Alignment.center,
-                      clipBehavior: Clip.none,
-                      children: [
-                        MonsterStageAvatar(
-                          monster: gameState.monster,
-                          hitFlash: _hitFlash,
-                          onTap: () {
-                            setState(() => _hitFlash = true);
-                            Future.delayed(const Duration(milliseconds: 120), () {
-                              if (mounted) setState(() => _hitFlash = false);
-                            });
-                          },
-                        ),
-                        if (_floatLabel != null)
-                          Positioned(
-                            top: 0,
-                            child: IgnorePointer(
-                              child: AnimatedOpacity(
-                                opacity: 1,
-                                duration: AppMotion.duration(
-                                  context,
-                                  AppMotion.micro,
-                                ),
-                                child: Text(
-                                  _floatLabel!,
-                                  style: AppFonts.display(
-                                    fontSize: 28,
-                                    fontWeight: FontWeight.w700,
-                                    color: _floatColor,
-                                    shadows: [
-                                      Shadow(
-                                        color: Colors.black.withValues(alpha: 0.55),
-                                        blurRadius: 8,
-                                      ),
-                                    ],
-                                  ),
-                                ),
+                    ForgeStagger(
+                      index: 0,
+                      child: Column(
+                        children: [
+                          Text(
+                            gameState.monster.name,
+                            style: AppFonts.displayOf(
+                              context,
+                              fontSize: 30,
+                              fontWeight: FontWeight.w600,
+                              height: 1.08,
+                            ),
+                          ),
+                          const SizedBox(height: AppSpace.sm),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: AppSpace.xxl,
+                            ),
+                            child: Text(
+                              _statusLine(gameState),
+                              textAlign: TextAlign.center,
+                              style: AppFonts.bodyOf(
+                                context,
+                                fontSize: 13,
+                                color: _c.text2,
+                                height: 1.4,
                               ),
                             ),
                           ),
-                      ],
+                        ],
+                      ),
                     ),
-                    const SizedBox(height: AppSpace.md),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: AppSpace.xxxl),
-                      child: HpBar(
-                        current: gameState.monster.hp,
-                        max: gameState.monster.maxHp,
-                        color: _c.ember,
-                        shield: gameState.monster.shield,
-                        shieldColor: _c.shield,
-                        height: 12,
+                    const SizedBox(height: AppSpace.xl),
+                    ForgeStagger(
+                      index: 1,
+                      child: Column(
+                        children: [
+                          Stack(
+                            alignment: Alignment.center,
+                            clipBehavior: Clip.none,
+                            children: [
+                              MonsterStageAvatar(
+                                monster: gameState.monster,
+                                hitFlash: _hitFlash,
+                                onTap: () {
+                                  setState(() => _hitFlash = true);
+                                  Future.delayed(
+                                    const Duration(milliseconds: 120),
+                                    () {
+                                      if (mounted) {
+                                        setState(() => _hitFlash = false);
+                                      }
+                                    },
+                                  );
+                                },
+                              ),
+                              if (_floatLabel != null)
+                                Positioned(
+                                  top: 0,
+                                  child: IgnorePointer(
+                                    child: AnimatedOpacity(
+                                      opacity: 1,
+                                      duration: AppMotion.duration(
+                                        context,
+                                        AppMotion.micro,
+                                      ),
+                                      child: Text(
+                                        _floatLabel!,
+                                        style: AppFonts.display(
+                                          fontSize: 28,
+                                          fontWeight: FontWeight.w700,
+                                          color: _floatColor,
+                                          shadows: [
+                                            Shadow(
+                                              color: Colors.black
+                                                  .withValues(alpha: 0.55),
+                                              blurRadius: 8,
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                          const SizedBox(height: AppSpace.md),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: AppSpace.xxxl,
+                            ),
+                            child: HpBar(
+                              current: gameState.monster.hp,
+                              max: gameState.monster.maxHp,
+                              color: _c.ember,
+                              shield: gameState.monster.shield,
+                              shieldColor: _c.shield,
+                              height: 12,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                     const Spacer(flex: 3),
@@ -215,25 +240,30 @@ class _HomePageState extends ConsumerState<HomePage> {
                   color: _c.shield,
                 ),
               const SizedBox(height: AppSpace.sm),
-              Row(
-                children: [
-                  StageActionButton(
-                    icon: Icons.restaurant_rounded,
-                    label: '饮食',
-                    subtitle: mealCount > 0 ? '今日已记 $mealCount 餐' : '记录一餐',
-                    tone: StageActionTone.food,
-                    onTap: () => _openFood(),
-                  ),
-                  const SizedBox(width: AppSpace.md),
-                  StageActionButton(
-                    icon: Icons.fitness_center_rounded,
-                    label: '锤炼',
-                    subtitle:
-                        exerciseCount > 0 ? '今日已练 $exerciseCount 次' : '开练攻击',
-                    tone: StageActionTone.forge,
-                    onTap: () => _openExercise(),
-                  ),
-                ],
+              ForgeStagger(
+                index: 2,
+                child: Row(
+                  children: [
+                    StageActionButton(
+                      icon: Icons.restaurant_rounded,
+                      label: '饮食',
+                      subtitle:
+                          mealCount > 0 ? '今日已记 $mealCount 餐' : '记录一餐',
+                      tone: StageActionTone.food,
+                      onTap: () => _openFood(),
+                    ),
+                    const SizedBox(width: AppSpace.md),
+                    StageActionButton(
+                      icon: Icons.fitness_center_rounded,
+                      label: '锤炼',
+                      subtitle: exerciseCount > 0
+                          ? '今日已练 $exerciseCount 次'
+                          : '开练攻击',
+                      tone: StageActionTone.forge,
+                      onTap: () => _openExercise(),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
@@ -335,6 +365,13 @@ class _HomePageState extends ConsumerState<HomePage> {
             color: _c.text2,
             fontWeight: FontWeight.w600,
           ),
+        ),
+        const SizedBox(width: AppSpace.sm),
+        SculptIcon(
+          stage: gs.sculptStage,
+          line: gs.user.sculptLine,
+          sculptProgress: gs.sculptProgress,
+          size: 28,
         ),
         const Spacer(),
         ForgeSurface(

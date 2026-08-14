@@ -1,37 +1,31 @@
-﻿import 'dart:math' as math;
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import '../../theme/forge_theme.dart';
+import '../../theme/motion.dart';
 import '../../constants/app_constants.dart';
+import 'clay_fx.dart';
 import 'forge_monster_art.dart';
 
-/// 怪物显示组件
-///
-/// 设计参�?Web �?MonsterAnimation.tsx�?/// - 持续浮动动画（上下移动）
-/// - 受伤时抖�?+ 红色滤镜
-/// - 狂暴时红色光�?+ emoji 放大 1.1x
-/// - 阶段切换�?fade 过渡
-/// - 死亡时灰�?+ 旋转消失
-///  - HP < 50% 显示情绪 emoji，HP < 30% 显示血�
+/// 粘土魔物立绘：慢呼吸 + 炉芯脉动 + 凿击刨花，而不是 RPG 斩击。
 class MonsterDisplay extends StatefulWidget {
-  /// 怪物 emoji
+  /// 怪物 emoji（仅用于映射 [ForgeMonsterArt] 种类）
   final String emoji;
 
-  ///  当前 HP 百分比（0..1�
+  /// 当前 HP 百分比（0..1）
   final double hpPercentage;
 
-  ///  是否正在受伤（触发抖�?+ 红色滤镜�
+  /// 是否正在受伤（凿击挤压 + 刨花）
   final bool isHit;
 
-  ///  是否狂暴（触发红色光�?+ 放大�
+  /// 是否狂暴（炉芯更亮、呼吸更快）
   final bool isEnraged;
 
-  ///  是否死亡（触发灰�?+ 旋转消失�
+  /// 是否死亡（碎裂溶解）
   final bool isDead;
 
-  ///  是否处于阶段切换（触�?fade 过渡�
+  /// 是否处于阶段切换（触发 fade 过渡）
   final bool isPhaseChanging;
 
-  /// emoji 基础字号
+  /// 立绘基础尺寸
   final double emojiSize;
 
   /// 暴食/卡路里超标膨胀系数 (0.0 ~ 1.0)
@@ -59,26 +53,26 @@ class MonsterDisplay extends StatefulWidget {
 
 class _MonsterDisplayState extends State<MonsterDisplay>
     with TickerProviderStateMixin {
-  // 持续浮动
   late final AnimationController _floatController;
   late final Animation<double> _floatAnimation;
 
-  // 持续呼吸缩放
   late final AnimationController _breatheController;
   late final Animation<double> _breatheAnimation;
 
-  // 受伤抖动
-  late final AnimationController _hitController;
-  late final Animation<double> _hitShakeAnimation;
-  late final Animation<double> _hitScaleAnimation;
+  late final AnimationController _jiggleController;
+  late final Animation<double> _jiggleAnimation;
 
-  // 死亡动画
+  late final AnimationController _emberController;
+  late final Animation<double> _emberAnimation;
+
+  late final AnimationController _hitController;
+  late final Animation<double> _hitSquash;
+  late final Animation<double> _hitSlide;
+
   late final AnimationController _deathController;
-  late final Animation<double> _deathRotation;
-  late final Animation<double> _deathScale;
+  late final Animation<double> _deathCrumble;
   late final Animation<double> _deathOpacity;
 
-  // 阶段切换 fade
   late final AnimationController _phaseController;
   late final Animation<double> _phaseFade;
 
@@ -87,58 +81,62 @@ class _MonsterDisplayState extends State<MonsterDisplay>
     super.initState();
 
     _floatController = AnimationController(
-      duration: const Duration(milliseconds: 2500),
+      duration: const Duration(milliseconds: 3800),
       vsync: this,
-    )..repeat(reverse: true);
-    _floatAnimation = Tween<double>(begin: -8, end: 8).animate(
-      CurvedAnimation(parent: _floatController, curve: Curves.easeInOut),
+    );
+    _floatAnimation = Tween<double>(begin: -4, end: 4).animate(
+      CurvedAnimation(parent: _floatController, curve: AppMotion.clayBreathe),
     );
 
     _breatheController = AnimationController(
-      duration: const Duration(milliseconds: 3000),
+      duration: const Duration(milliseconds: 4400),
       vsync: this,
-    )..repeat(reverse: true);
-    _breatheAnimation = Tween<double>(begin: 1.0, end: 1.05).animate(
-      CurvedAnimation(parent: _breatheController, curve: Curves.easeInOut),
+    );
+    _breatheAnimation = Tween<double>(begin: 1.0, end: 1.028).animate(
+      CurvedAnimation(parent: _breatheController, curve: AppMotion.clayBreathe),
+    );
+
+    _jiggleController = AnimationController(
+      duration: const Duration(milliseconds: 2600),
+      vsync: this,
+    );
+    _jiggleAnimation = Tween<double>(begin: -0.012, end: 0.012).animate(
+      CurvedAnimation(parent: _jiggleController, curve: AppMotion.clayBreathe),
+    );
+
+    _emberController = AnimationController(
+      duration: const Duration(milliseconds: 2200),
+      vsync: this,
+    );
+    _emberAnimation = Tween<double>(begin: 0.42, end: 1.0).animate(
+      CurvedAnimation(parent: _emberController, curve: AppMotion.easeInOut),
     );
 
     _hitController = AnimationController(
-      duration: const Duration(milliseconds: 500),
+      duration: const Duration(milliseconds: 420),
       vsync: this,
     );
-    _hitShakeAnimation = TweenSequence<double>([
-      TweenSequenceItem(tween: Tween(begin: 0, end: -10), weight: 1),
-      TweenSequenceItem(tween: Tween(begin: -10, end: 10), weight: 1),
-      TweenSequenceItem(tween: Tween(begin: 10, end: -8), weight: 1),
-      TweenSequenceItem(tween: Tween(begin: -8, end: 8), weight: 1),
-      TweenSequenceItem(tween: Tween(begin: 8, end: 0), weight: 1),
-    ]).animate(
-      CurvedAnimation(parent: _hitController, curve: Curves.linear),
-    );
-    _hitScaleAnimation = TweenSequence<double>([
-      TweenSequenceItem(tween: Tween(begin: 1.0, end: 0.9), weight: 1),
-      TweenSequenceItem(tween: Tween(begin: 0.9, end: 1.1), weight: 1),
-      TweenSequenceItem(tween: Tween(begin: 1.1, end: 1.0), weight: 1),
-    ]).animate(
-      CurvedAnimation(parent: _hitController, curve: Curves.linear),
-    );
+    _hitSquash = TweenSequence<double>([
+      TweenSequenceItem(tween: Tween(begin: 0, end: 1), weight: 28),
+      TweenSequenceItem(tween: Tween(begin: 1, end: 0), weight: 72),
+    ]).animate(CurvedAnimation(parent: _hitController, curve: AppMotion.chipOut));
+    _hitSlide = TweenSequence<double>([
+      TweenSequenceItem(tween: Tween(begin: 0, end: 10), weight: 30),
+      TweenSequenceItem(tween: Tween(begin: 10, end: 0), weight: 70),
+    ]).animate(CurvedAnimation(parent: _hitController, curve: AppMotion.easeOut));
 
     _deathController = AnimationController(
-      duration: const Duration(milliseconds: 1500),
+      duration: const Duration(milliseconds: 1400),
       vsync: this,
     );
-    _deathRotation = Tween<double>(begin: 0, end: -math.pi / 2).animate(
-      CurvedAnimation(parent: _deathController, curve: Curves.easeIn),
-    );
-    _deathScale = Tween<double>(begin: 1.0, end: 0.0).animate(
-      CurvedAnimation(parent: _deathController, curve: Curves.easeIn),
+    _deathCrumble = CurvedAnimation(
+      parent: _deathController,
+      curve: const Cubic(0.2, 0.0, 0.4, 1),
     );
     _deathOpacity = TweenSequence<double>([
-      TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.0), weight: 1),
-      TweenSequenceItem(tween: Tween(begin: 1.0, end: 0.0), weight: 1),
-    ]).animate(
-      CurvedAnimation(parent: _deathController, curve: Curves.linear),
-    );
+      TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.0), weight: 35),
+      TweenSequenceItem(tween: Tween(begin: 1.0, end: 0.0), weight: 65),
+    ]).animate(_deathController);
 
     _phaseController = AnimationController(
       duration: const Duration(milliseconds: 600),
@@ -148,28 +146,78 @@ class _MonsterDisplayState extends State<MonsterDisplay>
       TweenSequenceItem(tween: Tween(begin: 1.0, end: 0.0), weight: 1),
       TweenSequenceItem(tween: Tween(begin: 0.0, end: 1.0), weight: 1),
     ]).animate(
-      CurvedAnimation(parent: _phaseController, curve: Curves.easeInOut),
+      CurvedAnimation(parent: _phaseController, curve: AppMotion.easeInOut),
     );
 
     if (widget.isDead) {
-      _deathController.forward();
+      _deathController.value = 1;
     }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _syncIdleMotion(AppMotion.reduceMotion(context));
   }
 
   @override
   void didUpdateWidget(covariant MonsterDisplay oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // 受伤触发
-    if (!oldWidget.isHit && widget.isHit) {
+    if (oldWidget.isEnraged != widget.isEnraged) {
+      _syncIdleMotion(AppMotion.reduceMotion(context));
+    }
+    if (!oldWidget.isHit && widget.isHit && !AppMotion.reduceMotion(context)) {
       _hitController.forward(from: 0);
     }
-    // 死亡触发
     if (!oldWidget.isDead && widget.isDead) {
-      _deathController.forward(from: 0);
+      if (AppMotion.reduceMotion(context)) {
+        _deathController.value = 1;
+      } else {
+        _deathController.forward(from: 0);
+      }
     }
-    // 阶段切换触发
     if (!oldWidget.isPhaseChanging && widget.isPhaseChanging) {
-      _phaseController.forward(from: 0);
+      if (AppMotion.reduceMotion(context)) {
+        _phaseController.value = 1;
+      } else {
+        _phaseController.forward(from: 0);
+      }
+    }
+  }
+
+  void _syncIdleMotion(bool reduce) {
+    if (reduce) {
+      _floatController.stop();
+      _breatheController.stop();
+      _jiggleController.stop();
+      _emberController.stop();
+      _floatController.value = 0.5;
+      _breatheController.value = 0.5;
+      _jiggleController.value = 0.5;
+      _emberController.value = widget.isEnraged ? 0.85 : 0.55;
+      return;
+    }
+    _breatheController.duration = Duration(
+      milliseconds: widget.isEnraged ? 2400 : 4400,
+    );
+    _emberController.duration = Duration(
+      milliseconds: widget.isEnraged ? 1100 : 2200,
+    );
+    if (!_floatController.isAnimating) {
+      _floatController.repeat(reverse: true);
+    }
+    if (!_breatheController.isAnimating) {
+      _breatheController.repeat(reverse: true);
+    } else {
+      _breatheController.repeat(reverse: true);
+    }
+    if (!_jiggleController.isAnimating) {
+      _jiggleController.repeat(reverse: true);
+    }
+    if (!_emberController.isAnimating) {
+      _emberController.repeat(reverse: true);
+    } else {
+      _emberController.repeat(reverse: true);
     }
   }
 
@@ -177,20 +225,12 @@ class _MonsterDisplayState extends State<MonsterDisplay>
   void dispose() {
     _floatController.dispose();
     _breatheController.dispose();
+    _jiggleController.dispose();
+    _emberController.dispose();
     _hitController.dispose();
     _deathController.dispose();
     _phaseController.dispose();
     super.dispose();
-  }
-
-  /// 根据 HP 百分比返回情�?emoji
-  String _getEmotionEmoji() {
-    if (widget.isDead) return '💀';
-    if (widget.hpPercentage < 0.2) return '😵';
-    if (widget.hpPercentage < 0.4) return '😫';
-    if (widget.hpPercentage < 0.6) return '😠';
-    if (widget.hpPercentage < 0.8) return '😏';
-    return '😈';
   }
 
   @override
@@ -204,80 +244,72 @@ class _MonsterDisplayState extends State<MonsterDisplay>
         child: Stack(
           alignment: Alignment.center,
           children: [
-            // 狂暴红色光晕背景
-            if (widget.isEnraged && !widget.isDead) _buildEnrageGlow(),
-            // 死亡爆炸光晕
-            if (widget.isDead) _buildDeathGlow(),
-            // 主体怪物 emoji
-            _buildMonster(),
-            // 受伤爆炸特效
-            if (widget.isHit) _buildHitBurst(),
-            //  HP < 30% 血迹效�
-            if (widget.hpPercentage < 0.3 && !widget.isDead) _buildBloodOverlay(),
-            // HP < 50% 情绪 emoji
-            if (widget.hpPercentage < 0.5 && !widget.isDead) _buildEmotionBadge(),
+            if (widget.isEnraged && !widget.isDead) _buildEnrageGlow(context),
+            if (widget.isDead) _buildDeathCrumble(context),
+            _buildMonster(context),
+            if (widget.isHit && !AppMotion.reduceMotion(context))
+              _buildHitShavings(context),
+            if (widget.hpPercentage < 0.3 && !widget.isDead)
+              _buildLowHpCracks(context),
           ],
         ),
       ),
     );
   }
 
-  ///  主体怪物 emoji（浮�?+ 呼吸 + 抖动 + 阶段切换 + 死亡动画�
-  Widget _buildMonster() {
+  Widget _buildMonster(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final ember = scheme.primary;
+    final copper = scheme.secondary;
+
     return AnimatedBuilder(
       animation: Listenable.merge([
         _floatAnimation,
         _breatheAnimation,
+        _jiggleAnimation,
+        _emberAnimation,
         _hitController,
         _deathController,
         _phaseController,
       ]),
       builder: (context, child) {
-        // 死亡动画
-        final deathScale = _deathScale.value;
-        final deathOpacity = _deathOpacity.value;
-        final deathRotation = _deathRotation.value;
-
-        // 受伤抖动 + 缩放
-        final hitDx = _hitShakeAnimation.value;
-        final hitScale = _hitScaleAnimation.value;
-
-        // 浮动 + 呼吸
+        final deathT = widget.isDead ? _deathCrumble.value : 0.0;
+        final deathOpacity = widget.isDead ? _deathOpacity.value : 1.0;
+        final squash = widget.isHit ? _hitSquash.value : 0.0;
+        final hitDx = widget.isHit ? _hitSlide.value : 0.0;
         final dy = _floatAnimation.value;
+        final jiggle = _jiggleAnimation.value;
         final breatheScale = _breatheAnimation.value;
-
-        // 狂暴放大
-        final enrageScale = widget.isEnraged ? 1.1 : 1.0;
-
-        // 阶段切换 fade
+        final overeat = widget.overeatFactor.clamp(0.0, 1.0);
+        final overeatX = 1.0 + overeat * 0.30;
+        final overeatY = 1.0 + overeat * 0.38;
         final phaseOpacity = widget.isPhaseChanging ? _phaseFade.value : 1.0;
+        final scaleX = breatheScale * overeatX * (1.0 - squash * 0.16) *
+            (widget.isDead ? (1.0 - deathT * 0.35) : 1.0);
+        final scaleY = breatheScale * overeatY * (1.0 + squash * 0.10) *
+            (widget.isDead ? (1.0 - deathT * 0.45) : 1.0);
 
-        // 暴食卡路里物理膨胀
-        final overeatScale = 1.0 + (widget.overeatFactor.clamp(0.0, 1.0) * 0.25);
-
-        final totalScale = breatheScale *
-            hitScale *
-            enrageScale *
-            overeatScale *
-            (widget.isDead ? deathScale : 1.0);
-
-        // 受伤红色滤镜（仅在受伤瞬间）+ 死亡灰度
         ColorFilter colorFilter = const ColorFilter.mode(
           Colors.transparent,
           BlendMode.dst,
         );
         if (widget.isDead) {
-          colorFilter = const ColorFilter.mode(
-            Color(0xFF666666),
-            BlendMode.saturation,
-          );
-        } else if (widget.isHit && _hitController.value < 0.6) {
-          final intensity = (1 - _hitController.value / 0.6).clamp(0.0, 1.0);
           colorFilter = ColorFilter.mode(
-            Colors.red.withValues(alpha: 0.5 * intensity),
+            copper.withValues(alpha: 0.35 + deathT * 0.25),
+            BlendMode.modulate,
+          );
+        } else if (widget.isHit && _hitController.value < 0.38) {
+          final intensity =
+              (1 - _hitController.value / 0.38).clamp(0.0, 1.0);
+          colorFilter = ColorFilter.mode(
+            AppColors.hitSpark.withValues(alpha: 0.42 * intensity),
             BlendMode.srcATop,
           );
         }
+
+        final emberPulse = widget.isEnraged
+            ? (0.72 + _emberAnimation.value * 0.28)
+            : _emberAnimation.value;
 
         Widget monsterCard = Container(
           width: widget.emojiSize * 1.4,
@@ -286,18 +318,18 @@ class _MonsterDisplayState extends State<MonsterDisplay>
             shape: BoxShape.circle,
             gradient: RadialGradient(
               colors: widget.isEnraged
-                  ? [AppColors.red.withValues(alpha: 0.6), AppColors.bg]
-                  : [AppColors.copper.withValues(alpha: 0.25), AppColors.card],
+                  ? [ember.withValues(alpha: 0.45 + emberPulse * 0.2), AppColors.bg]
+                  : [copper.withValues(alpha: 0.25), AppColors.card],
             ),
             border: Border.all(
-              color: widget.isEnraged ? AppColors.red : AppColors.copper,
+              color: widget.isEnraged ? ember : copper,
               width: 2.5,
             ),
             boxShadow: [
               BoxShadow(
-                color: (widget.isEnraged ? AppColors.red : AppColors.copper)
-                    .withValues(alpha: 0.45),
-                blurRadius: 20,
+                color: (widget.isEnraged ? ember : copper)
+                    .withValues(alpha: 0.35 + (widget.isEnraged ? emberPulse * 0.2 : 0)),
+                blurRadius: widget.isEnraged ? 26 : 20,
                 spreadRadius: 3,
               ),
             ],
@@ -305,37 +337,39 @@ class _MonsterDisplayState extends State<MonsterDisplay>
           child: Stack(
             alignment: Alignment.center,
             children: [
-              // 魔王能量暗环
               Container(
                 margin: const EdgeInsets.all(6),
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   border: Border.all(
-                    color: AppColors.copper.withValues(alpha: 0.3),
+                    color: copper.withValues(alpha: 0.3),
                     width: 1.0,
                   ),
                 ),
               ),
-              // 魔物主体矢量立绘（锻造工坊绘制）
-              ForgeMonsterArt(
-                kind: monsterKindOf(widget.emoji),
-                size: widget.emojiSize * 0.95,
-                isEnraged: widget.isEnraged,
+              Opacity(
+                opacity: (1.0 - deathT * 0.55).clamp(0.0, 1.0),
+                child: ForgeMonsterArt(
+                  kind: monsterKindOf(widget.emoji),
+                  size: widget.emojiSize * 0.95,
+                  isEnraged: widget.isEnraged,
+                  emberPulse: emberPulse,
+                ),
               ),
-              // 底部卡路里魔物勋章
               Positioned(
                 bottom: 4,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                   decoration: BoxDecoration(
                     color: Colors.black.withValues(alpha: 0.75),
                     borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: AppColors.copper.withValues(alpha: 0.5)),
+                    border: Border.all(color: copper.withValues(alpha: 0.5)),
                   ),
                   child: Text(
                     widget.isEnraged ? '狂暴脂肪霸主' : '卡路里领主',
                     style: AppFonts.body(
-                      color: widget.isEnraged ? AppColors.red : AppColors.gold,
+                      color: widget.isEnraged ? ember : AppColors.gold,
                       fontSize: 9,
                       fontWeight: FontWeight.bold,
                     ),
@@ -346,20 +380,19 @@ class _MonsterDisplayState extends State<MonsterDisplay>
           ),
         );
 
-        Widget emojiWidget = ColorFiltered(
-          colorFilter: colorFilter,
-          child: monsterCard,
-        );
-
         return Opacity(
           opacity: deathOpacity * phaseOpacity,
           child: Transform.translate(
             offset: Offset(hitDx, dy),
             child: Transform.rotate(
-              angle: deathRotation,
-              child: Transform.scale(
-                scale: totalScale,
-                child: emojiWidget,
+              angle: jiggle + (widget.isDead ? deathT * 0.08 : 0),
+              child: Transform(
+                alignment: Alignment.center,
+                transform: Matrix4.diagonal3Values(scaleX, scaleY, 1),
+                child: ColorFiltered(
+                  colorFilter: colorFilter,
+                  child: monsterCard,
+                ),
               ),
             ),
           ),
@@ -368,49 +401,40 @@ class _MonsterDisplayState extends State<MonsterDisplay>
     );
   }
 
-  /// 受伤瞬间爆炸 emoji（💥）
-  Widget _buildHitBurst() {
+  Widget _buildHitShavings(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return AnimatedBuilder(
       animation: _hitController,
-      builder: (context, child) {
-        // �?0..0.3 期间出现�?.3..1 期间淡出
-        final t = _hitController.value;
-        final opacity = t < 0.3 ? (t / 0.3) : ((1 - t) / 0.7).clamp(0.0, 1.0);
-        final scale = 0.8 + t * 0.6;
-        return Opacity(
-          opacity: opacity,
-          child: Transform.scale(
-            scale: scale,
-            child: const Text(
-              '💥',
-              style: TextStyle(
-                fontSize: 56,
-                decoration: TextDecoration.none,
-              ),
-            ),
+      builder: (context, _) {
+        return CustomPaint(
+          size: Size.square(widget.emojiSize * 1.6),
+          painter: ClayShavingPainter(
+            progress: _hitController.value,
+            clay: const Color(0xFFC4A574),
+            graphite: scheme.secondary,
           ),
         );
       },
     );
   }
 
-  /// 狂暴红色光晕（脉动）
-  Widget _buildEnrageGlow() {
+  Widget _buildEnrageGlow(BuildContext context) {
+    final ember = Theme.of(context).colorScheme.primary;
     return AnimatedBuilder(
-      animation: _breatheAnimation,
+      animation: _emberAnimation,
       builder: (context, _) {
-        final pulse = 0.5 + _breatheAnimation.value * 0.3;
+        final pulse = 0.45 + _emberAnimation.value * 0.4;
         return Container(
-          width: widget.emojiSize * 1.4,
-          height: widget.emojiSize * 1.4,
+          width: widget.emojiSize * 1.45,
+          height: widget.emojiSize * 1.45,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: Colors.red.withValues(alpha: 0.15 * pulse),
+            color: ember.withValues(alpha: 0.12 * pulse),
             boxShadow: [
               BoxShadow(
-                color: Colors.red.withValues(alpha: 0.4 * pulse),
-                blurRadius: 30,
-                spreadRadius: 8,
+                color: ember.withValues(alpha: 0.38 * pulse),
+                blurRadius: 28,
+                spreadRadius: 6,
               ),
             ],
           ),
@@ -419,64 +443,65 @@ class _MonsterDisplayState extends State<MonsterDisplay>
     );
   }
 
-  ///  死亡时灰光扩�
-  Widget _buildDeathGlow() {
+  Widget _buildDeathCrumble(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return AnimatedBuilder(
       animation: _deathController,
       builder: (context, _) {
-        final t = _deathController.value;
-        return Opacity(
-          opacity: (1 - t),
-          child: Transform.scale(
-            scale: 1.0 + t * 1.5,
-            child: Container(
-              width: widget.emojiSize * 1.2,
-              height: widget.emojiSize * 1.2,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: AppColors.purple.withValues(alpha: 0.2),
-              ),
-            ),
+        return CustomPaint(
+          size: Size.square(widget.emojiSize * 1.6),
+          painter: ClayCrumblePainter(
+            progress: _deathCrumble.value,
+            clay: const Color(0xFFB08968),
+            ember: scheme.primary,
           ),
         );
       },
     );
   }
 
-  /// HP < 30% 显示半透明血�?emoji
-  Widget _buildBloodOverlay() {
-    return const Opacity(
-      opacity: 0.5,
-      child: Text(
-        '🩸',
-        style: TextStyle(
-          fontSize: 60,
-          decoration: TextDecoration.none,
+  /// 低血量：粘土表面裂纹，而不是血迹 emoji
+  Widget _buildLowHpCracks(BuildContext context) {
+    final copper = Theme.of(context).colorScheme.secondary;
+    return IgnorePointer(
+      child: CustomPaint(
+        size: Size.square(widget.emojiSize * 1.2),
+        painter: _ClayCrackPainter(
+          color: copper.withValues(alpha: 0.45),
+          intensity: (0.3 - widget.hpPercentage).clamp(0.0, 0.3) / 0.3,
         ),
       ),
     );
   }
+}
 
-  /// HP < 50% 显示情绪 emoji 角标（脉动）
-  Widget _buildEmotionBadge() {
-    return AnimatedBuilder(
-      animation: _breatheAnimation,
-      builder: (context, _) {
-        return Positioned(
-          top: 0,
-          right: 0,
-          child: Opacity(
-            opacity: 0.5 + _breatheAnimation.value * 0.3,
-            child: Text(
-              _getEmotionEmoji(),
-              style: const TextStyle(
-                fontSize: 24,
-                decoration: TextDecoration.none,
-              ),
-            ),
-          ),
-        );
-      },
-    );
+class _ClayCrackPainter extends CustomPainter {
+  final Color color;
+  final double intensity;
+
+  _ClayCrackPainter({required this.color, required this.intensity});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (intensity <= 0) return;
+    final paint = Paint()
+      ..color = color.withValues(alpha: 0.35 + intensity * 0.4)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.3
+      ..strokeCap = StrokeCap.round;
+    final c = Offset(size.width / 2, size.height / 2);
+    final path = Path()
+      ..moveTo(c.dx - 18, c.dy - 6)
+      ..lineTo(c.dx - 4, c.dy + 2)
+      ..lineTo(c.dx + 10, c.dy - 8)
+      ..moveTo(c.dx + 2, c.dy + 2)
+      ..lineTo(c.dx + 16, c.dy + 14)
+      ..moveTo(c.dx - 8, c.dy + 8)
+      ..lineTo(c.dx - 18, c.dy + 18);
+    canvas.drawPath(path, paint);
   }
+
+  @override
+  bool shouldRepaint(covariant _ClayCrackPainter oldDelegate) =>
+      oldDelegate.intensity != intensity || oldDelegate.color != color;
 }
