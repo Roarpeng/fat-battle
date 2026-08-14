@@ -1,6 +1,10 @@
 # 塑身工坊后端 — 一键部署
 # 使用: docker compose up -d --build   （首次约 1-2 分钟构建镜像）
 # 验证: curl http://localhost:8080/api/v1/healthz
+#
+# 迁移：API 启动时执行 migrations/ 下全部 SQL（migrate.go + schema_migrations）。
+# postgres 的 docker-entrypoint-initdb.d 只挂 0001，仅对全新数据卷生效；
+# 不要把 0002 及之后的文件挂进去——老库与新库一律靠 API 启动补齐。
 
 services:
   caddy:
@@ -48,7 +52,7 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 10s
+      start_period: 20s
     volumes:
       - ./migrations:/app/migrations:ro
 
@@ -62,6 +66,7 @@ services:
       POSTGRES_DB: fatbattle
     volumes:
       - pg_data:/var/lib/postgresql/data
+      # 仅空卷引导；0002+ 由 API 启动时 migrate.go 执行，切勿把后续 SQL 挂到这里
       - ./migrations/0001_init.sql:/docker-entrypoint-initdb.d/0001_init.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U fatbattle -d fatbattle"]

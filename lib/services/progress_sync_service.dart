@@ -80,6 +80,7 @@ class ProgressSyncService extends ChangeNotifier {
   static final ProgressSyncService instance = ProgressSyncService();
 
   static const snapshotPath = '/api/v1/progress/snapshot';
+  static const eventsPath = '/api/v1/progress/events';
   static const kUpdatedAt = 'fat_battle_sync_updated_at';
   static const kLastOk = 'fat_battle_sync_last_ok';
   static const kLastError = 'fat_battle_sync_last_error';
@@ -202,7 +203,10 @@ class ProgressSyncService extends ChangeNotifier {
     }
   }
 
-  /// 已登录但本地无存档时拉云端（重装 / token 残留）
+  Future<void> pushSnapshot(
+    Map<String, dynamic> json, {
+    bool immediate = false,
+  }) async {
   Future<Map<String, dynamic>?> pullIfLocalEmpty() async {
     if (!await canSync) return null;
     try {
@@ -234,6 +238,21 @@ class ProgressSyncService extends ChangeNotifier {
       localHasGame: localHasGame,
       applyRemote: applyRemote,
     );
+  }
+
+  /// 尽力上报行为流水（餐食 / 锻炼结算）。失败不阻塞 UI、不改同步相位。
+  Future<void> postEvent(String type, Map<String, dynamic> payload, {String? clientId}) async {
+    try {
+      if (!await canSync) return;
+      await _auth.authedPost(eventsPath, body: {
+        'type': type,
+        'at': DateTime.now().toUtc().toIso8601String(),
+        if (clientId != null && clientId.isNotEmpty) 'id': clientId,
+        'payload': payload,
+      });
+    } catch (e) {
+      debugPrint('ProgressSyncService.postEvent: $e');
+    }
   }
 
   Future<void> pushSnapshot(

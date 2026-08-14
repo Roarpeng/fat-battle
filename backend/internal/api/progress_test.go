@@ -121,30 +121,34 @@ func TestPostSnapshotInvalidJSON(t *testing.T) {
 	}
 }
 
-func TestEventsStillNotImplemented(t *testing.T) {
+func TestEventsNoLonger501(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	token, err := middleware.SignToken("test-secret", 1)
 	if err != nil {
 		t.Fatal(err)
 	}
 	r := gin.New()
-	r.POST("/api/v1/progress/events", middleware.Auth("test-secret", nil), eventsHandler())
-	r.GET("/api/v1/progress/summary", middleware.Auth("test-secret", nil), summaryHandler())
+	r.POST("/api/v1/progress/events", middleware.Auth("test-secret", nil), eventsHandler(nil))
+	r.GET("/api/v1/progress/summary", middleware.Auth("test-secret", nil), summaryHandler(nil))
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/progress/events", strings.NewReader(`{}`))
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/progress/events", strings.NewReader(`{"type":"meal","payload":{"name":"饭"}}`))
 	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
 	r.ServeHTTP(w, req)
-	if w.Code != http.StatusNotImplemented {
-		t.Fatalf("events expected 501, got %d", w.Code)
+	if w.Code == http.StatusNotImplemented {
+		t.Fatal("events must not remain 501")
+	}
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("nil pool expected 503, got %d body=%s", w.Code, w.Body.String())
 	}
 
 	w = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodGet, "/api/v1/progress/summary", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	r.ServeHTTP(w, req)
-	if w.Code != http.StatusNotImplemented {
-		t.Fatalf("summary expected 501, got %d", w.Code)
+	if w.Code == http.StatusNotImplemented {
+		t.Fatal("summary must not remain 501")
 	}
 }
 
