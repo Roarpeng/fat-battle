@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import '../constants/app_constants.dart';
+import '../widgets/sketch_card.dart';
+import 'forge_palette.dart';
 
 /// 锻造工坊 2.0 间距阶梯
 class AppSpace {
@@ -61,7 +62,7 @@ class ForgeSectionHeader extends StatelessWidget {
                 Text(
                   title,
                   style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        color: AppColors.text,
+                        color: ForgeColors.of(context).text,
                       ),
                 ),
                 if (subtitle != null) ...[
@@ -102,14 +103,16 @@ class ForgeSurface extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    final palette = ForgeColors.of(context);
+    final radius = borderRadius ?? AppRadii.lgAll;
+    final isPill = radius == BorderRadius.circular(AppRadii.pill);
+    return SketchCard(
       padding: padding ?? AppSpace.card,
-      decoration: BoxDecoration(
-        color: color ?? AppColors.elevated,
-        borderRadius: borderRadius ?? AppRadii.lgAll,
-        border: Border.all(color: borderColor ?? AppColors.border),
-        boxShadow: boxShadow,
-      ),
+      color: color ?? palette.elevated,
+      borderColor: borderColor ?? palette.border,
+      borderRadius: radius,
+      boxShadow: boxShadow,
+      roughness: isPill ? 0 : null,
       child: child,
     );
   }
