@@ -105,12 +105,12 @@ Map<String, LandmarkPoint> standBurpee() => _pts({
 Map<String, LandmarkPoint> squatBurpee() => _pts({
       'leftShoulder': [0.40, 0.36],
       'rightShoulder': [0.60, 0.36],
-      'leftHip': [0.42, 0.58],
-      'rightHip': [0.58, 0.58],
-      'leftKnee': [0.34, 0.70],
-      'rightKnee': [0.66, 0.70],
-      'leftAnkle': [0.38, 0.88],
-      'rightAnkle': [0.62, 0.88],
+      'leftHip': [0.42, 0.62],
+      'rightHip': [0.58, 0.62],
+      'leftKnee': [0.58, 0.70],
+      'rightKnee': [0.74, 0.70],
+      'leftAnkle': [0.42, 0.88],
+      'rightAnkle': [0.58, 0.88],
     });
 
 Map<String, LandmarkPoint> climberLeft() {

@@ -49,7 +49,7 @@ class OfflineFormRecap {
 
     if (shallow > 0) {
       sentences.add(
-        '另有 $shallow 次浅幅度未计次。${_shallowHint(exerciseType)}',
+        '另有 $shallow 次浅幅度未计次，${_shallowHint(exerciseType)}',
       );
     } else if (minKneeAngle != null &&
         (exerciseType == 'squat' || exerciseType == 'lunge')) {

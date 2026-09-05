@@ -413,7 +413,12 @@ class BurpeePhaseFsm extends CameraMoveFsm {
           cue = '下蹲了';
         }
       case 'squat':
-        if (avgKnee > standTh) {
+        // 平板优先：撑地时膝可接近伸直，不能当成「站起来」。
+        if (shoulderHipDiff < plankTh) {
+          phaseName = 'plank';
+          _touchedPlank = true;
+          cue = '进入平板支撑';
+        } else if (avgKnee > standTh) {
           phaseName = 'stand';
           if (!_touchedPlank) {
             return FsmTick(
@@ -425,10 +430,6 @@ class BurpeePhaseFsm extends CameraMoveFsm {
               minKneeAngle: avgKnee,
             );
           }
-        } else if (shoulderHipDiff < plankTh) {
-          phaseName = 'plank';
-          _touchedPlank = true;
-          cue = '进入平板支撑';
         }
       case 'plank':
         if (shoulderHipDiff > plankTh && avgKnee < squatTh) {
