@@ -1,6 +1,6 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
-import '../../constants/app_constants.dart';
+import '../../theme/pose_hud_theme.dart';
 
 /// 姿态教练引导：暗角站位区 + 白色画框 + 动作剪影 + 入框反馈。
 /// 横/竖屏跟随手机姿态，画框随方向自适应。
@@ -31,6 +31,7 @@ class PoseCoachGuideOverlay extends StatelessWidget {
         ? (preferLandscape ? '建议横持 · 侧身动作更清晰' : '竖屏教学中')
         : (preferLandscape ? '横屏教学中' : '也可竖持 · 站姿动作更清晰');
 
+    final hud = PoseHudTheme.of(context);
     return Stack(
       fit: StackFit.expand,
       children: [
@@ -39,6 +40,7 @@ class PoseCoachGuideOverlay extends StatelessWidget {
             exerciseType: exerciseType,
             alignment: alignment,
             isPortrait: isPortrait,
+            hud: hud,
           ),
         ),
         Positioned(
@@ -55,11 +57,9 @@ class PoseCoachGuideOverlay extends StatelessWidget {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.45),
+                    color: hud.chrome,
                     borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.25),
-                    ),
+                    border: Border.all(color: hud.chromeBorder),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
@@ -68,14 +68,14 @@ class PoseCoachGuideOverlay extends StatelessWidget {
                         isPortrait
                             ? Icons.stay_current_portrait
                             : Icons.stay_current_landscape,
-                        color: Colors.white70,
+                        color: hud.onChromeMuted,
                         size: 14,
                       ),
                       const SizedBox(width: 6),
                       Text(
                         orientationHint,
-                        style: const TextStyle(
-                          color: Colors.white70,
+                        style: TextStyle(
+                          color: hud.onChrome,
                           fontSize: 11,
                           fontWeight: FontWeight.w600,
                           decoration: TextDecoration.none,
@@ -101,14 +101,15 @@ class _TipBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final hud = PoseHudTheme.of(context);
     final ok = alignment >= 0.7;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.55),
+        color: hud.chrome,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: ok ? AppColors.copper : Colors.white.withValues(alpha: 0.55),
+          color: ok ? hud.frameOk : hud.chromeBorder,
           width: ok ? 1.5 : 1,
         ),
       ),
@@ -116,15 +117,15 @@ class _TipBanner extends StatelessWidget {
         children: [
           Icon(
             ok ? Icons.check_circle_outline : Icons.crop_free,
-            color: ok ? AppColors.copper : Colors.white,
+            color: ok ? hud.accent : hud.onChrome,
             size: 18,
           ),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
               ok ? '入框良好 · 开始动作' : tip,
-              style: const TextStyle(
-                color: Colors.white,
+              style: TextStyle(
+                color: hud.onChrome,
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
                 decoration: TextDecoration.none,
@@ -134,7 +135,7 @@ class _TipBanner extends StatelessWidget {
           Text(
             '${(alignment * 100).round()}%',
             style: TextStyle(
-              color: ok ? AppColors.copper : Colors.white70,
+              color: ok ? hud.accentOnChrome : hud.onChromeMuted,
               fontSize: 12,
               fontWeight: FontWeight.w700,
               decoration: TextDecoration.none,
@@ -228,11 +229,13 @@ class _PoseCoachGuidePainter extends CustomPainter {
   final String exerciseType;
   final double alignment;
   final bool isPortrait;
+  final PoseHudTheme hud;
 
   _PoseCoachGuidePainter({
     required this.exerciseType,
     required this.alignment,
     required this.isPortrait,
+    required this.hud,
   });
 
   @override
@@ -253,12 +256,10 @@ class _PoseCoachGuidePainter extends CustomPainter {
       ..fillType = PathFillType.evenOdd;
     canvas.drawPath(
       overlay,
-      Paint()..color = Colors.black.withValues(alpha: 0.45),
+      Paint()..color = hud.scrim,
     );
 
-    final borderColor = alignment >= 0.7
-        ? AppColors.copper
-        : Colors.white.withValues(alpha: 0.92);
+    final borderColor = alignment >= 0.7 ? hud.frameOk : hud.frameIdle;
     // 虚线引导边框
     final framePath = Path()
       ..addRRect(RRect.fromRectAndRadius(rect, const Radius.circular(18)));
@@ -335,14 +336,14 @@ class _PoseCoachGuidePainter extends CustomPainter {
 
   void _drawSilhouette(Canvas canvas, Rect rect, String type) {
     final paint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.55)
+      ..color = hud.frameIdle.withValues(alpha: hud.lightPaper ? 0.75 : 0.55)
       ..strokeWidth = math.max(2.5, rect.width * 0.018)
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round;
 
     final fill = Paint()
-      ..color = Colors.white.withValues(alpha: 0.12)
+      ..color = hud.chrome.withValues(alpha: hud.lightPaper ? 0.35 : 0.12)
       ..style = PaintingStyle.fill;
 
     Offset p(double nx, double ny) => Offset(
@@ -416,6 +417,7 @@ class _PoseCoachGuidePainter extends CustomPainter {
   bool shouldRepaint(covariant _PoseCoachGuidePainter oldDelegate) {
     return oldDelegate.exerciseType != exerciseType ||
         oldDelegate.alignment != alignment ||
-        oldDelegate.isPortrait != isPortrait;
+        oldDelegate.isPortrait != isPortrait ||
+        oldDelegate.hud.lightPaper != hud.lightPaper;
   }
 }

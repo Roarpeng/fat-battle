@@ -2,7 +2,7 @@
 
 > 你的身体是你精心雕琢的作品。Android 端以雕塑隐喻记录塑形进度；战斗里的熔炉怪物只出现在游戏舞台上，不作为产品品牌。
 
-[![Platform](https://img.shields.io/badge/platform-Android%20%7C%20Web-green.svg)](https://www.android.com/)
+[![Platform](https://img.shields.io/badge/platform-Android%20%7C%20iOS%20scaffold%20%7C%20Web-green.svg)](https://www.android.com/)
 [![Framework](https://img.shields.io/badge/Flutter-3.x-blue.svg)](https://flutter.dev/)
 [![Web](https://img.shields.io/badge/Web-React%20%2B%20Vite-blue.svg)](https://react.dev/)
 [![Language](https://img.shields.io/badge/Dart-3.x-blue.svg)](https://dart.dev/)
@@ -102,7 +102,7 @@ Web 版本已部署到 ModelScope 创空间，无需安装即可体验演示循�
 
 | 类别 | 技术 |
 |------|------|
-| **UI 框架** | Flutter 3.x（Android；应用名「塑身工坊」） |
+| **UI 框架** | Flutter 3.x（Android；应用名「塑身工坊」；iOS 权限脚手架） |
 | **语言** | Dart 3.x |
 | **状态管理** | Riverpod（StateNotifierProvider） |
 | **本地存储** | SharedPreferences + flutter_secure_storage |
@@ -309,6 +309,17 @@ git push modelscope master
 | 10-11| gz   | 2      | 陀螺仪 Z 轴 |
 
 采样率：50Hz
+
+四肢扩展（可选，默认关）：见 [docs/limb-imu-protocol.md](docs/limb-imu-protocol.md)。旧 12 字节包仍只当腰部；`0xFB` 聚合帧可带 1–5 节点。单 Hub 路径不变。
+
+### MoveNet 模型（TFLite 离线）
+
+`.tflite` 已 gitignore。下载后即可在锻炼页切换「TFLite 离线」，GPU 不可用则 CPU：
+
+```bash
+./download_models.sh
+# Windows: powershell -ExecutionPolicy Bypass -File download_models.ps1
+```
 
 ## 游戏算法
 

@@ -10,6 +10,7 @@ import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
 import 'package:path_provider/path_provider.dart';
 import 'pose_coach_diary.dart';
 import 'exercise_fsm.dart';
+import 'camera_move_fsm.dart';
 
 /// 基于 Google ML Kit Pose Detection 的姿态识别服务
 ///
@@ -39,7 +40,6 @@ class PoseDetectionService {
   // ===== 帧率/节流控制 =====
   final int _frameSkip = 0;
   int _frameCounter = 0;
-  final int _debounceMs = 500;
 
   // ===== 灵敏度（用户可调，0.0~1.0，1.0 = 最灵敏） =====
   double _sensitivity = 0.7;
@@ -114,9 +114,16 @@ class PoseDetectionService {
   /// 深蹲/俯卧撑/弓步蹲有限状态机（校准 + ROM）
   ExerciseRepFsm? _repFsm;
 
+  /// 高抬腿 / 平板 / 波比 / 登山跑 / 开合跳
+  CameraMoveFsm? _moveFsm;
+
   /// 本组最低膝角（供组后 recap）；无则 null
   double? lastMinKneeAngle;
   double? sessionMinKneeAngle;
+
+  /// 浅幅度未计次次数 + 本组常见口令（供离线 recap）
+  int sessionShallowCount = 0;
+  final List<String> sessionFaultCues = [];
 
   // ===== Getters =====
   CameraController? get controller => _controller;
@@ -361,20 +368,12 @@ class PoseDetectionService {
     _countingEnabled = false; // 等入镜门控通过后再计次
     _repFsm = ExerciseRepFsm.forType(exerciseType);
     _repFsm?.reset();
+    _moveFsm = CameraMoveFsm.forType(exerciseType);
+    _moveFsm?.reset();
     lastMinKneeAngle = null;
     sessionMinKneeAngle = null;
-
-    // 重置动作特定状态
-    _jackNoseMinY = 999;
-    _jackNoseMaxY = 0;
-    _lastJackRhythm = 0;
-
-    // 重置新运动状态
-    _highKneeState = 'down';
-    _plankAccumulatedSeconds = 0;
-    _plankStartTime = null;
-    _burpeePhase = 'stand';
-    _mountainClimberState = 'left';
+    sessionShallowCount = 0;
+    sessionFaultCues.clear();
 
     // 重置系统状态
     _comboCount = 0;
@@ -1128,23 +1127,13 @@ class PoseDetectionService {
         _tickRepFsm(lm);
         break;
       case 'jumping_jack':
-        _analyzeJumpingJack(lm);
-        break;
       case 'hiit':
       case 'jumprope':
-        _analyzeJumpingJack(lm); // 跳跃类共用
-        break;
       case 'highknee':
-        _analyzeHighKnee(lm);
-        break;
       case 'plank':
-        _analyzePlank(lm);
-        break;
       case 'burpee':
-        _analyzeBurpee(lm);
-        break;
       case 'mountainclimber':
-        _analyzeMountainClimber(lm);
+        _tickMoveFsm(lm);
         break;
       default:
         // 未实现姿态检测的运动，使用通用运动强度
@@ -1181,7 +1170,11 @@ class PoseDetectionService {
           cur == null ? tick.minKneeAngle : math.min(cur, tick.minKneeAngle!);
     }
     if (tick.cue != null && tick.cue!.isNotEmpty && !tick.counted) {
+      _noteFaultCue(tick.cue!);
       onFeedback?.call(tick.cue!);
+    }
+    if (tick.shallow) {
+      sessionShallowCount++;
     }
     if (!tick.counted) return;
     _repCount++;
@@ -1203,496 +1196,56 @@ class PoseDetectionService {
     );
   }
 
-  // ============================================================
-  // 开合跳：手腕高度 + 双脚宽度 + 身体重心变化三重验证
-  // 状态：closed（手脚并拢） -> open（手脚张开，跳起） -> closed（落地并拢）
-  // 一次完整 open->closed = 1 个
-  // ============================================================
-  double _jackNoseMinY = 999; // 跳起最高点（Y最小）
-  double _jackNoseMaxY = 0; // 站立最低点（Y最大）
-  double _lastJackRhythm = 0; // 上次开合跳时间
-
-  void _analyzeJumpingJack(Map<PoseLandmarkType, Point3D> lm) {
-    final lWrist = lm[PoseLandmarkType.leftWrist];
-    final rWrist = lm[PoseLandmarkType.rightWrist];
-    final lShoulder = lm[PoseLandmarkType.leftShoulder];
-    final rShoulder = lm[PoseLandmarkType.rightShoulder];
-    final nose = lm[PoseLandmarkType.nose];
-    final lHip = lm[PoseLandmarkType.leftHip];
-    final lAnkle = lm[PoseLandmarkType.leftAnkle];
-    final rAnkle = lm[PoseLandmarkType.rightAnkle];
-
-    if (lWrist == null ||
-        rWrist == null ||
-        lShoulder == null ||
-        rShoulder == null) {
-      onFeedback?.call('请确保全身入镜');
+  void _tickMoveFsm(Map<PoseLandmarkType, Point3D> lm) {
+    final fsm = _moveFsm;
+    if (fsm == null) {
+      _analyzeGeneric(lm);
       return;
     }
-
-    // 手举高判断：手腕超过肩膀一定比例（灵敏度越高越容易触发）
-    final shoulderY = (lShoulder.y + rShoulder.y) / 2;
-    final wristY = (lWrist.y + rWrist.y) / 2;
-    final handUpRatio = (shoulderY - wristY) / (lHip != null ? (lHip.y - nose!.y).abs() : 100);
-    final handsUp = wristY < shoulderY - (1.0 - _sensitivity) * 20;
-
-    // 双脚开合判断：脚踝距离 > 髋部宽度 * 1.5 = 张开
-    double feetSpread = 0;
-    if (lAnkle != null && rAnkle != null && lHip != null) {
-      final hipWidth = (lHip.x - lm[PoseLandmarkType.rightHip]!.x).abs();
-      final feetWidth = (lAnkle.x - rAnkle.x).abs();
-      feetSpread = hipWidth > 0 ? feetWidth / hipWidth : 1.0;
+    final tick = fsm.tick(_toFsmLandmarks(lm), sensitivity: _sensitivity);
+    _motionState = tick.phase.name;
+    _updateMotionLevelByAngle(tick.motionLevel, 1.0);
+    if (tick.minKneeAngle != null && fsm.exerciseType != 'plank') {
+      lastMinKneeAngle = tick.minKneeAngle;
+      final cur = sessionMinKneeAngle;
+      sessionMinKneeAngle =
+          cur == null ? tick.minKneeAngle : math.min(cur, tick.minKneeAngle!);
     }
-    final feetApart = feetSpread > 1.3;
-
-    // 跳跃检测：鼻子 Y 坐标变化（跳起时Y变小）
-    double jumpHeight = 0;
-    if (nose != null) {
-      if (nose.y < _jackNoseMinY) _jackNoseMinY = nose.y;
-      if (nose.y > _jackNoseMaxY) _jackNoseMaxY = nose.y;
-      if (_jackNoseMaxY > _jackNoseMinY) {
-        jumpHeight = (_jackNoseMaxY - _jackNoseMinY) / _jackNoseMaxY;
-      }
+    if (tick.cue != null && tick.cue!.isNotEmpty && !tick.counted) {
+      _noteFaultCue(tick.cue!);
+      onFeedback?.call(tick.cue!);
     }
-
-    // 综合判断：手张开 AND (脚张开 OR 有跳跃)
-    final isOpen = handsUp && (feetApart || jumpHeight > 0.03);
-
-    // 运动强度 = 手的高度 + 脚的张开程度
-    final intensity = (handUpRatio * 0.5 + feetSpread * 0.3 + jumpHeight * 10 * 0.2)
-        .clamp(0.0, 1.0);
-    _updateMotionLevelByAngle(intensity, 1.0);
-
-    final String newState = isOpen ? 'open' : 'closed';
-
-    if (_motionState == 'open' && newState == 'closed' && _debounceOk()) {
-      // 节奏稳定性判断
-      final now = DateTime.now().millisecondsSinceEpoch;
-      if (_lastJackRhythm > 0) {
-        final interval = now - _lastJackRhythm;
-        // 正常开合跳节奏：0.5-2秒/个
-        if (interval < 300) {
-          // 太快了，可能是误检，跳过
-          _motionState = newState;
-          return;
-        }
-      }
-      _lastJackRhythm = now.toDouble();
-
-      _repCount++;
-      _lastRepTime = DateTime.now();
-      onRepDetected?.call(_repCount, '开合跳');
-      _handleRepSuccess();
-      _emitJackFeedback(jumpHeight, feetSpread);
+    if (tick.shallow) {
+      sessionShallowCount++;
+    }
+    if (!tick.counted) return;
+    _repCount++;
+    _lastRepTime = DateTime.now();
+    onRepDetected?.call(_repCount, tick.exerciseName);
+    _handleRepSuccess();
+    if (tick.qualityAngle != null) {
       _calcQualityScore(
-        'jumping_jack',
-        (jumpHeight / 0.08).clamp(0.0, 1.0),
-        (feetSpread / 1.5).clamp(0.0, 1.0),
-        0.85,
+        fsm.exerciseType,
+        tick.qualityAngle!,
+        tick.qualityDepth ?? 0.7,
+        tick.qualityBodyLine ?? 0.8,
       );
-      _jackNoseMinY = 999;
     }
-    _motionState = newState;
-  }
-
-  void _emitJackFeedback(double jumpHeight, double feetSpread) {
-    String msg;
-    if (jumpHeight > 0.08 && feetSpread > 1.5) {
-      msg = '🔥 $_repCount 个！标准开合跳，爆发十足！';
-      onHighlightMoment?.call();
-    } else if (jumpHeight > 0.04 || feetSpread > 1.3) {
-      msg = '💪 $_repCount 个！节奏不错，继续！';
-    } else {
-      msg = '👍 $_repCount 个！再跳高一点效果更好';
-    }
-    onFeedback?.call(msg);
-  }
-
-  // ============================================================
-  // 高抬腿：检测膝盖抬起高度比例（膝盖Y vs 髋部Y，用躯干长度归一化）
-  // 状态机：down -> up -> down 为一次完整动作
-  // 使用 LEFT_HIP, RIGHT_HIP, LEFT_KNEE, RIGHT_KNEE
-  // ============================================================
-  String _highKneeState = 'down';
-
-  void _analyzeHighKnee(Map<PoseLandmarkType, Point3D> lm) {
-    final lHip = lm[PoseLandmarkType.leftHip];
-    final rHip = lm[PoseLandmarkType.rightHip];
-    final lKnee = lm[PoseLandmarkType.leftKnee];
-    final rKnee = lm[PoseLandmarkType.rightKnee];
-    final lShoulder = lm[PoseLandmarkType.leftShoulder];
-    final rShoulder = lm[PoseLandmarkType.rightShoulder];
-
-    if (lHip == null || rHip == null || lKnee == null || rKnee == null) {
-      onFeedback?.call('请正对手机，下半身入镜');
-      return;
-    }
-
-    // 计算膝盖高度比例：膝盖相对于髋部的高度，用躯干长度归一化
-    final hipMidY = (lHip.y + rHip.y) / 2;
-    final kneeMidY = (lKnee.y + rKnee.y) / 2;
-
-    // 躯干长度 = 肩髋Y距离
-    double torsoLength = 0.1; // 默认值防止除零
-    if (lShoulder != null && rShoulder != null) {
-      final shoulderMidY = (lShoulder.y + rShoulder.y) / 2;
-      final t = (hipMidY - shoulderMidY).abs();
-      if (t > 0.02) torsoLength = t;
-    }
-    // 注意：图像坐标Y向下，所以 hipMidY - kneeMidY > 0 表示膝盖高于髋部
-    final kneeHeightRatio = (hipMidY - kneeMidY) / torsoLength;
-
-    // 运动强度映射
-    _updateMotionLevelByAngle(kneeHeightRatio * 5, 1.0);
-
-    // 自适应阈值：灵敏度越高越容易触发
-    final upThreshold = 0.2 * (1.0 - _sensitivity * 0.3);
-    final downThreshold = 0.05 * (1.0 + (1.0 - _sensitivity) * 0.5);
-
-    // 状态判断：膝盖抬高（上） vs 膝盖落下（下）
-    String newState = _highKneeState;
-    if (kneeHeightRatio > upThreshold) {
-      newState = 'up';
-    } else if (kneeHeightRatio < downThreshold) {
-      newState = 'down';
-    }
-
-    // up -> down 过渡计一次
-    if (_highKneeState == 'up' && newState == 'down' && _debounceOk()) {
-      _repCount++;
-      _lastRepTime = DateTime.now();
-      onRepDetected?.call(_repCount, '高抬腿');
-      _handleRepSuccess();
-      _emitHighKneeFeedback(kneeHeightRatio);
-      _calcQualityScore('highknee', (kneeHeightRatio / 0.3).clamp(0.0, 1.0),
-          kneeHeightRatio > 0.2 ? 1.0 : kneeHeightRatio / 0.2, 0.8);
-    }
-
-    _highKneeState = newState;
-  }
-
-  void _emitHighKneeFeedback(double kneeRatio) {
-    String msg;
-    if (kneeRatio > 0.35) {
-      msg = '🔥 $_repCount 个！膝盖抬得真高，完美！';
-      onHighlightMoment?.call();
-    } else if (kneeRatio > 0.25) {
-      msg = '💪 $_repCount 个！节奏不错，继续保持~';
-    } else if (kneeRatio > 0.2) {
-      msg = '👍 $_repCount 个！可以再抬高一点';
-    } else {
-      msg = '😅 $_repCount 个！膝盖还不够高哦';
-    }
-    onFeedback?.call(msg);
-  }
-
-  // ============================================================
-  // 平板支撑：检测肩-髋-踝直线度
-  // isPlankForm (shoulderHipDiff < 0.08 && hipAnkleDiff > 0.1) 时累积时间
-  // 使用 LEFT_SHOULDER, RIGHT_SHOULDER, LEFT_HIP, RIGHT_HIP, LEFT_ANKLE, RIGHT_ANKLE
-  // ============================================================
-  DateTime? _plankStartTime;
-  double _plankAccumulatedSeconds = 0;
-
-  void _analyzePlank(Map<PoseLandmarkType, Point3D> lm) {
-    final lShoulder = lm[PoseLandmarkType.leftShoulder];
-    final rShoulder = lm[PoseLandmarkType.rightShoulder];
-    final lHip = lm[PoseLandmarkType.leftHip];
-    final rHip = lm[PoseLandmarkType.rightHip];
-    final lAnkle = lm[PoseLandmarkType.leftAnkle];
-    final rAnkle = lm[PoseLandmarkType.rightAnkle];
-
-    if (lShoulder == null || rShoulder == null || lHip == null || rHip == null) {
-      onFeedback?.call('请正对手机，全身入镜');
-      _plankStartTime = null;
-      return;
-    }
-
-    // 肩髋Y轴对齐度：平板支撑时肩和髋应在相近高度
-    final shoulderMidY = (lShoulder.y + rShoulder.y) / 2;
-    final hipMidY = (lHip.y + rHip.y) / 2;
-    final shoulderHipDiff = (shoulderMidY - hipMidY).abs();
-
-    // 髋踝Y轴距离：平板支撑时髋高于踝
-    double hipAnkleDiff = 0;
-    if (lAnkle != null && rAnkle != null) {
-      final ankleMidY = (lAnkle.y + rAnkle.y) / 2;
-      hipAnkleDiff = (hipMidY - ankleMidY).abs();
-    }
-
-    // 身体直线度评分（肩-髋-踝三点一线）
-    double bodyLine = 0.0;
-    if (lShoulder != null && lHip != null && lAnkle != null) {
-      final bodyAngle = _angle(lShoulder, lHip, lAnkle);
-      bodyLine = ((180.0 - (bodyAngle - 180.0).abs()) / 180.0).clamp(0.0, 1.0);
-    }
-
-    // 自适应阈值
-    final shoulderHipThreshold = 0.08 * (1.0 + (1.0 - _sensitivity) * 0.5);
-    final hipAnkleThreshold = 0.1 * (1.0 - (1.0 - _sensitivity) * 0.3);
-    final isPlankForm = shoulderHipDiff < shoulderHipThreshold &&
-        hipAnkleDiff > hipAnkleThreshold;
-
-    // 运动强度
-    _updateMotionLevelByAngle(isPlankForm ? 1.0 : 0.3, 1.0);
-
-    final now = DateTime.now();
-    if (isPlankForm) {
-      if (_plankStartTime == null) {
-        _plankStartTime = now;
-      } else {
-        _plankAccumulatedSeconds +=
-            now.difference(_plankStartTime!).inMilliseconds / 1000.0;
-        _plankStartTime = now;
-      }
-      final secs = _plankAccumulatedSeconds.toInt();
-      // 每整秒推进一次计数（供 UI / 连训达标检测）
-      if (secs > _repCount) {
-        _repCount = secs;
-        onRepDetected?.call(_repCount, '平板支撑');
-        if (secs > 0 && secs % 15 == 0) {
-          onHighlightMoment?.call();
-        }
-      }
-      // 每累计5秒提示一次
-      if (secs > 0 && secs % 5 == 0 && _debounceOk()) {
-        _emitPlankFeedback(_plankAccumulatedSeconds);
-        _calcQualityScore('plank', 0.9, 0.8, bodyLine);
-      }
-    } else {
-      _plankStartTime = null;
-      if (shoulderHipDiff >= shoulderHipThreshold) {
-        onFeedback?.call('腰往下塌了，收紧核心把髋抬平');
-      }
-    }
-
-    // 平板支撑不以次数计，而是累计时长
-    _repCount = _plankAccumulatedSeconds.toInt();
-  }
-
-  void _emitPlankFeedback(double seconds) {
-    if (seconds >= 60) {
-      onFeedback?.call('🔥 核心力量惊人！已坚持 ${seconds.toInt()} 秒！');
-    } else if (seconds >= 30) {
-      onFeedback?.call('💪 很棒！已坚持 ${seconds.toInt()} 秒，继续加油！');
-    } else {
-      onFeedback?.call('👍 保持住！已坚持 ${seconds.toInt()} 秒');
-    }
-  }
-
-  // ============================================================
-  // 波比跳：4阶段状态机 stand -> squat -> plank -> jump -> stand
-  // stand: avgKneeAngle > 160
-  // squat: avgKneeAngle < 130
-  // plank: shoulderHipDiff < 0.1
-  // jump: 从 plank 回到 squat-like 状态
-  // 计数: jump -> stand 过渡
-  // 使用 8 个关键点：双肩、双髋、双膝、双踝
-  // ============================================================
-  String _burpeePhase = 'stand';
-
-  void _analyzeBurpee(Map<PoseLandmarkType, Point3D> lm) {
-    final lShoulder = lm[PoseLandmarkType.leftShoulder];
-    final rShoulder = lm[PoseLandmarkType.rightShoulder];
-    final lHip = lm[PoseLandmarkType.leftHip];
-    final rHip = lm[PoseLandmarkType.rightHip];
-    final lKnee = lm[PoseLandmarkType.leftKnee];
-    final rKnee = lm[PoseLandmarkType.rightKnee];
-    final lAnkle = lm[PoseLandmarkType.leftAnkle];
-    final rAnkle = lm[PoseLandmarkType.rightAnkle];
-
-    final shouldersOk = lShoulder != null && rShoulder != null;
-    final hipsOk = lHip != null && rHip != null;
-    final kneesOk = lKnee != null && rKnee != null;
-    final anklesOk = lAnkle != null && rAnkle != null;
-
-    if (!shouldersOk || !hipsOk || !kneesOk) {
-      onFeedback?.call('请正对手机，全身入镜');
-      return;
-    }
-
-    // 平均膝盖角度
-    final angleL = kneesOk ? _angle(lHip!, lKnee!, lAnkle!) : 180.0;
-    final angleR = kneesOk ? _angle(rHip!, rKnee!, rAnkle!) : 180.0;
-    final avgKneeAngle = (angleL + angleR) / 2;
-
-    // 肩髋对齐度（判断是否在水平位置）
-    final shoulderMidY = (lShoulder!.y + rShoulder!.y) / 2;
-    final hipMidY = (lHip!.y + rHip!.y) / 2;
-    final shoulderHipDiff = (shoulderMidY - hipMidY).abs();
-
-    // 运动强度
-    _updateMotionLevelByAngle(
-        ((180.0 - avgKneeAngle) / 90.0).clamp(0.0, 1.0), 1.0);
-
-    // 4阶段状态机
-    final standThreshold = 160.0;
-    final squatThreshold = 130.0;
-    final plankThreshold = 0.1;
-
-    switch (_burpeePhase) {
-      case 'stand':
-        if (avgKneeAngle < squatThreshold) {
-          _burpeePhase = 'squat';
-          onFeedback?.call('下蹲了！');
-        }
-        break;
-
-      case 'squat':
-        if (avgKneeAngle > standThreshold) {
-          // 回到站立，重置
-          _burpeePhase = 'stand';
-        } else if (shoulderHipDiff < plankThreshold) {
-          _burpeePhase = 'plank';
-          onFeedback?.call('进入平板支撑！');
-        }
-        break;
-
-      case 'plank':
-        if (shoulderHipDiff > plankThreshold &&
-            avgKneeAngle < squatThreshold) {
-          // 从 plank 站起来到 squat 位置 = jump 阶段
-          _burpeePhase = 'jump';
-          onFeedback?.call('跳起来！');
-        } else if (shoulderHipDiff > plankThreshold &&
-            avgKneeAngle > standThreshold) {
-          // 直接从 plank 站起，可能是检测不准，重置
-          _burpeePhase = 'stand';
-        }
-        break;
-
-      case 'jump':
-        if (avgKneeAngle > standThreshold) {
-          // 完成跳跃，计数
-          if (_debounceOk()) {
-            _repCount++;
-            _lastRepTime = DateTime.now();
-            onRepDetected?.call(_repCount, '波比跳');
-            _handleRepSuccess();
-            _emitBurpeeFeedback(avgKneeAngle, shoulderHipDiff);
-            _calcQualityScore('burpee',
-                (avgKneeAngle > 170 ? 1.0 : (avgKneeAngle - 130) / 40),
-                shoulderHipDiff < 0.06 ? 1.0 : (1.0 - shoulderHipDiff / 0.1),
-                0.8);
-          }
-          _burpeePhase = 'stand';
-        }
-        break;
-    }
-  }
-
-  void _emitBurpeeFeedback(double kneeAngle, double hipDiff) {
-    String msg;
-    if (kneeAngle > 170 && hipDiff < 0.06) {
-      msg = '🔥 $_repCount 个！标准波比跳，燃脂之王！';
-      onHighlightMoment?.call();
-    } else if (kneeAngle > 160) {
-      msg = '💪 $_repCount 个！节奏不错，继续燃烧！';
-    } else {
-      msg = '👍 $_repCount 个！动作幅度可以再大一点';
-    }
-    onFeedback?.call(msg);
-  }
-
-  // 弓步蹲由 ExerciseRepFsm 处理（见 _tickRepFsm）
-
-  // ============================================================
-  // 登山者：平板形态下用膝到肩距离判断收腿（不依赖画面 X 左右手性）
-  // ============================================================
-  String _mountainClimberState = 'left';
-
-  void _analyzeMountainClimber(Map<PoseLandmarkType, Point3D> lm) {
-    final lShoulder = lm[PoseLandmarkType.leftShoulder];
-    final rShoulder = lm[PoseLandmarkType.rightShoulder];
-    final lHip = lm[PoseLandmarkType.leftHip];
-    final rHip = lm[PoseLandmarkType.rightHip];
-    final lKnee = lm[PoseLandmarkType.leftKnee];
-    final rKnee = lm[PoseLandmarkType.rightKnee];
-    final lAnkle = lm[PoseLandmarkType.leftAnkle];
-    final rAnkle = lm[PoseLandmarkType.rightAnkle];
-
-    if (lShoulder == null || rShoulder == null || lHip == null || rHip == null ||
-        lKnee == null || rKnee == null) {
-      onFeedback?.call('请正对手机，全身入镜');
-      return;
-    }
-
-    // 平板支撑前提检查：身体是否保持水平直线
-    final shoulderMidY = (lShoulder.y + rShoulder.y) / 2;
-    final hipMidY = (lHip.y + rHip.y) / 2;
-    final shoulderHipDiff = (shoulderMidY - hipMidY).abs();
-
-    double hipAnkleDiff = 0;
-    if (lAnkle != null && rAnkle != null) {
-      final ankleMidY = (lAnkle.y + rAnkle.y) / 2;
-      hipAnkleDiff = (hipMidY - ankleMidY).abs();
-    }
-
-    // 自适应平板形态阈值
-    final shThreshold = 0.08 * (1.0 + (1.0 - _sensitivity) * 0.3);
-    final haThreshold = 0.1 * (1.0 - (1.0 - _sensitivity) * 0.3);
-    final inPlank = shoulderHipDiff < shThreshold && hipAnkleDiff > haThreshold;
-
-    if (!inPlank) {
-      if (shoulderHipDiff >= shThreshold) {
-        onFeedback?.call('腰往下塌了，收紧核心把髋抬平');
-      } else {
-        onFeedback?.call('请保持平板支撑姿势');
-      }
-      _updateMotionLevelByAngle(0.1, 1.0);
-      return;
-    }
-
-    // 膝到肩距离判断收腿，不依赖画面 X 左右手性（前置/镜像也可计次）
-    final midShoulder = Point3D(
-      (lShoulder.x + rShoulder.x) / 2,
-      (lShoulder.y + rShoulder.y) / 2,
-      0,
+    if (tick.highlight) onHighlightMoment?.call();
+    final fb = tick.feedback;
+    final unit = fsm.exerciseType == 'plank' ? '秒' : '个';
+    onFeedback?.call(
+      fb == null || fb.isEmpty
+          ? '$_repCount $unit'
+          : '$_repCount $unit！$fb',
     );
-    final leftTuck = _dist(lKnee, midShoulder);
-    final rightTuck = _dist(rKnee, midShoulder);
-    final tuckDelta = (leftTuck - rightTuck).abs();
-    final threshold = 0.04 * (1.0 + (1.0 - _sensitivity) * 0.5);
-    final leftForward = leftTuck + threshold < rightTuck;
-    final rightForward = rightTuck + threshold < leftTuck;
-
-    final motion = tuckDelta > threshold ? 0.8 : 0.3;
-    _updateMotionLevelByAngle(motion, 1.0);
-
-    String newState = _mountainClimberState;
-    if (leftForward && !rightForward) {
-      newState = 'left';
-    } else if (rightForward && !leftForward) {
-      newState = 'right';
-    }
-
-    if (_mountainClimberState == 'left' && newState == 'right' && _debounceOk()) {
-      _repCount++;
-      _lastRepTime = DateTime.now();
-      onRepDetected?.call(_repCount, '登山者');
-      _handleRepSuccess();
-      _emitMountainClimberFeedback(leftForward, rightForward, inPlank);
-      _calcQualityScore('mountainclimber', inPlank ? 0.9 : 0.5, 0.8, 0.7);
-    }
-
-    _mountainClimberState = newState;
   }
 
-  void _emitMountainClimberFeedback(
-    bool leftFwd,
-    bool rightFwd,
-    bool inPlank,
-  ) {
-    String msg;
-    if (inPlank && (leftFwd || rightFwd)) {
-      msg = '🔥 $_repCount 次！标准登山跑，核心炸裂！';
-      onHighlightMoment?.call();
-    } else if (leftFwd || rightFwd) {
-      msg = '💪 $_repCount 次！节奏真好，继续保持~';
-    } else {
-      msg = '👍 $_repCount 次！加快速度效果更好';
-    }
-    onFeedback?.call(msg);
+  void _noteFaultCue(String cue) {
+    if (cue.isEmpty) return;
+    if (sessionFaultCues.contains(cue)) return;
+    if (sessionFaultCues.length >= 6) return;
+    sessionFaultCues.add(cue);
   }
 
   // 通用运动强度估算（用于不支持关键点检测的运动类型）
@@ -1713,32 +1266,6 @@ class PoseDetectionService {
   // ============================================================
   // 工具方法
   // ============================================================
-
-  /// 计算三个点形成的角度（顶点位于 b）
-  /// 返回角度（0~180°）
-  double _angle(Point3D a, Point3D b, Point3D c) {
-    final v1x = a.x - b.x;
-    final v1y = a.y - b.y;
-    final v2x = c.x - b.x;
-    final v2y = c.y - b.y;
-    final dot = v1x * v2x + v1y * v2y;
-    final mag1 = math.sqrt(v1x * v1x + v1y * v1y);
-    final mag2 = math.sqrt(v2x * v2x + v2y * v2y);
-    if (mag1 < 1e-6 || mag2 < 1e-6) return 180.0;
-    var cosVal = dot / (mag1 * mag2);
-    cosVal = cosVal.clamp(-1.0, 1.0);
-    return math.acos(cosVal) * 180 / math.pi;
-  }
-
-  double _dist(Point3D a, Point3D b) {
-    final dx = a.x - b.x;
-    final dy = a.y - b.y;
-    return math.sqrt(dx * dx + dy * dy);
-  }
-
-  bool _debounceOk() {
-    return DateTime.now().difference(_lastRepTime).inMilliseconds > _debounceMs;
-  }
 
   /// 将一个原始运动量值映射为 [0,1] 强度并回调
   void _updateMotionLevelByAngle(double raw, double max) {
@@ -1945,24 +1472,17 @@ class PoseDetectionService {
     _repCount = 0;
     _motionState = _isJumpingExercise(_currentExercise) ? 'closed' : 'up';
     _lastRepTime = DateTime.now();
-    _jackNoseMinY = 999;
-    _jackNoseMaxY = 0;
-    _lastJackRhythm = 0;
-
-    // 重置新运动状态
-    _highKneeState = 'down';
-    _plankAccumulatedSeconds = 0;
-    _plankStartTime = null;
-    _burpeePhase = 'stand';
-    _mountainClimberState = 'left';
 
     // 重置连击
     _comboCount = 0;
     _comboMultiplier = 1.0;
     _lastComboTime = DateTime.now();
     _repFsm?.reset();
+    _moveFsm?.reset();
     lastMinKneeAngle = null;
     sessionMinKneeAngle = null;
+    sessionShallowCount = 0;
+    sessionFaultCues.clear();
   }
 
   /// 续训：恢复已累计次数/秒数（平板按秒）。
@@ -1970,8 +1490,8 @@ class PoseDetectionService {
     final n = count < 0 ? 0 : count;
     _repCount = n;
     if (_currentExercise == 'plank') {
-      _plankAccumulatedSeconds = n.toDouble();
-      _plankStartTime = null;
+      final plank = _moveFsm;
+      if (plank is PlankHoldFsm) plank.seedSeconds(n);
     }
     onRepDetected?.call(_repCount, _currentExercise);
   }

@@ -86,9 +86,9 @@ void main() {
   });
 
   group('伤病过滤', () {
-    test('膝盖不适去掉深蹲与弓步', () {
+    test('膝盖不适去掉深蹲、弓步与高抬腿/波比', () {
       final flags = const InjuryFlags(kneeIssue: true);
-      expect(flags.excludedTypes, containsAll(['squat', 'lunge']));
+      expect(flags.excludedTypes, containsAll(['squat', 'lunge', 'highknee', 'burpee']));
       final plan = CoachLesson.recommendToday(
         user: _user(),
         monsterAffinity: ExerciseCategory.core,
@@ -98,10 +98,12 @@ void main() {
       final types = plan.exercises.map((e) => e.type).toSet();
       expect(types.contains('squat'), isFalse, reason: 'types=$types');
       expect(types.contains('lunge'), isFalse);
+      expect(types.contains('highknee'), isFalse);
+      expect(types.contains('burpee'), isFalse);
       expect(plan.items, isNotEmpty);
     });
 
-    test('腰腹不适去掉平板与登山跑', () {
+    test('腰腹不适去掉平板、登山跑与波比', () {
       final plan = CoachLesson.recommendToday(
         user: _user(),
         monsterAffinity: ExerciseCategory.cardio,
@@ -111,12 +113,24 @@ void main() {
       final types = plan.exercises.map((e) => e.type).toSet();
       expect(types.contains('plank'), isFalse, reason: 'types=$types');
       expect(types.contains('mountainclimber'), isFalse);
+      expect(types.contains('burpee'), isFalse);
       expect(plan.items, isNotEmpty);
     });
 
     test('默认全部动作可用', () {
       expect(const InjuryFlags().hasAny, isFalse);
       expect(const InjuryFlags().excludedTypes, isEmpty);
+    });
+
+    test('安全克制列表会去掉伤病动作但仍保留镜头动作', () {
+      final types = safeCounterCameraTypes(
+        ExerciseCategory.strength,
+        injury: const InjuryFlags(kneeIssue: true),
+      );
+      expect(types, isNotEmpty);
+      expect(types.contains('highknee'), isFalse);
+      expect(types.contains('burpee'), isFalse);
+      expect(types.contains('jumping_jack'), isTrue);
     });
   });
 

@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../constants/app_constants.dart';
+import '../../theme/pose_hud_theme.dart';
 
 /// Renders a human pose skeleton overlay on a camera preview.
 ///
@@ -37,6 +37,7 @@ class PoseOverlay extends StatelessWidget {
         painter: PoseOverlayPainter(
           landmarks: landmarks!,
           showSkeleton: showSkeleton,
+          hud: PoseHudTheme.of(context),
         ),
       ),
     );
@@ -67,10 +68,12 @@ class PoseOverlayPainter extends CustomPainter {
 
   final Map<String, Map<String, double>> landmarks;
   final bool showSkeleton;
+  final PoseHudTheme? hud;
 
   PoseOverlayPainter({
     required this.landmarks,
     required this.showSkeleton,
+    this.hud,
   });
 
   // ---- colour helpers ----
@@ -79,15 +82,21 @@ class PoseOverlayPainter extends CustomPainter {
   ///   z >= 0.7  → copper   (high confidence)
   ///   z >= 0.3  → forgeGlow (medium)
   ///   z <  0.3  → ember    (low)
-  static Color _confidenceColor(double z) {
-    if (z >= 0.7) return AppColors.copper;
-    if (z >= 0.3) return AppColors.forgeGlow;
-    return AppColors.ember;
+  Color _confidenceColor(double z) {
+    final t = hud;
+    if (t != null) {
+      if (z >= 0.7) return t.skeletonHigh;
+      if (z >= 0.3) return t.skeletonMid;
+      return t.skeletonLow;
+    }
+    if (z >= 0.7) return const Color(0xFFC9A227);
+    if (z >= 0.3) return const Color(0xFFE8A87C);
+    return const Color(0xFFC0392B);
   }
 
   /// Returns the average colour between two landmarks so a bone is drawn
   /// in a blended tint rather than jerking between two extremes.
-  static Color _boneColor(
+  Color _boneColor(
     Map<String, double> a,
     Map<String, double> b,
   ) {
@@ -173,6 +182,7 @@ class PoseOverlayPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant PoseOverlayPainter oldDelegate) {
     return landmarks != oldDelegate.landmarks ||
-        showSkeleton != oldDelegate.showSkeleton;
+        showSkeleton != oldDelegate.showSkeleton ||
+        hud?.lightPaper != oldDelegate.hud?.lightPaper;
   }
 }

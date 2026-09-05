@@ -258,12 +258,16 @@ _interpreter = await Interpreter.fromAsset(modelPath, options: options);
 | 低端 (骁龙4系) | CPU 4线程 | Lightning INT8 |
 | IoT/嵌入式 | CPU | Lightning INT8 |
 
-本项目 `TfliteMotionService.configure()` 方法支持切换：
+本项目 `TfliteMotionService.configure()` + `TfliteGpuHook.attach()`：
 ```dart
 final service = TfliteMotionService();
-service.configure(useNnApi: true);  // 启用 NNAPI
+service.configure(useGpu: true, useNnApi: true);
 await service.initialize();
+// service.accel?.label → GPU / NNAPI / CPU
 ```
+
+GPU 创建或 `Interpreter.fromAsset` 失败时自动回退 CPU，不阻断开练。
+模型请用 `download_models.sh` / `download_models.ps1` 放到 `assets/models/`（已 gitignore）。
 
 ---
 

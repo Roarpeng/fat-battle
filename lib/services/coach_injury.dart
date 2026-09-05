@@ -1,9 +1,11 @@
+import 'camera_move_fsm.dart';
+
 /// 伤病过滤：可选膝盖 / 腰腹标记，默认全部动作可用。
 class InjuryFlags {
-  /// 膝盖不适：去掉深蹲、弓步等负重屈膝。
+  /// 膝盖不适：去掉深蹲、弓步、高抬腿、波比等负重/冲击屈膝。
   final bool kneeIssue;
 
-  /// 腰腹不适：去掉卷腹/登山跑/平板等核心屈曲。
+  /// 腰腹不适：去掉平板、登山跑、波比等核心屈曲。
   final bool waistIssue;
 
   const InjuryFlags({
@@ -17,16 +19,19 @@ class InjuryFlags {
   Set<String> get excludedTypes {
     final out = <String>{};
     if (kneeIssue) {
-      out.addAll(const ['squat', 'lunge']);
+      out.addAll(kneeTypes);
     }
     if (waistIssue) {
-      out.addAll(const ['plank', 'mountainclimber']);
+      out.addAll(waistTypes);
     }
     return out;
   }
 
-  static const kneeTypes = ['squat', 'lunge'];
-  static const waistTypes = ['plank', 'mountainclimber'];
+  static List<String> get kneeTypes =>
+      CameraGuidableCatalog.kneeLoadTypes().toList(growable: false);
+
+  static List<String> get waistTypes =>
+      CameraGuidableCatalog.waistLoadTypes().toList(growable: false);
 }
 
 /// 从处方候选 type 列表中去掉伤病动作。
