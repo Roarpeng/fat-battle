@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../theme/forge_theme.dart';
+import '../theme/pose_hud_theme.dart';
 import '../constants/app_constants.dart';
 import '../widgets/exercise/pose_coach_guide.dart';
 import '../widgets/exercise/pose_overlay.dart';
@@ -734,7 +735,8 @@ class _CoachHud extends StatelessWidget {
     this.qualityGrade,
   });
 
-  Widget _repBlock(int reps, String unit) {
+  Widget _repBlock(BuildContext context, int reps, String unit) {
+    final hud = PoseHudTheme.of(context);
     final target = targetCount;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -742,17 +744,15 @@ class _CoachHud extends StatelessWidget {
         Text(
           target != null ? '$reps / $target' : '$reps',
           style: AppFonts.display(
-            color: AppColors.ember,
+            color: hud.accent,
             fontSize: compact ? 28 : 36,
             fontWeight: FontWeight.w700,
           ),
         ),
         Text(
-          target != null
-              ? '${targetUnit ?? unit}'
-              : unit,
+          target != null ? (targetUnit ?? unit) : unit,
           style: AppFonts.body(
-            color: Colors.white70,
+            color: hud.onChromeMuted,
             fontSize: compact ? 11 : 12,
           ),
         ),
@@ -775,7 +775,7 @@ class _CoachHud extends StatelessWidget {
               if (c < 2) return const SizedBox.shrink();
               return Align(
                 alignment: compact ? Alignment.centerLeft : Alignment.centerRight,
-                child: _chip('🔥 ${c}连击', AppColors.copper),
+                child: _chip(context, '🔥 ${c}连击', PoseHudTheme.of(context).accent),
               );
             },
           ),
@@ -787,7 +787,7 @@ class _CoachHud extends StatelessWidget {
                 return Align(
                   alignment:
                       compact ? Alignment.centerLeft : Alignment.centerRight,
-                  child: _chip('$g 级', AppColors.forgeGlow),
+                  child: _chip(context, '$g 级', PoseHudTheme.of(context).accentOnChrome),
                 );
               },
             ),
@@ -804,15 +804,17 @@ class _CoachHud extends StatelessWidget {
                         ? CrossAxisAlignment.start
                         : CrossAxisAlignment.end,
                     children: [
-                      _chip('准备中…', AppColors.shield),
+                      _chip(context, '准备中…', PoseHudTheme.of(context).accent),
                       const SizedBox(height: 4),
                       SizedBox(
                         width: compact ? double.infinity : 120,
                         child: LinearProgressIndicator(
                           value: p,
                           minHeight: 4,
-                          backgroundColor: Colors.white24,
-                          color: AppColors.shield,
+                          backgroundColor: PoseHudTheme.of(context)
+                              .onChrome
+                              .withValues(alpha: 0.2),
+                          color: PoseHudTheme.of(context).accent,
                         ),
                       ),
                     ],
@@ -830,7 +832,7 @@ class _CoachHud extends StatelessWidget {
                 child: Align(
                   alignment:
                       compact ? Alignment.centerLeft : Alignment.centerRight,
-                  child: _chip('已暂停', AppColors.ember),
+                  child: _chip(context, '已暂停', PoseHudTheme.of(context).warn),
                 ),
               );
             },
@@ -841,9 +843,9 @@ class _CoachHud extends StatelessWidget {
             width: double.infinity,
             padding: EdgeInsets.all(compact ? 10 : 12),
             decoration: BoxDecoration(
-              color: Colors.black.withValues(alpha: 0.55),
+              color: PoseHudTheme.of(context).chrome,
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: Colors.white24),
+              border: Border.all(color: PoseHudTheme.of(context).chromeBorder),
             ),
             child: compact
                 ? Row(
@@ -853,7 +855,7 @@ class _CoachHud extends StatelessWidget {
                         builder: (_, reps, __) {
                           return ValueListenableBuilder<String>(
                             valueListenable: countUnit,
-                            builder: (_, unit, __) => _repBlock(reps, unit),
+                            builder: (_, unit, __) => _repBlock(context, reps, unit),
                           );
                         },
                       ),
@@ -870,7 +872,7 @@ class _CoachHud extends StatelessWidget {
                                   Text(
                                     '体力 ${s.toInt()}',
                                     style: AppFonts.body(
-                                      color: Colors.white70,
+                                      color: PoseHudTheme.of(context).onChromeMuted,
                                       fontSize: 11,
                                     ),
                                   ),
@@ -880,8 +882,10 @@ class _CoachHud extends StatelessWidget {
                                     child: LinearProgressIndicator(
                                       value: (s / 100).clamp(0.0, 1.0),
                                       minHeight: 6,
-                                      backgroundColor: Colors.white24,
-                                      color: AppColors.copper,
+                                      backgroundColor: PoseHudTheme.of(context)
+                                          .onChrome
+                                          .withValues(alpha: 0.2),
+                                      color: PoseHudTheme.of(context).accent,
                                     ),
                                   ),
                                 ],
@@ -895,7 +899,7 @@ class _CoachHud extends StatelessWidget {
                                 maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
                                 style: AppFonts.body(
-                                  color: Colors.white,
+                                  color: PoseHudTheme.of(context).onChrome,
                                   fontSize: 12,
                                   height: 1.3,
                                 ),
@@ -914,7 +918,7 @@ class _CoachHud extends StatelessWidget {
                         builder: (_, reps, __) {
                           return ValueListenableBuilder<String>(
                             valueListenable: countUnit,
-                            builder: (_, unit, __) => _repBlock(reps, unit),
+                            builder: (_, unit, __) => _repBlock(context, reps, unit),
                           );
                         },
                       ),
@@ -927,7 +931,7 @@ class _CoachHud extends StatelessWidget {
                             Text(
                               '体力 ${s.toInt()}',
                               style: AppFonts.body(
-                                color: Colors.white70,
+                                color: PoseHudTheme.of(context).onChromeMuted,
                                 fontSize: 11,
                               ),
                             ),
@@ -937,8 +941,10 @@ class _CoachHud extends StatelessWidget {
                               child: LinearProgressIndicator(
                                 value: (s / 100).clamp(0.0, 1.0),
                                 minHeight: 6,
-                                backgroundColor: Colors.white24,
-                                color: AppColors.copper,
+                                backgroundColor: PoseHudTheme.of(context)
+                                    .onChrome
+                                    .withValues(alpha: 0.2),
+                                color: PoseHudTheme.of(context).accent,
                               ),
                             ),
                           ],
@@ -950,7 +956,7 @@ class _CoachHud extends StatelessWidget {
                         builder: (_, fb, __) => Text(
                           fb.isEmpty ? '跟随白色剪影站位' : fb,
                           style: AppFonts.body(
-                            color: Colors.white,
+                            color: PoseHudTheme.of(context).onChrome,
                             fontSize: 12,
                             height: 1.3,
                           ),
@@ -964,19 +970,20 @@ class _CoachHud extends StatelessWidget {
     );
   }
 
-  Widget _chip(String text, Color color) {
+  Widget _chip(BuildContext context, String text, Color color) {
+    final hud = PoseHudTheme.of(context);
     return Container(
       margin: const EdgeInsets.only(bottom: 4),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.2),
+        color: hud.chrome,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withValues(alpha: 0.55)),
+        border: Border.all(color: color),
       ),
       child: Text(
         text,
         style: AppFonts.body(
-          color: color,
+          color: hud.onChrome,
           fontWeight: FontWeight.w700,
           fontSize: 12,
         ),
