@@ -143,6 +143,8 @@ void main() {
       ]) {
         expect(CameraMoveFsm.forType(type), isNotNull, reason: type);
       }
+      expect(CameraMoveFsm.forType('hiit'), isA<JumpingJackFsm>());
+      expect(CameraMoveFsm.forType('jumprope'), isA<JumpingJackFsm>());
       expect(CameraMoveFsm.forType('squat'), isNull);
       expect(CameraMoveFsm.forType('running'), isNull);
     });

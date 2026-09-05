@@ -37,6 +37,9 @@ abstract class CameraMoveFsm {
       case 'mountainclimber':
         return MountainClimberFsm(now: now);
       case 'jumping_jack':
+      case 'hiit':
+      case 'jumprope':
+        // 旧 inline 开合跳检测器也覆盖 HIIT / 跳绳镜头模式。
         return JumpingJackFsm(now: now);
       default:
         return null;
