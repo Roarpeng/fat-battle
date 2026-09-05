@@ -203,10 +203,7 @@ class ProgressSyncService extends ChangeNotifier {
     }
   }
 
-  Future<void> pushSnapshot(
-    Map<String, dynamic> json, {
-    bool immediate = false,
-  }) async {
+  /// 已登录但本地无存档时拉云端（重装 / token 残留）
   Future<Map<String, dynamic>?> pullIfLocalEmpty() async {
     if (!await canSync) return null;
     try {
