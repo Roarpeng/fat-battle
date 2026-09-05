@@ -37,26 +37,24 @@ function makeWeeklyData(days: { date: string; exercise?: number }[]): WeeklyData
 // ============================================================
 
 describe('calculateDamage', () => {
-  it('应在赤字时给予 10% 加成', () => {
-    // burn=2000 > food=500 → deficitBonus=1.1, normal → 1.0
-    expect(calculateDamage(500, 2000, 'normal')).toBe(2200)
+  it('未传 targetCalories 时不再因赤字加伤', () => {
+    expect(calculateDamage(500, 2000, 'normal')).toBe(2000)
   })
 
-  it('应在盈余时不给加成', () => {
-    // burn=500 > food=2000? 否 → deficitBonus=1.0
+  it('未打中预算带时不给加成', () => {
     expect(calculateDamage(2000, 500, 'normal')).toBe(500)
   })
 
   it('难度 easy 应提升伤害（x1.3）', () => {
-    expect(calculateDamage(500, 2000, 'easy')).toBe(2860) // 2000 * 1.3 * 1.1
+    expect(calculateDamage(500, 2000, 'easy')).toBe(2600) // 2000 * 1.3
   })
 
   it('难度 hard 应降低伤害（x0.7）', () => {
-    expect(calculateDamage(500, 2000, 'hard')).toBe(1540) // 2000 * 0.7 * 1.1
+    expect(calculateDamage(500, 2000, 'hard')).toBe(1400) // 2000 * 0.7
   })
 
   it('难度 normal 倍率应为 1.0', () => {
-    expect(calculateDamage(0, 1000, 'normal')).toBe(1100) // 赤字（1000>0）→ 1.1
+    expect(calculateDamage(0, 1000, 'normal')).toBe(1000)
   })
 
   it('运动消耗为 0 时伤害为 0', () => {
@@ -66,7 +64,7 @@ describe('calculateDamage', () => {
 
   it('应将负输入归一化为 0', () => {
     expect(calculateDamage(-100, -50, 'normal')).toBe(0)
-    expect(calculateDamage(-100, 200, 'normal')).toBe(220) // 200 * 1.0 * 1.1（200>0 赤字）
+    expect(calculateDamage(-100, 200, 'normal')).toBe(200)
   })
 
   it('极大值不应产生 NaN', () => {
@@ -75,8 +73,9 @@ describe('calculateDamage', () => {
     expect(result).toBeGreaterThan(0)
   })
 
-  it('摄入与消耗相等时不算赤字', () => {
-    expect(calculateDamage(1000, 1000, 'normal')).toBe(1000) // 不满足 burn > food
+  it('打中预算带给予 1.15 加成', () => {
+    expect(calculateDamage(1800, 1000, 'normal', 1800)).toBe(1150)
+    expect(calculateDamage(1000, 1000, 'normal', 1800)).toBe(1000)
   })
 })
 

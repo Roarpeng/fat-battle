@@ -3,8 +3,7 @@ import 'core_types.dart';
 
 /// BMR / TDEE / 目标卡路里计算 —— 纯函数实现。
 ///
-/// 对应 web/src/core/calories.ts。
-/// Flutter 端目标不低于 max(性别下限, BMR)，日赤字上限 750 kcal；web/src/core/calories.ts 的 extremeLoss 仍为 1000，可能静默漂移。
+/// 对应 web/src/core/calories.ts（双端已对齐：性别下限 + BMR 热量下限，日赤字上限 750）。
 
 // ========== 常量配置 ==========
 

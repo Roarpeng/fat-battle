@@ -24,6 +24,12 @@ const COUNTER_MULTIPLIER = {
   notVeryEffective: 0.7, // 被克
 } as const
 
+/** 热量预算带：目标 ±10%，且至少 ±100 kcal。与 Flutter `lib/core/damage.dart` 对齐。 */
+export const CALORIE_BAND_RATIO = 0.10
+export const CALORIE_BAND_MIN_ABS_KCAL = 100
+/** 打中预算带时的伤害加成（奖励贴近目标，而不是吃得越少越好）。 */
+export const CALORIE_BAND_HIT_BONUS = 1.15
+
 /** 伤害结算效果标签，供 UI 显示「效果绝佳！」/「效果不太好…」 */
 export type DamageEffectiveness = 'super' | 'normal' | 'weak'
 
@@ -54,12 +60,33 @@ function resolveCounter(
   return { multiplier: COUNTER_MULTIPLIER.normal, effectiveness: 'normal' }
 }
 
+/** 预算带半宽（kcal）。 */
+export function calorieBandHalfWidth(targetCalories: number): number {
+  const target = Math.max(0, Math.round(targetCalories))
+  return Math.max(CALORIE_BAND_MIN_ABS_KCAL, Math.round(target * CALORIE_BAND_RATIO))
+}
+
+/** 当日摄入是否落在目标热量预算带内。 */
+export function isIntakeInCalorieBand(intake: number, targetCalories: number): boolean {
+  const target = Math.max(0, Math.round(targetCalories))
+  if (target <= 0) return false
+  const food = Math.max(0, Math.round(intake))
+  return Math.abs(food - target) <= calorieBandHalfWidth(target)
+}
+
+/** 打中预算带 → 1.15，否则 1.0。吃得更少不会额外加伤。 */
+export function calorieBandHitBonus(intake: number, targetCalories?: number): number {
+  if (targetCalories === undefined) return 1.0
+  return isIntakeInCalorieBand(intake, targetCalories) ? CALORIE_BAND_HIT_BONUS : 1.0
+}
+
 /**
  * 计算对怪物的伤害值（统一双端伤害模型基准）。
  *
  * 基础伤害来自运动消耗，保持原有 `attackMonster` 中「运动卡路里即伤害」的语义。
  * 难度倍率与怪物 HP 难度倍率反向：简单模式玩家伤害更高，困难模式更低。
- * 当处于热量赤字（运动消耗 > 摄入）时，减脂效果更显著，给予 10% 伤害加成。
+ * 传入 `targetCalories` 时，打中热量预算带给予 1.15 加成；不再奖励「吃得越少越好」
+ * （已去掉旧的 burn>food ×1.1 赤字加成，与 Flutter 对齐）。
  *
  * 当同时提供 `exerciseCategory` 与 `monsterAffinity` 时，启用运动克制系统：
  * 克制 ×1.5、被克 ×0.7、同属性/无克制关系 ×1.0，并返回 `DamageResult`
@@ -69,13 +96,14 @@ function resolveCounter(
  * 而是通过 `calculateOvereatCalories` + `calculateShieldFromOvereat` 转化为怪物护盾。
  *
  * 重载（保持向后兼容）：
- * 1. 仅传 (intake, exerciseBurn, difficulty) → 返回 number
- * 2. 额外传入 (exerciseCategory, monsterAffinity) → 返回 DamageResult
+ * 1. 仅传 (intake, exerciseBurn, difficulty, targetCalories?) → 返回 number
+ * 2. 额外传入 (exerciseCategory, monsterAffinity, targetCalories?) → 返回 DamageResult
  */
 export function calculateDamage(
   intake: number,
   exerciseBurn: number,
   difficulty: Difficulty,
+  targetCalories?: number,
 ): number
 export function calculateDamage(
   intake: number,
@@ -83,27 +111,40 @@ export function calculateDamage(
   difficulty: Difficulty,
   exerciseCategory: ExerciseCategory,
   monsterAffinity: MonsterAffinity,
+  targetCalories?: number,
 ): DamageResult
 export function calculateDamage(
   intake: number,
   exerciseBurn: number,
   difficulty: Difficulty,
-  exerciseCategory?: ExerciseCategory,
+  exerciseCategoryOrTarget?: ExerciseCategory | number,
   monsterAffinity?: MonsterAffinity,
+  targetCalories?: number,
 ): number | DamageResult {
+  let exerciseCategory: ExerciseCategory | undefined
+  let affinity: MonsterAffinity | undefined
+  let target: number | undefined
+
+  if (typeof exerciseCategoryOrTarget === 'number') {
+    target = exerciseCategoryOrTarget
+  } else if (exerciseCategoryOrTarget !== undefined) {
+    exerciseCategory = exerciseCategoryOrTarget
+    affinity = monsterAffinity
+    target = targetCalories
+  }
+
   const diffMultiplier = difficulty === 'easy' ? 1.3 : difficulty === 'hard' ? 0.7 : 1.0
   const burn = Math.max(0, exerciseBurn)
-  const food = Math.max(0, intake)
-  const deficitBonus = burn > food ? 1.1 : 1.0
-  const baseDamage = Math.round(burn * diffMultiplier * deficitBonus)
+  const bandBonus = calorieBandHitBonus(intake, target)
+  const baseDamage = Math.round(burn * diffMultiplier * bandBonus)
 
   // 未提供完整克制参数：返回数字（向后兼容）
-  if (exerciseCategory === undefined || monsterAffinity === undefined) {
+  if (exerciseCategory === undefined || affinity === undefined) {
     return baseDamage
   }
 
   // 启用克制系统：在基础伤害上叠加克制倍率
-  const { multiplier, effectiveness } = resolveCounter(exerciseCategory, monsterAffinity)
+  const { multiplier, effectiveness } = resolveCounter(exerciseCategory, affinity)
   const finalDamage = Math.round(baseDamage * multiplier)
   return { damage: finalDamage, effectiveness, multiplier }
 }
@@ -124,7 +165,7 @@ export function calculateOvereatCalories(intake: number, targetCalories: number)
  * @param ratio 转化比例（每 ratio 卡路里 = 1 点护盾），默认 10:1
  * @returns 护盾值（非负整数）
  *
- * 双端基准统一采用 10:1：暴食惩罚但不至于过强，
+ * 双端基准统一采用 10:1：超出预算会生成护盾（玩法机制，不是羞辱），
  * 避免高卡路里数值导致护盾条瞬间溢出。`monsterSlice.addMonsterShield` 也复用此函数。
  * ratio <= 0 时回退为默认 10。
  */

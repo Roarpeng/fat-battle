@@ -3,7 +3,10 @@ import {
   calculateBMR,
   calculateTDEE,
   calculateTargetCalories,
+  calorieFloorFor,
+  capDailyDeficit,
   ACTIVITY_FACTORS,
+  MAX_DAILY_DEFICIT_KCAL,
 } from '../calories'
 import type { ActivityLevel } from '../calories'
 
@@ -98,7 +101,7 @@ describe('calculateTargetCalories —— 目标卡路里计算', () => {
   }
 
   describe('默认目标（loss）', () => {
-    it('男性默认目标每日缺口 500 kcal，每周减 0.5kg', () => {
+    it('男性默认目标每日缺口 500 kcal，周减重按实际赤字折算', () => {
       const result = calculateTargetCalories(
         maleParams.gender,
         maleParams.weightKg,
@@ -107,11 +110,12 @@ describe('calculateTargetCalories —— 目标卡路里计算', () => {
         maleParams.activityLevel
       )
       expect(result.dailyDeficit).toBe(500)
-      expect(result.estimatedWeeklyLoss).toBe(0.5)
+      expect(result.estimatedWeeklyLoss).toBe(0.45)
       expect(result.targetCalories).toBe(result.tdee - 500)
+      expect(result.targetCalories).toBeGreaterThanOrEqual(result.calorieFloor)
     })
 
-    it('女性默认目标每日缺口 500 kcal，每周减 0.5kg', () => {
+    it('女性默认目标每日缺口 500 kcal，周减重按实际赤字折算', () => {
       const result = calculateTargetCalories(
         femaleParams.gender,
         femaleParams.weightKg,
@@ -120,8 +124,9 @@ describe('calculateTargetCalories —— 目标卡路里计算', () => {
         femaleParams.activityLevel
       )
       expect(result.dailyDeficit).toBe(500)
-      expect(result.estimatedWeeklyLoss).toBe(0.5)
+      expect(result.estimatedWeeklyLoss).toBe(0.45)
       expect(result.targetCalories).toBe(result.tdee - 500)
+      expect(result.targetCalories).toBeGreaterThanOrEqual(result.calorieFloor)
     })
   })
 
@@ -136,13 +141,13 @@ describe('calculateTargetCalories —— 目标卡路里计算', () => {
         'mildLoss'
       )
       expect(result.dailyDeficit).toBe(250)
-      expect(result.estimatedWeeklyLoss).toBe(0.25)
+      expect(result.estimatedWeeklyLoss).toBe(0.23)
       expect(result.targetCalories).toBe(result.tdee - 250)
     })
   })
 
   describe('extremeLoss 目标', () => {
-    it('每日缺口 1000 kcal，每周减 1kg', () => {
+    it('每日缺口上限 750 kcal，与 Flutter kMaxDailyDeficitKcal 对齐', () => {
       const result = calculateTargetCalories(
         maleParams.gender,
         maleParams.weightKg,
@@ -151,28 +156,49 @@ describe('calculateTargetCalories —— 目标卡路里计算', () => {
         maleParams.activityLevel,
         'extremeLoss'
       )
-      expect(result.dailyDeficit).toBe(1000)
-      expect(result.estimatedWeeklyLoss).toBe(1)
-      expect(result.targetCalories).toBe(result.tdee - 1000)
+      expect(result.dailyDeficit).toBe(750)
+      expect(result.dailyDeficit).toBeLessThanOrEqual(MAX_DAILY_DEFICIT_KCAL)
+      expect(result.estimatedWeeklyLoss).toBe(0.68)
+      expect(result.targetCalories).toBe(result.tdee - 750)
+      expect(result.targetCalories).toBeGreaterThanOrEqual(result.calorieFloor)
     })
   })
 
   describe('安全下限', () => {
-    it('男性目标卡路里不低于 1500 kcal', () => {
+    it('calorieFloor = max(性别下限, BMR)', () => {
+      expect(calorieFloorFor('female', 1100)).toBe(1200)
+      expect(calorieFloorFor('female', 1400)).toBe(1400)
+      expect(calorieFloorFor('male', 1400)).toBe(1500)
+      expect(calorieFloorFor('male', 1800)).toBe(1800)
+    })
+
+    it('capDailyDeficit 将过大赤字夹到 750', () => {
+      expect(capDailyDeficit(1000)).toBe(MAX_DAILY_DEFICIT_KCAL)
+      expect(capDailyDeficit(-20)).toBe(0)
+      expect(capDailyDeficit(500)).toBe(500)
+    })
+
+    it('男性目标卡路里不低于 1500 与 BMR 的较大值', () => {
       const result = calculateTargetCalories('male', 50, 160, 50, 'sedentary', 'extremeLoss')
       expect(result.targetCalories).toBeGreaterThanOrEqual(1500)
+      expect(result.targetCalories).toBeGreaterThanOrEqual(result.bmr)
+      expect(result.targetCalories).toBeGreaterThanOrEqual(result.calorieFloor)
+      expect(result.dailyDeficit).toBeLessThanOrEqual(MAX_DAILY_DEFICIT_KCAL)
     })
 
-    it('女性目标卡路里不低于 1200 kcal', () => {
+    it('女性目标卡路里不低于 1200 与 BMR 的较大值', () => {
       const result = calculateTargetCalories('female', 45, 150, 50, 'sedentary', 'extremeLoss')
       expect(result.targetCalories).toBeGreaterThanOrEqual(1200)
+      expect(result.targetCalories).toBeGreaterThanOrEqual(result.bmr)
+      expect(result.dailyDeficit).toBeLessThanOrEqual(MAX_DAILY_DEFICIT_KCAL)
     })
 
-    it('触达安全下限时实际缺口应调整', () => {
+    it('触达热量下限时实际缺口应调整，且不超过 750', () => {
       const result = calculateTargetCalories('female', 55, 160, 30, 'sedentary', 'extremeLoss')
-      const expectedDeficit = Math.max(0, result.tdee - 1200)
+      const expectedDeficit = Math.max(0, result.tdee - result.calorieFloor)
       expect(result.dailyDeficit).toBe(expectedDeficit)
-      expect(result.dailyDeficit).toBeLessThan(1000)
+      expect(result.dailyDeficit).toBeLessThanOrEqual(MAX_DAILY_DEFICIT_KCAL)
+      expect(result.targetCalories).toBe(result.calorieFloor)
     })
 
     it('触达安全下限时每周减重应按比例降低', () => {
@@ -196,6 +222,7 @@ describe('calculateTargetCalories —— 目标卡路里计算', () => {
       expect(result).toHaveProperty('targetCalories')
       expect(result).toHaveProperty('dailyDeficit')
       expect(result).toHaveProperty('estimatedWeeklyLoss')
+      expect(result).toHaveProperty('calorieFloor')
     })
 
     it('BMR 应与 calculateBMR 结果一致', () => {
