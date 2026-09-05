@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:camera/camera.dart';
 import '../models/game_models.dart';
 import 'imu_peak.dart';
+import 'limb_imu.dart';
 
 /// 动作识别服务 - 融合摄像头和IMU数据
 class MotionRecognitionService {
@@ -156,6 +157,8 @@ class MotionRecognitionService {
 /// 摄像头+IMU融合识别
 class FusionRecognitionService {
   final MotionRecognitionService _imuService = MotionRecognitionService();
+  LimbImuFusion? _limbFusion;
+  bool limbConfirmEnabled = false;
   
   // 摄像头检测结果（来自MediaPipe）
   String? _cameraExerciseType;
@@ -190,6 +193,16 @@ class FusionRecognitionService {
   /// 更新IMU检测结果
   void updateImuData(ImuData data) {
     _imuService.addImuData(data);
+    _fuseResults();
+  }
+
+  /// 腰+四肢聚合帧：腰部仍走原峰值；四肢仅确认票。
+  void updateAggregatedImu(AggregatedImuFrame frame) {
+    _limbFusion?.ingest(frame);
+    final waist = frame.waist;
+    if (waist != null) {
+      _imuService.addImuData(waist);
+    }
     _fuseResults();
   }
   
@@ -240,6 +253,10 @@ class FusionRecognitionService {
     };
     _imuService.onFeedback = onFeedback;
     _imuService.startDetection(exerciseType);
+    _limbFusion = LimbImuFusion(
+      exerciseType: exerciseType,
+      limbConfirmEnabled: limbConfirmEnabled,
+    );
     _cameraExerciseType = exerciseType;
     _cameraRepCount = null;
     _finalRepCount = 0;

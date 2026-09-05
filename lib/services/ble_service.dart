@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import '../models/game_models.dart';
+import 'limb_imu.dart';
 
 /// BLE 状态通知（供 UI SnackBar 等使用）
 class BleStatusEvent {
@@ -16,6 +17,10 @@ class BleStatusEvent {
 class BleService {
   // ESP32设备名称
   static const String targetDeviceName = 'ESP32-Hub';
+
+  /// 四肢节点广播前缀。默认关闭，打开 [limbNodesEnabled] 才尝试发现，不打断单 Hub。
+  static const String limbDevicePrefix = 'ESP32-Limb-';
+  static const String prefsLimbFlag = 'coach_limb_imu_enabled';
   
   // BLE服务UUID（需要与ESP32固件匹配）
   static const String serviceUuid = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
@@ -48,6 +53,20 @@ class BleService {
   bool get isScanning => _isScanning;
   bool get isConnected => _isConnected;
 
+  /// 架构开关：发现四肢节点但不自动替换腰部 Hub 主连接。
+  bool limbNodesEnabled = false;
+
+  final Map<ImuNodeId, BluetoothDevice> _limbDevices = {};
+  final StreamController<AggregatedImuFrame> _aggController =
+      StreamController.broadcast();
+  final StreamController<ImuNodeId> _limbFoundController =
+      StreamController.broadcast();
+
+  Stream<AggregatedImuFrame> get aggregatedImuStream => _aggController.stream;
+  Stream<ImuNodeId> get limbDiscoveredStream => _limbFoundController.stream;
+  Map<ImuNodeId, BluetoothDevice> get discoveredLimbDevices =>
+      Map.unmodifiable(_limbDevices);
+
   void _emitLog(String message, {bool isError = false}) {
     _logController.add(message);
     _statusController.add(BleStatusEvent(message, isError: isError));
@@ -74,12 +93,22 @@ class BleService {
       // 监听扫描结果
       _scanSubscription = FlutterBluePlus.scanResults.listen((results) {
         for (final result in results) {
-          if (result.device.platformName.contains(targetDeviceName) ||
-              result.device.advName.contains(targetDeviceName)) {
-            _emitLog('发现设备: ${result.device.platformName} (${result.device.remoteId})');
+          final name = result.device.platformName.isNotEmpty
+              ? result.device.platformName
+              : result.device.advName;
+          if (name.contains(targetDeviceName)) {
+            _emitLog('发现设备: $name (${result.device.remoteId})');
             _stopScanInternal();
             connectToDevice(result.device);
             break;
+          }
+          if (limbNodesEnabled) {
+            final node = ImuNodeIdX.fromAdvertisedName(name);
+            if (node != null && node != ImuNodeId.waist) {
+              _limbDevices[node] = result.device;
+              _limbFoundController.add(node);
+              _emitLog('发现四肢节点（未自动连接）: $name → ${node.label}');
+            }
           }
         }
       });
@@ -209,41 +238,36 @@ class BleService {
   }
   
   /// 解析IMU数据
-  /// 数据格式：ax(2bytes) ay(2bytes) az(2bytes) gx(2bytes) gy(2bytes) gz(2bytes)
-  /// 每个值是int16，单位：加速度g，角速度deg/s
+  /// 旧格式：12 字节腰部六轴。新格式：0xFB 聚合帧（腰 + 四肢）。
   void _parseImuData(List<int> data) {
     if (data.length < 12) return;
-    
+
     try {
-      // 解析加速度（假设单位是0.01g）
-      final ax = _toInt16(data[0], data[1]) / 100.0;
-      final ay = _toInt16(data[2], data[3]) / 100.0;
-      final az = _toInt16(data[4], data[5]) / 100.0;
-      
-      // 解析角速度（假设单位是0.1deg/s）
-      final gx = _toInt16(data[6], data[7]) / 10.0;
-      final gy = _toInt16(data[8], data[9]) / 10.0;
-      final gz = _toInt16(data[10], data[11]) / 10.0;
-      
-      final imuData = ImuData(
-        timestamp: DateTime.now(),
-        ax: ax,
-        ay: ay,
-        az: az,
-        gx: gx,
-        gy: gy,
-        gz: gz,
-      );
-      
-      _imuDataStreamController.add(imuData);
+      final frame = LimbImuCodec.decode(data);
+      if (frame == null) return;
+      _aggController.add(frame);
+      final waist = frame.waist;
+      if (waist != null) {
+        _imuDataStreamController.add(waist);
+      }
     } catch (e) {
       _logController.add('解析IMU数据失败: $e');
     }
   }
-  
-  /// 将两个字节转换为int16
-  int _toInt16(int low, int high) {
-    return (high << 8) | low;
+
+  /// 预留：显式连接已发现的四肢节点。默认不调用，避免打断单 Hub。
+  Future<bool> connectLimbNode(ImuNodeId node) async {
+    if (!limbNodesEnabled) {
+      _emitLog('四肢 IMU 未开启（$prefsLimbFlag）', isError: true);
+      return false;
+    }
+    final device = _limbDevices[node];
+    if (device == null) {
+      _emitLog('尚未发现 ${node.label}', isError: true);
+      return false;
+    }
+    _emitLog('四肢连接为架构预留，当前仍以腰部 Hub 为主: ${node.label}');
+    return false;
   }
   
   /// 发送命令到ESP32
@@ -296,6 +320,8 @@ class BleService {
     _connectionStateController.close();
     _logController.close();
     _statusController.close();
+    _aggController.close();
+    _limbFoundController.close();
     disconnect();
   }
 }
@@ -317,6 +343,12 @@ final bleConnectionStateProvider = StreamProvider<BleDeviceState>((ref) {
 final imuDataStreamProvider = StreamProvider<ImuData>((ref) {
   final bleService = ref.watch(bleServiceProvider);
   return bleService.imuDataStream;
+});
+
+/// 腰+四肢聚合帧（缺肢时仍只有腰点）。
+final aggregatedImuStreamProvider = StreamProvider<AggregatedImuFrame>((ref) {
+  final bleService = ref.watch(bleServiceProvider);
+  return bleService.aggregatedImuStream;
 });
 
 /// BLE日志Provider
