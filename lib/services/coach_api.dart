@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import '../config/api_config.dart';
 import 'auth_service.dart';
+import 'offline_form_recap.dart';
 
 /// 组后动作 recap 客户端。走后端 `POST /api/v1/coach/form-recap`，
 /// 密钥不进 APK；不发送图像/视频。LLM 不可用时本地兑底一句。
@@ -22,6 +23,8 @@ class CoachApi {
     double? minKneeAngle,
     required int durationSec,
     String? avgGrade,
+    int shallowCount = 0,
+    List<String> commonFaults = const [],
   }) async {
     final local = localFormRecap(
       exerciseType: exerciseType,
@@ -30,6 +33,8 @@ class CoachApi {
       minKneeAngle: minKneeAngle,
       durationSec: durationSec,
       avgGrade: avgGrade,
+      shallowCount: shallowCount,
+      commonFaults: commonFaults,
     );
     if (!isAvailable) return local;
 
@@ -43,6 +48,8 @@ class CoachApi {
           if (minKneeAngle != null) 'minKneeAngle': minKneeAngle,
           'durationSec': durationSec,
           if (avgGrade != null) 'avgGrade': avgGrade,
+          'shallowCount': shallowCount,
+          if (commonFaults.isNotEmpty) 'commonFaults': commonFaults,
         },
       );
       if (response.statusCode == 429) return local;
@@ -61,7 +68,7 @@ class CoachApi {
     }
   }
 
-  /// LLM 关闭或失败时的 1–2 句本地兑底（不依赖云端）。
+  /// LLM 关闭或失败时的 2–4 句本地兑底（不依赖云端，不假装 LLM）。
   static String localFormRecap({
     required String exerciseType,
     required int repCount,
@@ -69,51 +76,18 @@ class CoachApi {
     double? minKneeAngle,
     required int durationSec,
     String? avgGrade,
+    int shallowCount = 0,
+    List<String> commonFaults = const [],
   }) {
-    final name = _nameOf(exerciseType);
-    final grade = (avgGrade ?? _avgGrade(qualityGrades)).toUpperCase();
-    final reps = repCount < 0 ? 0 : repCount;
-    final depth = minKneeAngle != null
-        ? '最低膝角约 ${minKneeAngle.round()}°。'
-        : '';
-    if (reps <= 0) {
-      return '本组几乎没计到有效次数。对准镜头、做满幅度再来一组。';
-    }
-    switch (grade) {
-      case 'S':
-      case 'A':
-        return '$name完成 $reps 次，幅度到位。$depth保持这个深度即可。';
-      case 'B':
-        return '$name完成 $reps 次。$depth下一组再蹲/压低一点，质量会更好。';
-      default:
-        return '$name完成 $reps 次，不少是浅幅度。$depth下次做到底再起来，浅的不计次。';
-    }
-  }
-
-  static String _avgGrade(List<String> grades) {
-    if (grades.isEmpty) return 'D';
-    const order = ['D', 'C', 'B', 'A', 'S'];
-    var sum = 0;
-    for (final g in grades) {
-      final i = order.indexOf(g.toUpperCase());
-      sum += i < 0 ? 0 : i;
-    }
-    final avg = (sum / grades.length).round().clamp(0, 4);
-    return order[avg];
-  }
-
-  static String _nameOf(String type) {
-    switch (type) {
-      case 'pushup':
-        return '俯卧撑';
-      case 'lunge':
-        return '弓步蹲';
-      case 'jumping_jack':
-        return '开合跳';
-      case 'plank':
-        return '平板支撑';
-      default:
-        return '深蹲';
-    }
+    return OfflineFormRecap.build(
+      exerciseType: exerciseType,
+      repCount: repCount,
+      qualityGrades: qualityGrades,
+      minKneeAngle: minKneeAngle,
+      durationSec: durationSec,
+      avgGrade: avgGrade,
+      shallowCount: shallowCount,
+      commonFaults: commonFaults,
+    );
   }
 }

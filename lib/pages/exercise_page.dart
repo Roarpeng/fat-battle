@@ -90,6 +90,8 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
   String? _sessionExerciseType;
   final List<String> _sessionQualityGrades = [];
   double? _sessionMinKneeAngle;
+  int _sessionShallowCount = 0;
+  final List<String> _sessionFaultCues = [];
   bool _returnToBattle = false;
   final ValueNotifier<String> _qualityGradeN = ValueNotifier('');
 
@@ -351,6 +353,10 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
         _gameLogic.lastRepQuality = quality.round();
         _gameLogic.lastRepGrade = grade;
         _sessionQualityGrades.add(grade);
+        _sessionShallowCount = detector.sessionShallowCount;
+        _sessionFaultCues
+          ..clear()
+          ..addAll(detector.sessionFaultCues);
         final k = detector.lastMinKneeAngle;
         if (k != null) {
           _sessionMinKneeAngle = _sessionMinKneeAngle == null
@@ -771,6 +777,8 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
     _sessionExerciseType = null;
     _sessionQualityGrades.clear();
     _sessionMinKneeAngle = null;
+    _sessionShallowCount = 0;
+    _sessionFaultCues.clear();
     _qualityGradeN.value = '';
   }
 
@@ -3010,6 +3018,13 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
     double? minKnee,
   }) {
     final grades = List<String>.from(_sessionQualityGrades);
+    final detector = _activeCameraDetector;
+    final shallow = detector is PoseDetectionService
+        ? detector.sessionShallowCount
+        : _sessionShallowCount;
+    final faults = detector is PoseDetectionService
+        ? List<String>.from(detector.sessionFaultCues)
+        : List<String>.from(_sessionFaultCues);
     // ignore: discarded_futures
     CoachApi.instance
         .formRecap(
@@ -3019,6 +3034,8 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
           minKneeAngle: minKnee,
           durationSec: durationSec,
           avgGrade: avgGrade,
+          shallowCount: shallow,
+          commonFaults: faults,
         )
         .then((text) {
       if (!mounted || text.isEmpty) return;

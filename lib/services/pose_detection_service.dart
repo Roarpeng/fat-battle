@@ -10,6 +10,7 @@ import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
 import 'package:path_provider/path_provider.dart';
 import 'pose_coach_diary.dart';
 import 'exercise_fsm.dart';
+import 'camera_move_fsm.dart';
 
 /// 基于 Google ML Kit Pose Detection 的姿态识别服务
 ///
@@ -114,9 +115,16 @@ class PoseDetectionService {
   /// 深蹲/俯卧撑/弓步蹲有限状态机（校准 + ROM）
   ExerciseRepFsm? _repFsm;
 
+  /// 高抬腿 / 平板 / 波比 / 登山跑 / 开合跳
+  CameraMoveFsm? _moveFsm;
+
   /// 本组最低膝角（供组后 recap）；无则 null
   double? lastMinKneeAngle;
   double? sessionMinKneeAngle;
+
+  /// 浅幅度未计次次数 + 本组常见口令（供离线 recap）
+  int sessionShallowCount = 0;
+  final List<String> sessionFaultCues = [];
 
   // ===== Getters =====
   CameraController? get controller => _controller;
@@ -361,8 +369,12 @@ class PoseDetectionService {
     _countingEnabled = false; // 等入镜门控通过后再计次
     _repFsm = ExerciseRepFsm.forType(exerciseType);
     _repFsm?.reset();
+    _moveFsm = CameraMoveFsm.forType(exerciseType);
+    _moveFsm?.reset();
     lastMinKneeAngle = null;
     sessionMinKneeAngle = null;
+    sessionShallowCount = 0;
+    sessionFaultCues.clear();
 
     // 重置动作特定状态
     _jackNoseMinY = 999;
@@ -1128,23 +1140,13 @@ class PoseDetectionService {
         _tickRepFsm(lm);
         break;
       case 'jumping_jack':
-        _analyzeJumpingJack(lm);
-        break;
       case 'hiit':
       case 'jumprope':
-        _analyzeJumpingJack(lm); // 跳跃类共用
-        break;
       case 'highknee':
-        _analyzeHighKnee(lm);
-        break;
       case 'plank':
-        _analyzePlank(lm);
-        break;
       case 'burpee':
-        _analyzeBurpee(lm);
-        break;
       case 'mountainclimber':
-        _analyzeMountainClimber(lm);
+        _tickMoveFsm(lm);
         break;
       default:
         // 未实现姿态检测的运动，使用通用运动强度
@@ -1181,7 +1183,11 @@ class PoseDetectionService {
           cur == null ? tick.minKneeAngle : math.min(cur, tick.minKneeAngle!);
     }
     if (tick.cue != null && tick.cue!.isNotEmpty && !tick.counted) {
+      _noteFaultCue(tick.cue!);
       onFeedback?.call(tick.cue!);
+    }
+    if (tick.shallow) {
+      sessionShallowCount++;
     }
     if (!tick.counted) return;
     _repCount++;
@@ -1201,6 +1207,58 @@ class PoseDetectionService {
     onFeedback?.call(
       fb == null || fb.isEmpty ? '$_repCount 个' : '$_repCount 个！$fb',
     );
+  }
+
+  void _tickMoveFsm(Map<PoseLandmarkType, Point3D> lm) {
+    final fsm = _moveFsm;
+    if (fsm == null) {
+      _analyzeGeneric(lm);
+      return;
+    }
+    final tick = fsm.tick(_toFsmLandmarks(lm), sensitivity: _sensitivity);
+    _motionState = tick.phase.name;
+    _updateMotionLevelByAngle(tick.motionLevel, 1.0);
+    if (tick.minKneeAngle != null && fsm.exerciseType != 'plank') {
+      lastMinKneeAngle = tick.minKneeAngle;
+      final cur = sessionMinKneeAngle;
+      sessionMinKneeAngle =
+          cur == null ? tick.minKneeAngle : math.min(cur, tick.minKneeAngle!);
+    }
+    if (tick.cue != null && tick.cue!.isNotEmpty && !tick.counted) {
+      _noteFaultCue(tick.cue!);
+      onFeedback?.call(tick.cue!);
+    }
+    if (tick.shallow) {
+      sessionShallowCount++;
+    }
+    if (!tick.counted) return;
+    _repCount++;
+    _lastRepTime = DateTime.now();
+    onRepDetected?.call(_repCount, tick.exerciseName);
+    _handleRepSuccess();
+    if (tick.qualityAngle != null) {
+      _calcQualityScore(
+        fsm.exerciseType,
+        tick.qualityAngle!,
+        tick.qualityDepth ?? 0.7,
+        tick.qualityBodyLine ?? 0.8,
+      );
+    }
+    if (tick.highlight) onHighlightMoment?.call();
+    final fb = tick.feedback;
+    final unit = fsm.exerciseType == 'plank' ? '秒' : '个';
+    onFeedback?.call(
+      fb == null || fb.isEmpty
+          ? '$_repCount $unit'
+          : '$_repCount $unit！$fb',
+    );
+  }
+
+  void _noteFaultCue(String cue) {
+    if (cue.isEmpty) return;
+    if (sessionFaultCues.contains(cue)) return;
+    if (sessionFaultCues.length >= 6) return;
+    sessionFaultCues.add(cue);
   }
 
   // ============================================================
@@ -1961,8 +2019,11 @@ class PoseDetectionService {
     _comboMultiplier = 1.0;
     _lastComboTime = DateTime.now();
     _repFsm?.reset();
+    _moveFsm?.reset();
     lastMinKneeAngle = null;
     sessionMinKneeAngle = null;
+    sessionShallowCount = 0;
+    sessionFaultCues.clear();
   }
 
   /// 续训：恢复已累计次数/秒数（平板按秒）。
@@ -1972,6 +2033,8 @@ class PoseDetectionService {
     if (_currentExercise == 'plank') {
       _plankAccumulatedSeconds = n.toDouble();
       _plankStartTime = null;
+      final plank = _moveFsm;
+      if (plank is PlankHoldFsm) plank.seedSeconds(n);
     }
     onRepDetected?.call(_repCount, _currentExercise);
   }

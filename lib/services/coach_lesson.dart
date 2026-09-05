@@ -60,6 +60,8 @@ String counterLessonSubtitle(ExerciseCategory monsterAffinity) {
 }
 
 /// 克制该属性时应优先挑选的摄像头动作（保序）。
+///
+/// 仅列出已有可靠检测器 / FSM 的镜头动作，伤病过滤在 [CoachLesson] 内再做。
 List<String> counterCameraTypes(ExerciseCategory monsterAffinity) {
   switch (counterCategoryOf(monsterAffinity)) {
     case ExerciseCategory.cardio:
@@ -69,6 +71,17 @@ List<String> counterCameraTypes(ExerciseCategory monsterAffinity) {
     case ExerciseCategory.core:
       return const ['plank', 'mountainclimber', 'lunge'];
   }
+}
+
+/// 伤病过滤后仍可用于克制课的镜头动作（保序）。
+List<String> safeCounterCameraTypes(
+  ExerciseCategory monsterAffinity, {
+  InjuryFlags injury = const InjuryFlags(),
+}) {
+  return filterInjuredTypes(
+    counterCameraTypes(monsterAffinity),
+    flags: injury,
+  );
 }
 
 /// Flutter 舞台怪按索引循环属性（对齐 core 小怪：史莱姆 core / 哥布林 cardio / 幽灵 strength）。
@@ -99,7 +112,7 @@ class CoachLesson {
     final banned = injury.excludedTypes;
     final prefer = monsterAffinity == null
         ? const <String>[]
-        : counterCameraTypes(monsterAffinity);
+        : safeCounterCameraTypes(monsterAffinity, injury: injury);
 
     var plan = ExercisePrescription.recommendCombo(
       user,
