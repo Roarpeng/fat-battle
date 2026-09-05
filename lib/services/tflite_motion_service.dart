@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
 import 'package:tflite_flutter/tflite_flutter.dart';
+import 'tflite_gpu_hook.dart';
 
 /// 基于 TensorFlow Lite (MoveNet) 的姿态估计与动作分类服务
 ///
@@ -77,6 +78,7 @@ class TfliteMotionService {
   /// 是否启用硬件加速（GPU / NNAPI）
   bool _useGpuDelegate = false;
   bool _useNnApi = false;
+  TfliteAccelResult? _accel;
 
   /// 最近一次推理耗时（毫秒），用于性能监控
   double _lastInferenceMs = 0;
@@ -106,6 +108,9 @@ class TfliteMotionService {
   double get lastInferenceMs => _lastInferenceMs;
   bool get modelLoaded => _interpreter != null;
   String? get modelLoadError => _modelLoadError;
+  bool get preferGpu => _useGpuDelegate;
+  TfliteAccelResult? get accel => _accel;
+  String get accelLabel => _accel?.label ?? 'CPU';
   double get sensitivity =>
       ((_debounceMs - 200) / 800).clamp(0.0, 1.0);
 
@@ -216,25 +221,43 @@ class TfliteMotionService {
     _modelLoadError = null;
     try {
       final options = InterpreterOptions();
-
-      if (_useNnApi) {
-        // Android NNAPI：在支持 NPU/DSP 的设备上加速
-        options.useNnApiForAndroid = true;
-      }
-
-      // GPU delegate 需引入 tflite_flutter_gpu 包后启用：
-      //   if (_useGpuDelegate) {
-      //     options.addDelegate(GpuDelegateV2());
-      //   }
-      // 当前版本仅支持 CPU + NNAPI，保持零额外原生依赖
-      if (_useGpuDelegate) {
-        // TODO: 添加 GPU delegate 支持（需 tflite_flutter_gpu 依赖）
-      }
-
-      _interpreter = await Interpreter.fromAsset(
-        kModelAsset,
-        options: options,
+      _accel = TfliteGpuHook.attach(
+        options,
+        preferGpu: _useGpuDelegate,
+        preferNnApi: _useNnApi,
       );
+      if (_accel!.fallbackReason != null) {
+        debugPrint('TFLite accel: ${_accel!.fallbackReason}');
+      }
+
+      try {
+        _interpreter = await Interpreter.fromAsset(
+          kModelAsset,
+          options: options,
+        );
+      } catch (e) {
+        if (_accel!.gpuAttached || _accel!.nnapiAttached) {
+          debugPrint('TFLite GPU/NNAPI 解释器失败，回退 CPU: $e');
+          _accel = TfliteGpuHook.attach(
+            InterpreterOptions(),
+            preferGpu: false,
+            preferNnApi: false,
+          );
+          _interpreter = await Interpreter.fromAsset(
+            kModelAsset,
+            options: InterpreterOptions(),
+          );
+          _accel = TfliteAccelResult(
+            gpuRequested: _useGpuDelegate,
+            gpuAttached: false,
+            nnapiAttached: false,
+            backend: 'cpu',
+            fallbackReason: 'GPU/NNAPI 创建解释器失败，已回退 CPU: $e',
+          );
+        } else {
+          rethrow;
+        }
+      }
     } on FileSystemException {
       _interpreter = null;
       _modelLoadError =

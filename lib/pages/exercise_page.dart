@@ -10,6 +10,7 @@ import '../theme/forge_routes.dart';
 import '../theme/tokens.dart';
 import '../theme/app_icons.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../constants/app_constants.dart';
 import '../models/game_models.dart';
 import '../providers/game_provider.dart';
@@ -18,6 +19,7 @@ import '../services/ble_service.dart';
 import '../services/motion_recognition.dart';
 import '../services/pose_detection_service.dart';
 import '../services/tflite_motion_service.dart';
+import '../services/tflite_accel.dart';
 import '../services/exercise_game_logic.dart';
 import '../services/exercise_prescription.dart';
 import '../services/coach_cues.dart';
@@ -54,7 +56,10 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
   int? _selectedDuration;
   String _exerciseMode = 'manual'; // 'manual' | 'camera' | 'imu'
   String _cameraEngine = 'mlkit'; // 修复 ML Kit；不再默认跳过到 TFLite
+  bool _tflitePreferGpu = false;
+  String? _tfliteAccelHint;
   bool _cameraBleFusion = false;
+  bool _limbImuEnabled = false;
   WorkoutFocus _workoutFocus = WorkoutFocus.mixed;
   WorkoutPlan? _recommendedPlan;
 
@@ -178,6 +183,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
     
     _wireCameraCallbacks(_cameraDetector);
     _wireCameraCallbacks(_tfliteDetector);
+    _restoreCoachEnginePrefs();
 
     _fusionService.onRepDetected = (count, exercise) {
       if (!_cameraBleFusion || !mounted) return;
@@ -258,6 +264,37 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
       );
       _applyTodayLesson(silent: true);
     });
+  }
+
+  Future<void> _restoreCoachEnginePrefs() async {
+    try {
+      final prefs = ref.read(sharedPreferencesProvider) ??
+          await SharedPreferences.getInstance();
+      final engine = prefs.getString(TfliteAccelPrefs.engineKey);
+      final gpu = prefs.getBool(TfliteAccelPrefs.gpuKey) ?? false;
+      final limb = prefs.getBool(BleService.prefsLimbFlag) ?? false;
+      if (!mounted) return;
+      setState(() {
+        if (engine == 'tflite' || engine == 'mlkit') {
+          _cameraEngine = engine!;
+        }
+        _tflitePreferGpu = gpu;
+        _limbImuEnabled = limb;
+      });
+      _tfliteDetector.configure(useGpu: gpu, useNnApi: gpu);
+      _fusionService.limbConfirmEnabled = limb;
+      ref.read(bleServiceProvider).limbNodesEnabled = limb;
+    } catch (_) {}
+  }
+
+  Future<void> _persistCoachEnginePrefs() async {
+    try {
+      final prefs = ref.read(sharedPreferencesProvider) ??
+          await SharedPreferences.getInstance();
+      await prefs.setString(TfliteAccelPrefs.engineKey, _cameraEngine);
+      await prefs.setBool(TfliteAccelPrefs.gpuKey, _tflitePreferGpu);
+      await prefs.setBool(BleService.prefsLimbFlag, _limbImuEnabled);
+    } catch (_) {}
   }
 
   void _syncCoachVoiceEnabled() {
@@ -997,8 +1034,16 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
         if (_isDetecting) {
           _motionService.addImuData(imuData);
         }
-        if (_cameraDetecting && _cameraBleFusion) {
+        if (_cameraDetecting && _cameraBleFusion && !_limbImuEnabled) {
           _fusionService.updateImuData(imuData);
+        }
+      });
+    });
+
+    ref.listen(aggregatedImuStreamProvider, (previous, next) {
+      next.whenData((frame) {
+        if (_cameraDetecting && _cameraBleFusion && _limbImuEnabled) {
+          _fusionService.updateAggregatedImu(frame);
         }
       });
     });
@@ -2242,30 +2287,81 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
             style: _mutedStyle.copyWith(fontSize: 11),
           ),
           children: [
-            if (!_cameraReady) ...[
-              Text('识别引擎', style: _mutedStyle.copyWith(fontSize: 12)),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    child: _copperChip(
-                      label: 'ML Kit',
-                      selected: _cameraEngine == 'mlkit',
-                      onTap: () => _switchCameraEngine('mlkit'),
-                    ),
+            Text('识别引擎', style: _mutedStyle.copyWith(fontSize: 12)),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: _copperChip(
+                    label: 'ML Kit',
+                    selected: _cameraEngine == 'mlkit',
+                    onTap: _cameraReady
+                        ? null
+                        : () => _switchCameraEngine('mlkit'),
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: _copperChip(
-                      label: 'TFLite',
-                      selected: _cameraEngine == 'tflite',
-                      onTap: () => _switchCameraEngine('tflite'),
-                    ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _copperChip(
+                    label: 'TFLite 离线',
+                    selected: _cameraEngine == 'tflite',
+                    onTap: _cameraReady
+                        ? null
+                        : () => _switchCameraEngine('tflite'),
                   ),
-                ],
-              ),
-              const SizedBox(height: 12),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              _cameraEngine == 'tflite'
+                  ? 'MoveNet 完全离线。模型缺失时会提示运行 download_models。'
+                  : 'ML Kit 失败或国内无 Play 服务时可改用 TFLite。',
+              style: _mutedStyle.copyWith(fontSize: 11),
+            ),
+            if (_tfliteAccelHint != null) ...[
+              const SizedBox(height: 4),
+              Text(_tfliteAccelHint!, style: _mutedStyle.copyWith(fontSize: 11)),
             ],
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Text('TFLite GPU 加速', style: _bodyStyle.copyWith(fontSize: 13)),
+              subtitle: Text(
+                '优先 GPU/NNAPI，不支持则自动 CPU。需先下载 MoveNet 模型。',
+                style: _mutedStyle.copyWith(fontSize: 11),
+              ),
+              value: _tflitePreferGpu,
+              activeTrackColor: AppColors.copper.withValues(alpha: 0.4),
+              activeThumbColor: AppColors.copper,
+              onChanged: _cameraReady
+                  ? null
+                  : (value) {
+                      setState(() => _tflitePreferGpu = value);
+                      _tfliteDetector.configure(
+                        useGpu: value,
+                        useNnApi: value,
+                      );
+                      _persistCoachEnginePrefs();
+                    },
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Text('四肢 IMU 节点（实验）', style: _bodyStyle.copyWith(fontSize: 13)),
+              subtitle: Text(
+                '扫描 ESP32-Limb-*，不打断腰部 Hub。无硬件时只是发现桩。',
+                style: _mutedStyle.copyWith(fontSize: 11),
+              ),
+              value: _limbImuEnabled,
+              activeTrackColor: AppColors.copper.withValues(alpha: 0.4),
+              activeThumbColor: AppColors.copper,
+              onChanged: (value) {
+                setState(() => _limbImuEnabled = value);
+                _fusionService.limbConfirmEnabled = value;
+                ref.read(bleServiceProvider).limbNodesEnabled = value;
+                _persistCoachEnginePrefs();
+              },
+            ),
+            const SizedBox(height: 8),
             if (bleConnected && _cameraReady) ...[
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
@@ -2406,10 +2502,23 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
 
   Future<bool> _initializeActiveCameraEngine() async {
     if (_cameraEngine == 'mlkit') {
-      await _cameraDetector.initialize();
-      return true;
+      try {
+        await _cameraDetector.initialize();
+        return true;
+      } catch (e) {
+        final fallback = await _fallbackToTflite(reason: '$e');
+        if (fallback) {
+          _showToast('ML Kit 失败，已切换离线 TFLite MoveNet');
+          return true;
+        }
+        rethrow;
+      }
     }
 
+    _tfliteDetector.configure(
+      useGpu: _tflitePreferGpu,
+      useNnApi: _tflitePreferGpu,
+    );
     final ok = await _tfliteDetector.initialize();
     if (!ok || !_tfliteDetector.modelLoaded) {
       final reason = _tfliteDetector.modelLoadError ?? 'TFLite 模型不可用';
@@ -2421,7 +2530,30 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
       }
       return fallback;
     }
+    final accel = _tfliteDetector.accel;
+    setState(() {
+      _tfliteAccelHint = accel == null
+          ? null
+          : '离线 MoveNet · ${accel.label}'
+              '${accel.fallbackReason == null ? '' : '（${accel.fallbackReason}）'}';
+    });
     return true;
+  }
+
+  Future<bool> _fallbackToTflite({required String reason}) async {
+    _tfliteDetector.configure(
+      useGpu: _tflitePreferGpu,
+      useNnApi: _tflitePreferGpu,
+    );
+    try {
+      final ok = await _tfliteDetector.initialize();
+      if (!ok || !_tfliteDetector.modelLoaded) return false;
+      setState(() => _cameraEngine = 'tflite');
+      await _persistCoachEnginePrefs();
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<bool> _fallbackToMlKit({required String reason}) async {
@@ -2451,6 +2583,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
     } else {
       setState(() => _cameraEngine = engine);
     }
+    await _persistCoachEnginePrefs();
   }
 
   Future<void> _showPermissionDialog(String title, String message) async {
@@ -3625,7 +3758,7 @@ class _ExercisePageState extends ConsumerState<ExercisePage> {
   Widget _copperChip({
     required String label,
     required bool selected,
-    required VoidCallback onTap,
+    VoidCallback? onTap,
   }) {
     return ForgePressable(
       onTap: onTap,
