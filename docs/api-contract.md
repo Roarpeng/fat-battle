@@ -55,10 +55,13 @@ items 项: `{name, calorie(每100g), confidence, has_calorie, category, descript
 |------|------|------|------|
 | POST | /progress/snapshot | `{state: GameState, updatedAt?: RFC3339}`（`gameState` 为 state 别名） | `{state, updatedAt, revision}`；云端更新则 **409** 并带回当前云端快照 |
 | GET | /progress/snapshot | - | `{state, updatedAt, revision}`；无存档 **404** `{"error":"暂无云端存档"}` |
-| POST/GET | /progress/events | - | 501（流水后续迭代） |
-| GET | /progress/summary | - | 501（摘要后续迭代） |
+| POST | /progress/events | `{type, at?, id?, payload}` 或 `{events:[...]}`；type=`meal\|exercise\|battle\|weight\|sculpt_settle` | `{ok, accepted}` |
+| GET | /progress/events | `?from&to&type` | `{items}` |
+| GET | /progress/summary | `?range=7d\|30d` | `{kcalIn,kcalOut,sessions,meals,streak,weightDeltaKg,sculptStage}` |
+| GET | /config/public | 无鉴权 | 运营开关与热量下限，**不含密钥** |
+| PUT | /user/me | 建档字段 | `{ok, profile}` |
 
-冲突策略：按 `updatedAt` **last-write-wins**（客户端时间 ≥ 云端才覆盖；相等允许重试覆盖）。每次成功写入 `revision` +1。
+冲突策略：按 `updatedAt` **last-write-wins**（客户端时间 ≥ 云端才覆盖；相等允许重试覆盖）。每次成功写入 `revision` +1。快照成功后会刷新 `user_profiles` / `sculpt_progress` 等规范化表。
 
 App 登录后合并：云端空则推本地；本地空则拉云端；双边都有则比较 `updatedAt`。首次登录有本地档时不覆盖本机进度。
 
@@ -68,12 +71,20 @@ App 登录后合并：云端空则推本地；本地空则拉云端；双边都�
 |------|------|------|
 | POST | /admin/login | `{username, password}` → `{token}` |
 | GET | /admin/users?q=&page=&pageSize= | 用户列表（禁用状态） |
-| POST | /admin/users/{id}/disable\|/enable | 禁用/启用 |
-| POST | /admin/users/{id}/reset-password | `{password}` |
+| GET | /admin/users/{id} | 卷宗：账号 + profile + sculpt + 快照元数据 |
+| PATCH | /admin/users/{id} | 改档案字段（审计） |
+| GET | /admin/users/{id}/sessions\|meals\|metrics\|events | 该用户规范化数据 |
+| PATCH | /admin/users/{id}/progress | 体重/目标热量/streak/雕塑阶段与线/主题（确认后写快照 + 审计） |
+| POST | /admin/users/{id}/disable\|/enable | 禁用/启用（审计） |
+| POST | /admin/users/{id}/reset-password | `{password}`（审计） |
+| GET | /admin/sessions?userId=&from=&to= | 锻炼课筛选 |
+| GET | /admin/meals?userId=&from=&to= | 饮食筛选 |
 | GET/POST | /admin/llm | 配置列表 / 新增 |
 | PUT/DELETE | /admin/llm/{id} | 更新 / 删除 |
 | POST | /admin/llm/{id}/test | 测试连通 → `{ok, latencyMs}` |
-| GET | /admin/stats | `{users, llmConfigs, dbOk}` |
+| GET/PUT | /admin/settings | 运营配置（无密钥） |
+| GET | /admin/audit?userId=&limit= | 审计日志 |
+| GET | /admin/stats | `{users, dau, sessionsToday, mealsToday, llmConfigs, dbOk}` |
 
 llm_configs 字段: `{name, provider(zhipu), base_url, api_key, vision_model, text_model, enabled, priority, remark}`
 

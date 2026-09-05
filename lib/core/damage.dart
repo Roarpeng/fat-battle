@@ -106,7 +106,7 @@ double calorieBandHitBonus(num intake, num? targetCalories) {
 /// 难度倍率与怪物 HP 难度倍率反向：简单模式玩家伤害更高，困难模式更低。
 /// 传入 [targetCalories] 时，打中热量预算带给予加成；不再奖励「吃得越少越好」。
 ///
-/// Flutter 端已改为「打中热量预算带」加成；web/src/core/damage.ts 仍为 burn>food 赤字加成，可能静默漂移。
+/// 双端已对齐为「打中热量预算带」加成（不再奖励吃得越少越好）。
 ///
 /// 注意：过量摄入（intake > targetCalories）不在此处削减伤害，
 /// 而是通过 `calculateOvereatCalories` + `calculateShieldFromOvereat` 转化为怪物护盾。

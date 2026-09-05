@@ -4,6 +4,7 @@ import {
   calculateShieldFromOvereat,
   applyDamageToMonster,
   generateMonster,
+  isIntakeInCalorieBand,
 } from '../index'
 import type { MonsterState } from '../../store/game-types'
 
@@ -18,24 +19,22 @@ function makeMonster(overrides: Partial<MonsterState> = {}): MonsterState {
 // ============================================================
 
 describe('calculateDamage —— 基础伤害（不传克制参数）', () => {
-  it('应在赤字时给予 10% 加成并返回 number', () => {
-    // burn=1000 > food=0 → deficitBonus=1.1, normal → 1.0
+  it('未传 targetCalories 时不再因赤字加伤，返回 number', () => {
     const result = calculateDamage(0, 1000, 'normal')
-    expect(result).toBe(1100)
+    expect(result).toBe(1000)
     expect(typeof result).toBe('number')
   })
 
-  it('应在盈余时不给加成', () => {
-    // burn=500, food=2000 → 不满足 burn > food → deficitBonus=1.0
+  it('未打中预算带时不给加成', () => {
     expect(calculateDamage(2000, 500, 'normal')).toBe(500)
   })
 
   it('难度 easy 应提升伤害（×1.3）', () => {
-    expect(calculateDamage(0, 1000, 'easy')).toBe(1430) // 1000 * 1.3 * 1.1
+    expect(calculateDamage(0, 1000, 'easy')).toBe(1300) // 1000 * 1.3
   })
 
   it('难度 hard 应降低伤害（×0.7）', () => {
-    expect(calculateDamage(0, 1000, 'hard')).toBe(770) // 1000 * 0.7 * 1.1
+    expect(calculateDamage(0, 1000, 'hard')).toBe(700) // 1000 * 0.7
   })
 
   it('运动消耗为 0 时伤害为 0', () => {
@@ -45,13 +44,39 @@ describe('calculateDamage —— 基础伤害（不传克制参数）', () => {
 
   it('应将负输入归一化为 0', () => {
     expect(calculateDamage(-100, -50, 'normal')).toBe(0)
-    expect(calculateDamage(-100, 200, 'normal')).toBe(220) // 200 * 1.0 * 1.1
+    expect(calculateDamage(-100, 200, 'normal')).toBe(200)
   })
 
   it('不传克制参数时返回类型应为 number（向后兼容）', () => {
     const result = calculateDamage(500, 2000, 'normal')
     expect(typeof result).toBe('number')
-    expect(result).toBe(2200)
+    expect(result).toBe(2000)
+  })
+})
+
+describe('calculateDamage —— 热量预算带加成', () => {
+  it('打中预算带给予 1.15 加成，吃得更少不会更高', () => {
+    const target = 1800
+    const inBand = calculateDamage(1800, 400, 'normal', target)
+    const farBelow = calculateDamage(800, 400, 'normal', target)
+    const farAbove = calculateDamage(2600, 400, 'normal', target)
+
+    expect(inBand).toBeGreaterThan(farBelow)
+    expect(inBand).toBeGreaterThan(farAbove)
+    expect(farBelow).toBe(farAbove)
+    expect(inBand).toBe(460) // 400 * 1.15
+    expect(farBelow).toBe(400)
+  })
+
+  it('不再因 burn > food 额外加伤', () => {
+    expect(calculateDamage(0, 1000, 'normal', 1800)).toBe(1000)
+    expect(calculateDamage(1800, 1000, 'normal', 1800)).toBe(1150)
+  })
+
+  it('isIntakeInCalorieBand 半宽至少 100kcal', () => {
+    expect(isIntakeInCalorieBand(1800, 1800)).toBe(true)
+    expect(isIntakeInCalorieBand(1650, 1800)).toBe(true) // ±180
+    expect(isIntakeInCalorieBand(1000, 1800)).toBe(false)
   })
 })
 
@@ -61,25 +86,23 @@ describe('calculateDamage —— 基础伤害（不传克制参数）', () => {
 
 describe('calculateDamage —— 克制伤害（×1.5）', () => {
   it('cardio 运动克制 strength 属性怪物 → effectiveness=super, ×1.5', () => {
-    // baseDamage = round(1000 * 1.0 * 1.1) = 1100
-    // COUNTER_MAP['cardio'] = 'strength' === monsterAffinity → super
-    // finalDamage = round(1100 * 1.5) = 1650
+    // baseDamage = 1000；克制 ×1.5 → 1500
     const result = calculateDamage(0, 1000, 'normal', 'cardio', 'strength')
-    expect(result.damage).toBe(1650)
+    expect(result.damage).toBe(1500)
     expect(result.effectiveness).toBe('super')
     expect(result.multiplier).toBe(1.5)
   })
 
   it('strength 运动克制 core 属性怪物 → effectiveness=super, ×1.5', () => {
     const result = calculateDamage(0, 1000, 'normal', 'strength', 'core')
-    expect(result.damage).toBe(1650)
+    expect(result.damage).toBe(1500)
     expect(result.effectiveness).toBe('super')
     expect(result.multiplier).toBe(1.5)
   })
 
   it('core 运动克制 cardio 属性怪物 → effectiveness=super, ×1.5', () => {
     const result = calculateDamage(0, 1000, 'normal', 'core', 'cardio')
-    expect(result.damage).toBe(1650)
+    expect(result.damage).toBe(1500)
     expect(result.effectiveness).toBe('super')
     expect(result.multiplier).toBe(1.5)
   })
@@ -104,26 +127,22 @@ describe('calculateDamage —— 克制伤害（×1.5）', () => {
 
 describe('calculateDamage —— 被克伤害（×0.7）', () => {
   it('strength 运动被 cardio 属性怪物克制 → effectiveness=weak, ×0.7', () => {
-    // baseDamage = 1100
-    // COUNTER_MAP['strength'] = 'core' !== 'cardio' (not super)
-    // COUNTER_MAP['cardio'] = 'strength' === 'strength' (exerciseCategory) → weak
-    // finalDamage = round(1100 * 0.7) = 770
     const result = calculateDamage(0, 1000, 'normal', 'strength', 'cardio')
-    expect(result.damage).toBe(770)
+    expect(result.damage).toBe(700)
     expect(result.effectiveness).toBe('weak')
     expect(result.multiplier).toBe(0.7)
   })
 
   it('core 运动被 strength 属性怪物克制 → effectiveness=weak, ×0.7', () => {
     const result = calculateDamage(0, 1000, 'normal', 'core', 'strength')
-    expect(result.damage).toBe(770)
+    expect(result.damage).toBe(700)
     expect(result.effectiveness).toBe('weak')
     expect(result.multiplier).toBe(0.7)
   })
 
   it('cardio 运动被 core 属性怪物克制 → effectiveness=weak, ×0.7', () => {
     const result = calculateDamage(0, 1000, 'normal', 'cardio', 'core')
-    expect(result.damage).toBe(770)
+    expect(result.damage).toBe(700)
     expect(result.effectiveness).toBe('weak')
     expect(result.multiplier).toBe(0.7)
   })
@@ -149,21 +168,21 @@ describe('calculateDamage —— 被克伤害（×0.7）', () => {
 describe('calculateDamage —— 同属性/无克制关系（×1.0）', () => {
   it('cardio vs cardio → effectiveness=normal, ×1.0', () => {
     const result = calculateDamage(0, 1000, 'normal', 'cardio', 'cardio')
-    expect(result.damage).toBe(1100)
+    expect(result.damage).toBe(1000)
     expect(result.effectiveness).toBe('normal')
     expect(result.multiplier).toBe(1.0)
   })
 
   it('strength vs strength → effectiveness=normal, ×1.0', () => {
     const result = calculateDamage(0, 1000, 'normal', 'strength', 'strength')
-    expect(result.damage).toBe(1100)
+    expect(result.damage).toBe(1000)
     expect(result.effectiveness).toBe('normal')
     expect(result.multiplier).toBe(1.0)
   })
 
   it('core vs core → effectiveness=normal, ×1.0', () => {
     const result = calculateDamage(0, 1000, 'normal', 'core', 'core')
-    expect(result.damage).toBe(1100)
+    expect(result.damage).toBe(1000)
     expect(result.effectiveness).toBe('normal')
     expect(result.multiplier).toBe(1.0)
   })
@@ -174,37 +193,32 @@ describe('calculateDamage —— 同属性/无克制关系（×1.0）', () => {
 // ============================================================
 
 describe('calculateDamage —— 难度倍率与克制倍率叠加', () => {
-  it('easy(×1.3) + 赤字(×1.1) + 克制(×1.5) 应正确叠加', () => {
-    // baseDamage = round(1000 * 1.3 * 1.1) = 1430
-    // finalDamage = round(1430 * 1.5) = 2145
+  it('easy(×1.3) + 克制(×1.5) 应正确叠加（无赤字加成）', () => {
+    // baseDamage = round(1000 * 1.3) = 1300
+    // finalDamage = round(1300 * 1.5) = 1950
     const result = calculateDamage(0, 1000, 'easy', 'cardio', 'strength')
-    expect(result.damage).toBe(2145)
+    expect(result.damage).toBe(1950)
     expect(result.effectiveness).toBe('super')
     expect(result.multiplier).toBe(1.5)
   })
 
-  it('hard(×0.7) + 赤字(×1.1) + 被克(×0.7) 应正确叠加', () => {
-    // baseDamage = round(1000 * 0.7 * 1.1) = 770
-    // finalDamage = round(770 * 0.7) = 539
+  it('hard(×0.7) + 被克(×0.7) 应正确叠加（无赤字加成）', () => {
+    // baseDamage = round(1000 * 0.7) = 700
+    // finalDamage = round(700 * 0.7) = 490
     const result = calculateDamage(0, 1000, 'hard', 'strength', 'cardio')
-    expect(result.damage).toBe(539)
+    expect(result.damage).toBe(490)
     expect(result.effectiveness).toBe('weak')
     expect(result.multiplier).toBe(0.7)
   })
 
-  it('normal(×1.0) + 赤字(×1.1) + 同属性(×1.0) 应等于基础伤害', () => {
-    // baseDamage = round(1000 * 1.0 * 1.1) = 1100
-    // finalDamage = round(1100 * 1.0) = 1100
+  it('normal(×1.0) + 同属性(×1.0) 应等于基础伤害', () => {
     const result = calculateDamage(0, 1000, 'normal', 'cardio', 'cardio')
-    expect(result.damage).toBe(1100)
+    expect(result.damage).toBe(1000)
     expect(result.effectiveness).toBe('normal')
     expect(result.multiplier).toBe(1.0)
   })
 
-  it('克制参数下盈余（无赤字加成）应正确计算', () => {
-    // burn=500, food=2000 → deficitBonus=1.0
-    // baseDamage = round(500 * 1.0 * 1.0) = 500
-    // finalDamage = round(500 * 1.5) = 750
+  it('克制参数下未打中预算带应正确计算', () => {
     const result = calculateDamage(2000, 500, 'normal', 'cardio', 'strength')
     expect(result.damage).toBe(750)
     expect(result.effectiveness).toBe('super')

@@ -18,7 +18,7 @@ func NewRouter(_ *pgxpool.Pool, _ string) *gin.Engine {
 	r.Use(gin.Logger(), gin.Recovery())
 	r.Use(cors.New(cors.Config{
 		AllowAllOrigins: true,
-		AllowMethods:    []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowMethods:    []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowHeaders:    []string{"Origin", "Content-Type", "Authorization"},
 		// 鉴权走 Authorization 头（非 Cookie），无需 credentials；
 		// gin-contrib/cors 不允许 AllowAllOrigins 与 AllowCredentials 同时为 true
@@ -48,6 +48,9 @@ func RegisterRoutes(r *gin.Engine, pool *pgxpool.Pool, jwtSecret, adminJwtSecret
 			})
 		})
 
+		// 运营公开配置（无密钥）
+		api.GET("/config/public", publicConfigHandler(pool))
+
 		// 账号管理（无鉴权，限流防暴力破解）
 		auth := api.Group("/auth", middleware.RateLimit(10, time.Minute))
 		{
@@ -61,6 +64,7 @@ func RegisterRoutes(r *gin.Engine, pool *pgxpool.Pool, jwtSecret, adminJwtSecret
 		protected := api.Group("", middleware.Auth(jwtSecret, dl))
 		{
 			protected.GET("/user/me", meHandler(pool))
+			protected.PUT("/user/me", putMeHandler(pool))
 			protected.DELETE("/user", deleteAccountHandler(pool, jwtSecret, dl))
 
 			// 食物识别代理（GLM 转发，密钥只留服务器；LLM 成本高，严格限流）
@@ -76,14 +80,14 @@ func RegisterRoutes(r *gin.Engine, pool *pgxpool.Pool, jwtSecret, adminJwtSecret
 			protected.POST("/coach/turn", middleware.RateLimit(30, time.Minute), coachTurnHandler(pool))
 			protected.POST("/coach/form-recap", middleware.RateLimit(30, time.Minute), coachFormRecapHandler(pool))
 
-			// 进度同步（M4：snapshot 已实现；events/summary 仍 501）
+			// 进度同步（快照 last-write-wins + 流水拆表）
 			progress := protected.Group("/progress")
 			{
 				progress.POST("/snapshot", snapshotHandler(pool))
 				progress.GET("/snapshot", getSnapshotHandler(pool))
-				progress.POST("/events", eventsHandler())
-				progress.GET("/events", getEventsHandler())
-				progress.GET("/summary", summaryHandler())
+				progress.POST("/events", eventsHandler(pool))
+				progress.GET("/events", getEventsHandler(pool))
+				progress.GET("/summary", summaryHandler(pool))
 			}
 		}
 	}
@@ -101,9 +105,19 @@ func RegisterRoutes(r *gin.Engine, pool *pgxpool.Pool, jwtSecret, adminJwtSecret
 		adminAuth := admin.Group("", middleware.AdminAuth(adminJwtSecret))
 		{
 			adminAuth.GET("/users", adminUsersHandler(pool))
+			adminAuth.GET("/users/:id", adminUserGetHandler(pool))
+			adminAuth.PATCH("/users/:id", adminUserPatchHandler(pool))
+			adminAuth.GET("/users/:id/sessions", adminUserSessionsHandler(pool))
+			adminAuth.GET("/users/:id/meals", adminUserMealsHandler(pool))
+			adminAuth.GET("/users/:id/metrics", adminUserMetricsHandler(pool))
+			adminAuth.GET("/users/:id/events", adminUserEventsHandler(pool))
+			adminAuth.PATCH("/users/:id/progress", adminUserProgressHandler(pool))
 			adminAuth.POST("/users/:id/disable", adminUserDisableHandler(pool, true))
 			adminAuth.POST("/users/:id/enable", adminUserDisableHandler(pool, false))
 			adminAuth.POST("/users/:id/reset-password", adminUserResetPasswordHandler(pool))
+
+			adminAuth.GET("/sessions", adminSessionsHandler(pool))
+			adminAuth.GET("/meals", adminMealsHandler(pool))
 
 			adminAuth.GET("/llm", adminLLMListHandler(pool))
 			adminAuth.POST("/llm", adminLLMCreateHandler(pool))
@@ -111,6 +125,9 @@ func RegisterRoutes(r *gin.Engine, pool *pgxpool.Pool, jwtSecret, adminJwtSecret
 			adminAuth.DELETE("/llm/:id", adminLLMDeleteHandler(pool))
 			adminAuth.POST("/llm/:id/test", adminLLMTestHandler(pool))
 
+			adminAuth.GET("/settings", adminSettingsGetHandler(pool))
+			adminAuth.PUT("/settings", adminSettingsPutHandler(pool))
+			adminAuth.GET("/audit", adminAuditHandler(pool))
 			adminAuth.GET("/stats", adminStatsHandler(pool))
 		}
 	}

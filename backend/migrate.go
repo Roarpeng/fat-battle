@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"sort"
+	"strings"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/crypto/bcrypt"
@@ -15,28 +16,62 @@ import (
 //go:embed migrations/*.sql
 var migrationsFS embed.FS
 
-// RunMigrations 按文件名顺序执行 migrations 目录下的全部 SQL（幂等：IF NOT EXISTS）。
-// 注：docker-entrypoint-initdb.d 只对全新数据卷生效，老库必须靠这里补迁移。
-func RunMigrations(ctx context.Context, pool *pgxpool.Pool) error {
+// MigrationFiles 返回按文件名排序的全部迁移文件名（供测试断言）。
+func MigrationFiles() ([]string, error) {
 	entries, err := migrationsFS.ReadDir("migrations")
 	if err != nil {
-		return fmt.Errorf("读取迁移目录: %w", err)
+		return nil, err
 	}
 	names := make([]string, 0, len(entries))
 	for _, e := range entries {
-		if !e.IsDir() {
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ".sql") {
 			names = append(names, e.Name())
 		}
 	}
 	sort.Strings(names)
+	return names, nil
+}
+
+// RunMigrations 按文件名顺序执行 migrations 目录下的全部 SQL。
+// 使用 schema_migrations 跳过已成功执行的文件；SQL 本身须幂等（IF NOT EXISTS）。
+// 注：docker-entrypoint-initdb.d 只对全新数据卷生效，且 compose 只挂 0001；
+// 0002 及之后必须靠本函数在 API 启动时补齐。
+func RunMigrations(ctx context.Context, pool *pgxpool.Pool) error {
+	if _, err := pool.Exec(ctx, `
+		CREATE TABLE IF NOT EXISTS schema_migrations (
+			filename   TEXT PRIMARY KEY,
+			applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`); err != nil {
+		return fmt.Errorf("创建 schema_migrations: %w", err)
+	}
+
+	names, err := MigrationFiles()
+	if err != nil {
+		return fmt.Errorf("读取迁移目录: %w", err)
+	}
 
 	for _, name := range names {
+		var already bool
+		if err := pool.QueryRow(ctx,
+			`SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE filename = $1)`, name,
+		).Scan(&already); err != nil {
+			return fmt.Errorf("查询迁移状态 %s: %w", name, err)
+		}
+		if already {
+			log.Printf("[migrate] 跳过已执行 %s", name)
+			continue
+		}
 		sqlBytes, err := migrationsFS.ReadFile("migrations/" + name)
 		if err != nil {
 			return fmt.Errorf("读取迁移 %s: %w", name, err)
 		}
 		if _, err := pool.Exec(ctx, string(sqlBytes)); err != nil {
 			return fmt.Errorf("执行迁移 %s: %w", name, err)
+		}
+		if _, err := pool.Exec(ctx,
+			`INSERT INTO schema_migrations (filename) VALUES ($1) ON CONFLICT DO NOTHING`, name,
+		); err != nil {
+			return fmt.Errorf("记录迁移 %s: %w", name, err)
 		}
 		log.Printf("[migrate] 已执行 %s", name)
 	}

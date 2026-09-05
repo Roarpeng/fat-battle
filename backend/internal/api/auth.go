@@ -15,6 +15,7 @@ import (
 
 	"fatbattle/backend/internal/middleware"
 	"fatbattle/backend/internal/model"
+	"fatbattle/backend/internal/repo"
 	"fatbattle/backend/internal/tokenstore"
 )
 
@@ -52,6 +53,7 @@ func registerHandler(pool *pgxpool.Pool, jwtSecret string) gin.HandlerFunc {
 			jsonError(c, http.StatusInternalServerError, "注册失败: "+err.Error())
 			return
 		}
+		_ = repo.EnsureProfile(c.Request.Context(), pool, userID, req.Nickname)
 
 		c.JSON(http.StatusCreated, gin.H{
 			"user":  model.User{ID: userID, Email: req.Email, Nickname: req.Nickname},
@@ -180,7 +182,58 @@ func meHandler(pool *pgxpool.Pool) gin.HandlerFunc {
 			jsonError(c, http.StatusInternalServerError, "查询失败")
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{"user": u})
+		repo.TouchLastSeen(c.Request.Context(), pool, userID)
+		profile, _ := repo.GetProfile(c.Request.Context(), pool, userID)
+		c.JSON(http.StatusOK, gin.H{"user": u, "profile": profile})
+	}
+}
+
+// putMeHandler PUT /user/me：更新档案（从 User JSON / 运营字段 upsert）
+func putMeHandler(pool *pgxpool.Pool) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if pool == nil {
+			jsonError(c, http.StatusServiceUnavailable, "数据库未就绪")
+			return
+		}
+		var body map[string]any
+		if err := c.ShouldBindJSON(&body); err != nil {
+			jsonError(c, http.StatusBadRequest, "参数错误")
+			return
+		}
+		userID := c.GetInt64("userID")
+		fields := map[string]any{}
+		allow := map[string]bool{
+			"nickname": true, "avatar": true, "age": true, "gender": true,
+			"heightCm": true, "weightKg": true, "targetWeightKg": true, "bmi": true,
+			"sleepType": true, "workType": true, "exerciseTime": true, "characterStyle": true,
+			"difficulty": true, "fitnessLevel": true, "pushupCount": true,
+			"runDurationMin": true, "weeklyFreq": true, "visualTheme": true, "sculptLine": true,
+			"kneeIssue": true, "waistIssue": true, "targetCal": true, "calorieFloor": true,
+		}
+		// 兼容 App User.toJson 字段名
+		alias := map[string]string{
+			"height": "heightCm", "weight": "weightKg", "targetWeight": "targetWeightKg",
+			"runDuration": "runDurationMin",
+		}
+		for k, v := range body {
+			if nk, ok := alias[k]; ok {
+				k = nk
+			}
+			if allow[k] {
+				fields[k] = v
+			}
+		}
+		if nick, ok := fields["nickname"].(string); ok && nick != "" {
+			_, _ = pool.Exec(c.Request.Context(),
+				`UPDATE users SET nickname = $1 WHERE id = $2 AND deleted_at IS NULL`, nick, userID)
+		}
+		if err := repo.PatchProfile(c.Request.Context(), pool, userID, fields); err != nil {
+			jsonError(c, http.StatusInternalServerError, "更新失败")
+			return
+		}
+		repo.TouchLastSeen(c.Request.Context(), pool, userID)
+		profile, _ := repo.GetProfile(c.Request.Context(), pool, userID)
+		c.JSON(http.StatusOK, gin.H{"ok": true, "profile": profile})
 	}
 }
 

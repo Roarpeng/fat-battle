@@ -125,6 +125,7 @@ func snapshotHandler(pool *pgxpool.Pool) gin.HandlerFunc {
 			})
 			return
 		}
+		repo.RefreshFromSnapshot(c.Request.Context(), pool, userID, state)
 		writeSnapshot(c, http.StatusOK, row)
 	}
 }
@@ -147,33 +148,7 @@ func getSnapshotHandler(pool *pgxpool.Pool) gin.HandlerFunc {
 			c.JSON(http.StatusNotFound, gin.H{"error": "暂无云端存档"})
 			return
 		}
+		repo.TouchLastSeen(c.Request.Context(), pool, userID)
 		writeSnapshot(c, http.StatusOK, row)
-	}
-}
-
-// eventsHandler 行为流水上传（M4 快照优先；流水后续迭代）
-func eventsHandler() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		c.JSON(http.StatusNotImplemented, gin.H{
-			"error": "行为流水尚未开放，请使用 /progress/snapshot",
-		})
-	}
-}
-
-// getEventsHandler 增量拉取（M4 快照优先；流水后续迭代）
-func getEventsHandler() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		c.JSON(http.StatusNotImplemented, gin.H{
-			"error": "行为流水尚未开放，请使用 /progress/snapshot",
-		})
-	}
-}
-
-// summaryHandler 周报/趋势（后续迭代）
-func summaryHandler() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		c.JSON(http.StatusNotImplemented, gin.H{
-			"error": "统计摘要尚未开放",
-		})
 	}
 }
